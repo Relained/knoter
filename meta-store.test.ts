@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
-import { MetaDB } from "./db";
-import type { NoteInput, ChunkInsert } from "./db";
+import { MetaDB } from "./meta-store";
+import type { NoteInput, ChunkInsert } from "./meta-store";
 
 const db = MetaDB.openInMemory();
 
@@ -39,7 +39,7 @@ const sampleNote: NoteInput = {
 };
 
 test("insert and get note", () => {
-  db.insertNote(sampleNote);
+  db.upsertNote(sampleNote);
   const row = db.getNote("note_001");
   expect(row).not.toBeNull();
   expect(row!.vault_id).toBe("personal");
@@ -62,7 +62,7 @@ test("upsert note updates file_hash", () => {
 });
 
 test("listNotes returns notes for vault", () => {
-  db.insertNote({
+  db.upsertNote({
     id: "note_002",
     vaultId: "personal",
     filePath: "notes/capstone/week1.md",
@@ -210,7 +210,7 @@ test("reindexNote atomically replaces chunks and tags", () => {
     title: "Reindex Test",
     fileHash: "hash_v1",
   };
-  db.insertNote(note);
+  db.upsertNote(note);
   db.insertChunks([
     {
       id: "old_chunk_1",

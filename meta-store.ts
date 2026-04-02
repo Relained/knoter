@@ -161,10 +161,10 @@ export class MetaDB {
         CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)
       `);
 
-      // FTS5 external content table
+      // FTS5 external content table (trigram for Korean/CJK support)
       this.db.run(`
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-          content, content=chunks, content_rowid=rowid
+          content, content=chunks, content_rowid=rowid, tokenize="trigram"
         )
       `);
 
@@ -211,24 +211,6 @@ export class MetaDB {
 
   // ── Notes CRUD ────────────────────────────────────────────────────────────
 
-  insertNote(note: NoteInput): void {
-    const now = new Date().toISOString();
-    this.db.run(
-      `INSERT INTO notes (id, vault_id, file_path, title, file_hash, created_at, updated_at, indexed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        note.id,
-        note.vaultId,
-        note.filePath,
-        note.title ?? null,
-        note.fileHash,
-        note.createdAt?.toISOString() ?? now,
-        note.updatedAt?.toISOString() ?? now,
-        now,
-      ],
-    );
-  }
-
   upsertNote(note: NoteInput): void {
     const now = new Date().toISOString();
     this.db.run(
@@ -267,10 +249,19 @@ export class MetaDB {
     this.db.run("DELETE FROM notes WHERE id = ?", [id]);
   }
 
-  listNotes(vaultId: string): NoteRow[] {
+  deleteNotesBatch(ids: string[]): void {
+    this.db.transaction(() => {
+      const del = this.db.prepare("DELETE FROM notes WHERE id = ?");
+      for (const id of ids) {
+        del.run(id);
+      }
+    })();
+  }
+
+  listNotes(vaultId: string, limit = 50, offset = 0): NoteRow[] {
     return this.db
-      .query("SELECT * FROM notes WHERE vault_id = ? ORDER BY file_path")
-      .all(vaultId) as NoteRow[];
+      .query("SELECT * FROM notes WHERE vault_id = ? ORDER BY file_path LIMIT ? OFFSET ?")
+      .all(vaultId, limit, offset) as NoteRow[];
   }
 
   // ── Chunks CRUD ───────────────────────────────────────────────────────────
@@ -353,28 +344,30 @@ export class MetaDB {
       .all(noteId) as TagRow[];
   }
 
-  getNotesByTag(tag: string, vaultId?: string): NoteRow[] {
+  getNotesByTag(tag: string, vaultId?: string, limit = 50, offset = 0): NoteRow[] {
     if (vaultId) {
       return this.db
         .query(
           `SELECT n.* FROM notes n
            JOIN tags t ON n.id = t.note_id
            WHERE t.tag = ? AND n.vault_id = ?
-           ORDER BY n.file_path`,
+           ORDER BY n.file_path
+           LIMIT ? OFFSET ?`,
         )
-        .all(tag, vaultId) as NoteRow[];
+        .all(tag, vaultId, limit, offset) as NoteRow[];
     }
     return this.db
       .query(
         `SELECT n.* FROM notes n
          JOIN tags t ON n.id = t.note_id
          WHERE t.tag = ?
-         ORDER BY n.file_path`,
+         ORDER BY n.file_path
+         LIMIT ? OFFSET ?`,
       )
-      .all(tag) as NoteRow[];
+      .all(tag, limit, offset) as NoteRow[];
   }
 
-  listAllTags(vaultId: string): Array<{ tag: string; count: number }> {
+  listAllTags(vaultId: string, limit = 50, offset = 0): Array<{ tag: string; count: number }> {
     return this.db
       .query(
         `SELECT t.tag, COUNT(*) as count
@@ -382,14 +375,15 @@ export class MetaDB {
          JOIN notes n ON t.note_id = n.id
          WHERE n.vault_id = ?
          GROUP BY t.tag
-         ORDER BY count DESC`,
+         ORDER BY count DESC
+         LIMIT ? OFFSET ?`,
       )
-      .all(vaultId) as Array<{ tag: string; count: number }>;
+      .all(vaultId, limit, offset) as Array<{ tag: string; count: number }>;
   }
 
   // ── FTS5 Search ───────────────────────────────────────────────────────────
 
-  searchFts(query: string, limit = 20, vaultId?: string): FtsResult[] {
+  searchFts(query: string, limit = 20, vaultId?: string, offset = 0): FtsResult[] {
     if (vaultId) {
       return this.db
         .query(
@@ -399,9 +393,9 @@ export class MetaDB {
            JOIN notes n ON c.note_id = n.id
            WHERE chunks_fts MATCH ? AND n.vault_id = ?
            ORDER BY f.rank
-           LIMIT ?`,
+           LIMIT ? OFFSET ?`,
         )
-        .all(query, vaultId, limit) as FtsResult[];
+        .all(query, vaultId, limit, offset) as FtsResult[];
     }
     return this.db
       .query(
@@ -410,9 +404,9 @@ export class MetaDB {
          JOIN chunks c ON c.rowid = f.rowid
          WHERE chunks_fts MATCH ?
          ORDER BY f.rank
-         LIMIT ?`,
+         LIMIT ? OFFSET ?`,
       )
-      .all(query, limit) as FtsResult[];
+      .all(query, limit, offset) as FtsResult[];
   }
 
   // ── Vault Status ──────────────────────────────────────────────────────────
@@ -420,11 +414,22 @@ export class MetaDB {
   getVaultStatus(vaultId: string): VaultStatus {
     return this.db
       .query(
-        `SELECT
-           (SELECT COUNT(*) FROM notes WHERE vault_id = ?1) AS noteCount,
-           (SELECT COUNT(*) FROM chunks c JOIN notes n ON c.note_id = n.id WHERE n.vault_id = ?1) AS chunkCount,
-           (SELECT COUNT(DISTINCT t.tag) FROM tags t JOIN notes n ON t.note_id = n.id WHERE n.vault_id = ?1) AS tagCount,
-           (SELECT MAX(indexed_at) FROM notes WHERE vault_id = ?1) AS lastIndexedAt`,
+        `WITH note_stats AS (
+           SELECT COUNT(*) AS noteCount, MAX(indexed_at) AS lastIndexedAt
+           FROM notes WHERE vault_id = ?1
+         ),
+         chunk_stats AS (
+           SELECT COUNT(*) AS chunkCount
+           FROM chunks c JOIN notes n ON c.note_id = n.id WHERE n.vault_id = ?1
+         ),
+         tag_stats AS (
+           SELECT COUNT(DISTINCT t.tag) AS tagCount
+           FROM tags t JOIN notes n ON t.note_id = n.id WHERE n.vault_id = ?1
+         )
+         SELECT
+           ns.noteCount, cs.chunkCount, ts.tagCount, ns.lastIndexedAt,
+           (SELECT embedding_model FROM vault_config WHERE vault_id = ?1) AS embeddingModel
+         FROM note_stats ns, chunk_stats cs, tag_stats ts`,
       )
       .get(vaultId) as VaultStatus;
   }

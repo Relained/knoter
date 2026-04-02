@@ -11,7 +11,7 @@ import {
   dateFilter,
   combineFilters,
   EMBEDDING_DIMENSIONS,
-} from "./schema";
+} from "./vec-store";
 
 const TEST_INDEX_DIR = "./test_zvec_index";
 const DIM = EMBEDDING_DIMENSIONS["nomic-embed-text"]; // 768

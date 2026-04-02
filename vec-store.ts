@@ -38,6 +38,9 @@ export function createChunkSchema(
   model: EmbeddingModel = "nomic-embed-text",
 ): ZVecCollectionSchema {
   const dim = EMBEDDING_DIMENSIONS[model];
+  if (!dim) {
+    throw new Error(`Unsupported embedding model: ${model}. Supported: ${Object.keys(EMBEDDING_DIMENSIONS).join(", ")}`);
+  }
 
   return new ZVecCollectionSchema({
     name: vaultName,
@@ -225,6 +228,20 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
 
 // ─── Query builders ───────────────────────────────────────────────────────────
 
+/** 기본 검색 결과 반환 필드 */
+const DEFAULT_OUTPUT_FIELDS = [
+  "note_id",
+  "file_path",
+  "title",
+  "heading",
+  "content",
+  "offset_start",
+  "offset_end",
+  "token_count",
+  "tags",
+  "created_at",
+] as const;
+
 /** 시맨틱 검색 쿼리 */
 export function semanticQuery(
   vector: number[],
@@ -235,18 +252,7 @@ export function semanticQuery(
     fieldName: "embedding",
     vector,
     topk,
-    outputFields: [
-      "note_id",
-      "file_path",
-      "title",
-      "heading",
-      "content",
-      "offset_start",
-      "offset_end",
-      "token_count",
-      "tags",
-      "created_at",
-    ],
+    outputFields: [...DEFAULT_OUTPUT_FIELDS],
     params: { indexType: ZVecIndexType.HNSW, ef: 300 },
   };
   if (filter) (q as any).filter = filter;
@@ -263,18 +269,7 @@ export function keywordQuery(
     fieldName: "sparse",
     vector: sparseVector,
     topk,
-    outputFields: [
-      "note_id",
-      "file_path",
-      "title",
-      "heading",
-      "content",
-      "offset_start",
-      "offset_end",
-      "token_count",
-      "tags",
-      "created_at",
-    ],
+    outputFields: [...DEFAULT_OUTPUT_FIELDS],
   };
   if (filter) (q as any).filter = filter;
   return q;
@@ -363,11 +358,44 @@ export function mergeByRRF(
     }));
 }
 
+// ─── Hybrid search ───────────────────────────────────────────────────────────
+
+export interface HybridSearchOptions {
+  topk?: number;
+  filter?: string;
+  rrfK?: number;
+  minScore?: number;
+}
+
+/** 시맨틱 + 키워드 하이브리드 검색을 수행하고 RRF로 병합한다. */
+export function hybridSearch(
+  collection: ZVecCollection,
+  denseVector: number[],
+  sparseVector: Record<number, number>,
+  options: HybridSearchOptions = {},
+): SearchResult[] {
+  const { topk = 10, filter, rrfK = 60, minScore } = options;
+
+  const semQ = semanticQuery(denseVector, topk * 2, filter);
+  const kwQ = keywordQuery(sparseVector, topk * 2, filter);
+
+  const semResults = collection.querySync(semQ);
+  const kwResults = collection.querySync(kwQ);
+
+  let results = mergeByRRF(semResults, kwResults, topk, rrfK);
+
+  if (minScore != null) {
+    results = results.filter((r) => r.score >= minScore);
+  }
+
+  return results;
+}
+
 // ─── Filter expression helpers ────────────────────────────────────────────────
 
 /** 태그 필터 생성 — 지정한 태그를 모두 포함하는 문서 필터 */
 export function tagFilter(tags: string[]): string {
-  const values = tags.map((t) => `"${t}"`).join(", ");
+  const values = tags.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(", ");
   return `tags CONTAIN_ALL (${values})`;
 }
 
