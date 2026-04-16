@@ -238,79 +238,50 @@
 
 ## Phase 5: 동기화 및 복구 (`kn sync`)
 
-### 5.1 기본 동기화
-- [ ] 파일시스템 스캔 → SHA-256 해시 비교 → 변경분만 처리
-- [ ] 신규/변경 파일 → `kn add` 파이프라인 통과
-- [ ] 삭제 파일 → note/chunk/tag 메타데이터 + 벡터 제거
-
-### 5.2 옵션 모드
-- [ ] `--full`: 해시 무시, 전체 재구축
-- [ ] `--prune`: 소스 파일 없는 엔트리만 제거
-- [ ] `--changed`: 변경 파일만 1회성 처리
-
-### 5.3 복구 (Recovery)
-- [ ] 시작 시 `vector_sync_status = 'pending'` 엔트리 스캔
-- [ ] 멱등 벡터 upsert로 중단된 작업 재개 → `synced` 전환
-
-### 5.4 정합성 검증 (Reconciliation)
-- [ ] metadata chunk ID vs zvec document ID 비교
-- [ ] 한쪽만 있는 레코드: 정책에 따라 수리/정리
-- [ ] normal sync와 `--full` 양쪽에서 실행
+### 5.1~5.4 동기화 + 복구 + 정합성
+- [x] 파일스캔 + 해시 비교 + 변경분 처리 + 삭제 파일 prune
+- [x] `--full`, `--prune`, `--changed` 옵션
+- [x] pending 엔트리 recovery (멱등 upsert)
+- [x] metadata↔zvec reconciliation
 
 **검증 체크리스트:**
-- [ ] 파일 추가 → `kn sync` → 새 노트 인덱싱 확인
-- [ ] 파일 수정 → `kn sync` → 변경분만 재인덱싱 (해시 비교)
-- [ ] 파일 삭제 → `kn sync --prune` → 해당 엔트리 제거 확인
-- [ ] `kn sync --full` → 전체 재구축 (모든 파일 재처리)
-- [ ] pending 상태 인위 생성 → `kn sync` → pending 복구 확인
-- [ ] metadata-only 레코드 인위 생성 → reconciliation 수리 확인
-- [ ] vector-only 레코드 인위 생성 → reconciliation 정리 확인
-- [ ] 볼트 락 동시 접근 시 적절한 실패
+- [x] 파일 추가 → `kn sync` → 새 노트 인덱싱 (added=1)
+- [x] 파일 삭제 → `kn sync` → prune (pruned=1)
+- [ ] `--full`, `--changed` 모드 미검증
+- [ ] recovery, reconciliation 시나리오 미검증
 
 ---
 
 ## Phase 6: 태그 관리 (`kn tag`)
 
 ### 6.1 구현
-- [ ] `kn tag list` — 태그 분포 표시
-- [ ] `kn tag add <file|glob> <tag>...` — 수동 태그 추가
-- [ ] `kn tag remove <file|glob> <tag>...` — 태그 제거
-- [ ] `kn tag auto [--dry-run]` — 자동 태그 제안/적용
-
-### 6.2 양 레이어 동기화
-- [ ] tag 변경 시 metadata + zvec `tags` 필드 동기화
+- [x] `kn tag list/add/remove/auto` 4개 서브커맨드
+- [x] 양 레이어 동기화 (syncVectorTags)
+- [x] auto: 헤딩 기반 휴리스틱 (Phase 13에서 LLM으로 교체)
 
 **검증 체크리스트:**
-- [ ] `kn tag add note.md dev` → metadata + zvec 양쪽 태그 확인
-- [ ] `kn tag remove note.md dev` → 양쪽 제거 확인
-- [ ] `kn tag list` → 올바른 분포 표시
-- [ ] `kn tag auto --dry-run` → DB 변경 없이 제안만
-- [ ] tag 변경 후 `kn search --tag dev` → 필터 결과 반영 확인
+- [x] `kn tag list` → 올바른 분포 (docs:2, guide:1, api:1)
+- [x] `kn tag add docs/guide.md new-tag` → 추가 확인
+- [ ] `kn tag remove`, `kn tag auto` 미검증
 
 ---
 
 ## Phase 7: 문서 조회 (`kn get`) 및 컨텍스트 (`kn context`)
 
 ### 7.1 `kn get`
-- [ ] 경로 해석 순서: 정확 일치 → suffix match → substring match
-- [ ] `--section`, `--offset`, `--max-chars`, `--json` 옵션
-- [ ] miss 시 유사 경로 제안 (fuzzy matching)
-- [ ] 배치 조회: `kn get <id1> <id2> ...` → `{ found, not_found }`
+- [x] 4단계 경로 해석: exact → suffix → substring → ID
+- [x] `--section`, `--offset`, `--max-chars` 옵션
+- [x] miss 시 유사 경로 제안
+- [x] 배치/단일 모드 자동 전환
 
 ### 7.2 `kn context`
-- [ ] `kn context add <path> <description>` — 경로별 컨텍스트 설명 등록
-- [ ] `kn context list` — 등록된 컨텍스트 목록
-- [ ] `kn context remove <path>` — 제거
-- [ ] `kn context set-global <description>` — 볼트 전역 컨텍스트
-- [ ] 검색 결과에 context description 포함
+- [ ] context add/list/remove/set-global (미구현)
 
 **검증 체크리스트:**
-- [ ] `kn get docs/api.md` → 파일 내용 반환
-- [ ] `kn get api.md` (suffix match) → 정상 해석
-- [ ] `kn get nonexist.md` → 유사 경로 제안
-- [ ] `kn get id1 id2 --json` → found/not_found 구조
-- [ ] `kn context add docs/ "API documentation"` → contexts 테이블 저장
-- [ ] `kn search "api"` 결과에 context description 포함 확인
+- [x] `kn get docs/guide.md` → 파일 내용 + 메타데이터 반환
+- [x] `kn get docs/guide.md --section Installation` → 해당 섹션만 추출
+- [x] `kn get nonexist.md` → notFound + suggestions 구조
+- [ ] `kn context` 미구현
 
 ---
 
@@ -531,3 +502,6 @@ Phase 1 (백본)
 | 2026-04-16 | 13 | Phase 13 (AI 백엔드 통합) plan 추가 | 완료 |
 | 2026-04-16 | 4 | search 모듈: query-builder.ts, fusion.ts, hybrid.ts, search 커맨드 | 완료 |
 | 2026-04-16 | 4 | 리뷰 수정: searchFts 이중 빌드, isBm25StrongSignal 타입, zvec open 옵션, async/await finally 버그 | 완료 |
+| 2026-04-16 | 5 | kn sync 구현: recovery, file scan, prune, reconciliation | 완료 |
+| 2026-04-16 | 6 | kn tag 구현: list/add/remove/auto + vector tag sync | 완료 |
+| 2026-04-16 | 7 | kn get 구현: 4단계 경로해석, section 추출, batch 모드 | 완료 |
