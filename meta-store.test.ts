@@ -25,6 +25,10 @@ test("schema tables are created", () => {
   expect(names).toContain("chunks_ai");
   expect(names).toContain("chunks_ad");
   expect(names).toContain("chunks_au");
+  // v3 additions
+  expect(names).toContain("contexts");
+  expect(names).toContain("preprocessors");
+  expect(names).toContain("llm_cache");
 });
 
 // ── Notes CRUD ──────────────────────────────────────────────────────────────
@@ -83,30 +87,46 @@ const sampleChunks: ChunkInsert[] = [
     id: "chunk_001",
     noteId: "note_001",
     heading: "서브볼륨 스냅샷",
+    headingPath: ["# BTRFS 관리 가이드", "## 서브볼륨 스냅샷"],
     content: "서브볼륨 스냅샷은 COW 특성을 활용하여 효율적으로 백업을 수행한다.",
     offsetStart: 0,
     offsetEnd: 120,
     tokenCount: 32,
+    seqIndex: 0,
+    nextChunkId: "chunk_002",
   },
   {
     id: "chunk_002",
     noteId: "note_001",
     heading: "마운트 옵션",
+    headingPath: ["# BTRFS 관리 가이드", "## 마운트 옵션"],
     content: "compress=zstd 옵션을 사용하면 투명 압축이 활성화된다.",
     offsetStart: 120,
     offsetEnd: 240,
     tokenCount: 28,
+    seqIndex: 1,
+    prevChunkId: "chunk_001",
   },
 ];
 
 test("insert and query chunks", () => {
   db.insertChunks(sampleChunks);
+  // Mark note as synced so FTS search can find it
+  db.markSynced("note_001");
+
   const chunks = db.getChunksByNote("note_001");
   expect(chunks.length).toBe(2);
-  // offset_start 순 정렬
+  // seq_index 순 정렬
   expect(chunks[0]!.id).toBe("chunk_001");
   expect(chunks[1]!.id).toBe("chunk_002");
   expect(chunks[0]!.heading).toBe("서브볼륨 스냅샷");
+  expect(chunks[0]!.seq_index).toBe(0);
+  expect(chunks[0]!.next_chunk_id).toBe("chunk_002");
+  expect(chunks[1]!.prev_chunk_id).toBe("chunk_001");
+
+  // heading_path is stored as JSON
+  const parsed = JSON.parse(chunks[0]!.heading_path!);
+  expect(parsed).toEqual(["# BTRFS 관리 가이드", "## 서브볼륨 스냅샷"]);
 });
 
 // ── FTS5 Search ─────────────────────────────────────────────────────────────
@@ -219,6 +239,7 @@ test("reindexNote atomically replaces chunks and tags", () => {
       offsetStart: 0,
       offsetEnd: 50,
       tokenCount: 10,
+      seqIndex: 0,
     },
   ]);
   db.setTags("note_reindex", [{ tag: "old_tag" }]);
@@ -234,6 +255,8 @@ test("reindexNote atomically replaces chunks and tags", () => {
         offsetStart: 0,
         offsetEnd: 60,
         tokenCount: 12,
+        seqIndex: 0,
+        nextChunkId: "new_chunk_2",
       },
       {
         id: "new_chunk_2",
@@ -242,19 +265,27 @@ test("reindexNote atomically replaces chunks and tags", () => {
         offsetStart: 60,
         offsetEnd: 120,
         tokenCount: 14,
+        seqIndex: 1,
+        prevChunkId: "new_chunk_1",
       },
     ],
     [{ tag: "new_tag", source: "auto" }],
   );
 
+  // Mark as synced so FTS search can see it
+  db.markSynced("note_reindex");
+
   // 검증
   const updatedNote = db.getNote("note_reindex");
   expect(updatedNote!.file_hash).toBe("hash_v2");
   expect(updatedNote!.title).toBe("Reindex Test v2");
+  expect(updatedNote!.vector_sync_status).toBe("synced");
 
   const chunks = db.getChunksByNote("note_reindex");
   expect(chunks.length).toBe(2);
   expect(chunks[0]!.id).toBe("new_chunk_1");
+  expect(chunks[0]!.seq_index).toBe(0);
+  expect(chunks[1]!.prev_chunk_id).toBe("new_chunk_1");
 
   const tags = db.getTagsByNote("note_reindex");
   expect(tags.length).toBe(1);

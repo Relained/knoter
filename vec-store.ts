@@ -14,6 +14,8 @@ import type {
   ZVecCollectionOptions,
 } from "@zvec/zvec";
 
+import type { FtsResult } from "./meta-store";
+
 // ─── Embedding model dimensions ───────────────────────────────────────────────
 export const EMBEDDING_DIMENSIONS = {
   "nomic-embed-text": 768,
@@ -22,16 +24,27 @@ export const EMBEDDING_DIMENSIONS = {
 
 export type EmbeddingModel = keyof typeof EMBEDDING_DIMENSIONS;
 
+// ─── Score fusion defaults ──────────────────────────────────────────────────
+/** Weight for vector channel in linear fusion (BEIR-tuned default). */
+export const DEFAULT_FUSION_ALPHA = 0.80;
+
+// ─── Strong-signal shortcut thresholds ──────────────────────────────────────
+/** Fused signal: top*gap >= product AND top >= floor. */
+export const STRONG_SIGNAL_PRODUCT = 0.06;
+export const STRONG_SIGNAL_FLOOR = 0.40;
+/** BM25-only tier-0: top >= floor AND gap >= min_gap. */
+export const BM25_STRONG_FLOOR = 0.75;
+export const BM25_STRONG_GAP = 0.10;
+
 // ─── Schema factory ───────────────────────────────────────────────────────────
 /**
- * Vault 단위 zvec collection schema를 생성한다.
+ * Vault zvec collection schema (v3).
  *
- * 구조:
- *   - embedding (dense FP32)  : 시맨틱 검색용 밀집 벡터
- *   - sparse     (sparse FP32): BM25/TF-IDF 키워드 검색용 희소 벡터
- *   - scalar fields           : 청크 메타데이터 (note_id, file_path, title, heading, content, tags, timestamps)
+ * Structure:
+ *   - embedding (dense FP32): semantic search dense vector
+ *   - scalar fields: chunk metadata including structural linking
  *
- * 스칼라 필드에는 INVERT 인덱스를 달아 filter 표현식으로 사전 필터링할 수 있게 한다.
+ * Sparse vector field is removed from active schema (keyword search is FTS5 only).
  */
 export function createChunkSchema(
   vaultName: string,
@@ -58,16 +71,11 @@ export function createChunkSchema(
           efConstruction: 400,
         },
       },
-      {
-        name: "sparse",
-        dataType: ZVecDataType.SPARSE_VECTOR_FP32,
-        // sparse vectors don't need a dimension (internally 0)
-      },
     ],
 
     // ── Scalar (metadata) fields ───────────────────────────────────────────
     fields: [
-      // 노트 원본 식별
+      // Note identification
       {
         name: "note_id",
         dataType: ZVecDataType.STRING,
@@ -88,9 +96,14 @@ export function createChunkSchema(
         },
       },
 
-      // 청크 내용
+      // Chunk content
       {
         name: "heading",
+        dataType: ZVecDataType.STRING,
+        nullable: true,
+      },
+      {
+        name: "heading_path",
         dataType: ZVecDataType.STRING,
         nullable: true,
       },
@@ -111,7 +124,18 @@ export function createChunkSchema(
         dataType: ZVecDataType.INT32,
       },
 
-      // 태그 (배열)
+      // Structural metadata
+      {
+        name: "seq_index",
+        dataType: ZVecDataType.INT32,
+      },
+      {
+        name: "doc_title",
+        dataType: ZVecDataType.STRING,
+        nullable: true,
+      },
+
+      // Tags (array)
       {
         name: "tags",
         dataType: ZVecDataType.ARRAY_STRING,
@@ -119,7 +143,7 @@ export function createChunkSchema(
         indexParams: { indexType: ZVecIndexType.INVERT },
       },
 
-      // 타임스탬프 (Unix epoch milliseconds — INT64로 저장, 정렬/범위 필터용)
+      // Timestamps (Unix epoch milliseconds)
       {
         name: "created_at",
         dataType: ZVecDataType.INT64,
@@ -142,10 +166,7 @@ export function createChunkSchema(
 }
 
 // ─── Collection helpers ───────────────────────────────────────────────────────
-/**
- * Vault의 zvec 컬렉션을 생성하고 연다.
- * 이미 존재하면 에러를 던진다.
- */
+
 export function createVaultCollection(
   indexDir: string,
   vaultName: string,
@@ -155,9 +176,6 @@ export function createVaultCollection(
   return ZVecCreateAndOpen(indexDir, schema);
 }
 
-/**
- * 기존 Vault 컬렉션을 연다.
- */
 export function openVaultCollection(
   indexDir: string,
   options?: ZVecCollectionOptions,
@@ -166,37 +184,58 @@ export function openVaultCollection(
 }
 
 // ─── Document builder ─────────────────────────────────────────────────────────
+
 export interface ChunkInput {
-  /** 청크 고유 ID (chunks.id = zvec doc id) */
+  /** Chunk unique ID (chunks.id = zvec doc id) */
   id: string;
-  /** 소속 노트 UUID */
+  /** Parent note UUID */
   noteId: string;
-  /** Vault 기준 상대 경로 */
+  /** Vault-relative file path */
   filePath: string;
-  /** 노트 제목 */
+  /** Note title */
   title?: string;
-  /** 소속 헤딩 계층 */
+  /** Immediate heading */
   heading?: string;
-  /** 청크 원문 */
+  /** Heading ancestry path (serialized JSON) */
+  headingPath?: string[];
+  /** Chunk text content */
   content: string;
-  /** 원본 파일 내 바이트 오프셋 */
+  /** Byte offset in source file */
   offsetStart: number;
   offsetEnd: number;
-  /** 토큰 수 */
+  /** Token count */
   tokenCount: number;
-  /** 태그 목록 */
+  /** 0-based chunk position in note */
+  seqIndex: number;
+  /** Document-level title (propagated from note) */
+  docTitle?: string;
+  /** Tag list */
   tags?: string[];
-  /** 생성 시각 (Date 또는 epoch ms) */
+  /** Creation time (Date or epoch ms) */
   createdAt?: Date | number;
-
-  // 벡터
   /** Dense embedding (float[]) */
   embedding: number[];
-  /** Sparse vector {termIndex: weight} — BM25 등 */
-  sparse?: Record<number, number>;
 }
 
-/** ChunkInput → ZVecDocInput 변환 */
+/**
+ * Format chunk with structural context for embedding.
+ * "title: X | section: Y | tags: Z | text: content"
+ */
+export function formatForEmbedding(chunk: {
+  docTitle?: string;
+  headingPath?: string[];
+  tags?: string[];
+  content: string;
+}): string {
+  const parts: string[] = [];
+  if (chunk.docTitle) parts.push(`title: ${chunk.docTitle}`);
+  if (chunk.headingPath?.length) parts.push(`section: ${chunk.headingPath.join(" > ")}`);
+  if (chunk.tags?.length) parts.push(`tags: ${chunk.tags.join(", ")}`);
+  parts.push(`text: ${chunk.content}`);
+  return parts.join(" | ");
+}
+
+/** ChunkInput -> ZVecDocInput */
 export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
   const now = Date.now();
   const createdEpoch =
@@ -208,17 +247,19 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
     id: chunk.id,
     vectors: {
       embedding: chunk.embedding,
-      sparse: chunk.sparse ?? {},
     },
     fields: {
       note_id: chunk.noteId,
       file_path: chunk.filePath,
       title: chunk.title ?? "",
       heading: chunk.heading ?? "",
+      heading_path: chunk.headingPath ? JSON.stringify(chunk.headingPath) : "",
       content: chunk.content,
       offset_start: chunk.offsetStart,
       offset_end: chunk.offsetEnd,
       token_count: chunk.tokenCount,
+      seq_index: chunk.seqIndex,
+      doc_title: chunk.docTitle ?? "",
       tags: chunk.tags ?? [],
       created_at: createdEpoch,
       indexed_at: now,
@@ -228,21 +269,23 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
 
 // ─── Query builders ───────────────────────────────────────────────────────────
 
-/** 기본 검색 결과 반환 필드 */
 const DEFAULT_OUTPUT_FIELDS = [
   "note_id",
   "file_path",
   "title",
   "heading",
+  "heading_path",
   "content",
   "offset_start",
   "offset_end",
   "token_count",
+  "seq_index",
+  "doc_title",
   "tags",
   "created_at",
 ] as const;
 
-/** 시맨틱 검색 쿼리 */
+/** Semantic (dense vector) search query. */
 export function semanticQuery(
   vector: number[],
   topk = 10,
@@ -259,147 +302,297 @@ export function semanticQuery(
   return q;
 }
 
-/** 키워드(sparse) 검색 쿼리 */
-export function keywordQuery(
-  sparseVector: Record<number, number>,
-  topk = 10,
-  filter?: string,
-): ZVecQuery {
-  const q: ZVecQuery = {
-    fieldName: "sparse",
-    vector: sparseVector,
-    topk,
-    outputFields: [...DEFAULT_OUTPUT_FIELDS],
-  };
-  if (filter) (q as any).filter = filter;
-  return q;
-}
+// ─── Search result type ─────────────────────────────────────────────────────
 
-/** 검색 결과를 정규화된 형태로 변환 */
 export interface SearchResult {
   id: string;
   noteId: string;
   filePath: string;
   title: string | null;
   heading: string | null;
+  headingPath: string[] | null;
   content: string;
   offsetStart: number;
   offsetEnd: number;
   tokenCount: number;
+  seqIndex: number;
   tags: string[] | null;
   createdAt: number | null;
   score: number;
-  scoreDetail?: { semantic?: number; keyword?: number };
+  scoreDetail?: { semantic?: number; keyword?: number; rerank?: number };
 }
 
 export function toSearchResult(doc: ZVecDoc): SearchResult {
+  let headingPath: string[] | null = null;
+  if (doc.fields.heading_path) {
+    try {
+      headingPath = JSON.parse(doc.fields.heading_path);
+    } catch { /* ignore parse errors */ }
+  }
+
   return {
     id: doc.id,
     noteId: doc.fields.note_id,
     filePath: doc.fields.file_path,
-    title: doc.fields.title,
-    heading: doc.fields.heading,
+    title: doc.fields.title || null,
+    heading: doc.fields.heading || null,
+    headingPath,
     content: doc.fields.content,
     offsetStart: doc.fields.offset_start,
     offsetEnd: doc.fields.offset_end,
     tokenCount: doc.fields.token_count,
+    seqIndex: doc.fields.seq_index ?? 0,
     tags: doc.fields.tags,
     createdAt: doc.fields.created_at,
     score: doc.score,
   };
 }
 
+// ─── Linear score fusion ────────────────────────────────────────────────────
+
+export interface FusionEntry {
+  id: string;
+  semanticScore: number;
+  keywordScore: number;
+  doc: SearchResult;
+}
+
 /**
- * RRF (Reciprocal Rank Fusion) 으로 시맨틱 + 키워드 결과를 병합한다.
- * k = 60 (표준 RRF 파라미터)
+ * Merge semantic (zvec) and keyword (FTS5) results via weighted linear fusion.
+ * final = alpha * semantic_score + (1 - alpha) * keyword_score
+ *
+ * Both score channels should already be normalized to [0, 1] before calling.
+ */
+export function mergeByLinearFusion(
+  semanticResults: SearchResult[],
+  keywordResults: FtsResult[],
+  topk = 10,
+  alpha = DEFAULT_FUSION_ALPHA,
+): SearchResult[] {
+  const entries = new Map<string, FusionEntry>();
+
+  // Semantic results — cosine scores are already in [0, 1]
+  for (const doc of semanticResults) {
+    entries.set(doc.id, {
+      id: doc.id,
+      semanticScore: doc.score,
+      keywordScore: 0,
+      doc,
+    });
+  }
+
+  // Keyword results — scores should be pre-normalized via normalizeBM25()
+  for (const kw of keywordResults) {
+    const existing = entries.get(kw.chunkId);
+    if (existing) {
+      existing.keywordScore = kw.score;
+    } else {
+      // Keyword-only hit: create a partial SearchResult
+      entries.set(kw.chunkId, {
+        id: kw.chunkId,
+        semanticScore: 0,
+        keywordScore: kw.score,
+        doc: {
+          id: kw.chunkId,
+          noteId: kw.noteId,
+          filePath: "",
+          title: null,
+          heading: null,
+          headingPath: null,
+          content: kw.content,
+          offsetStart: 0,
+          offsetEnd: 0,
+          tokenCount: 0,
+          seqIndex: 0,
+          tags: null,
+          createdAt: null,
+          score: 0,
+        },
+      });
+    }
+  }
+
+  return [...entries.values()]
+    .map(({ semanticScore, keywordScore, doc }) => {
+      const fused = alpha * semanticScore + (1 - alpha) * keywordScore;
+      return {
+        ...doc,
+        score: fused,
+        scoreDetail: { semantic: semanticScore, keyword: keywordScore },
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topk);
+}
+
+// ─── RRF (kept for query expansion sub-query fusion) ────────────────────────
+
+/**
+ * RRF (Reciprocal Rank Fusion) for merging multiple ranked lists.
+ * Used when query expansion produces multiple sub-query result sets.
+ * k = 60 (standard RRF parameter)
  */
 export function mergeByRRF(
-  semanticResults: ZVecDoc[],
-  keywordResults: ZVecDoc[],
+  resultSets: SearchResult[][],
   topk = 10,
   k = 60,
 ): SearchResult[] {
   const entries = new Map<
     string,
-    { score: number; semanticScore: number; keywordScore: number; doc: ZVecDoc }
+    { score: number; doc: SearchResult }
   >();
 
-  for (let i = 0; i < semanticResults.length; i++) {
-    const doc = semanticResults[i]!;
-    const rrf = 1 / (k + i + 1);
-    const existing = entries.get(doc.id);
-    if (existing) {
-      existing.score += rrf;
-      existing.semanticScore = rrf;
-    } else {
-      entries.set(doc.id, { score: rrf, semanticScore: rrf, keywordScore: 0, doc });
-    }
-  }
-
-  for (let i = 0; i < keywordResults.length; i++) {
-    const doc = keywordResults[i]!;
-    const rrf = 1 / (k + i + 1);
-    const existing = entries.get(doc.id);
-    if (existing) {
-      existing.score += rrf;
-      existing.keywordScore = rrf;
-    } else {
-      entries.set(doc.id, { score: rrf, semanticScore: 0, keywordScore: rrf, doc });
+  for (const results of resultSets) {
+    for (let i = 0; i < results.length; i++) {
+      const doc = results[i]!;
+      const rrf = 1 / (k + i + 1);
+      const existing = entries.get(doc.id);
+      if (existing) {
+        existing.score += rrf;
+      } else {
+        entries.set(doc.id, { score: rrf, doc });
+      }
     }
   }
 
   return [...entries.values()]
     .sort((a, b) => b.score - a.score)
     .slice(0, topk)
-    .map(({ score, semanticScore, keywordScore, doc }) => ({
-      ...toSearchResult(doc),
-      score,
-      scoreDetail: { semantic: semanticScore, keyword: keywordScore },
-    }));
+    .map(({ score, doc }) => ({ ...doc, score }));
 }
 
-// ─── Hybrid search ───────────────────────────────────────────────────────────
+// ─── Strong-signal shortcut ─────────────────────────────────────────────────
+
+/** Check if fused results show a strong enough signal to skip LLM stages. */
+export function isStrongSignal(results: SearchResult[]): boolean {
+  const top = results[0];
+  if (!top || top.score < STRONG_SIGNAL_FLOOR) return false;
+  if (results.length < 2) return true;
+  const gap = top.score - results[1]!.score;
+  return top.score * gap >= STRONG_SIGNAL_PRODUCT;
+}
+
+/** BM25-only tier-0 shortcut: top score >= 0.75 and gap >= 0.10. */
+export function isBM25StrongSignal(results: FtsResult[]): boolean {
+  const top = results[0];
+  if (!top || top.score < BM25_STRONG_FLOOR) return false;
+  if (results.length < 2) return true;
+  return (top.score - results[1]!.score) >= BM25_STRONG_GAP;
+}
+
+// ─── Adjacent chunk deduplication ───────────────────────────────────────────
+
+/**
+ * Merge adjacent chunk hits from the same note.
+ * Groups by noteId, sorts by seqIndex, merges consecutive seqIndex runs.
+ */
+export function deduplicateAdjacentChunks(results: SearchResult[]): SearchResult[] {
+  // Group by noteId
+  const groups = new Map<string, SearchResult[]>();
+  for (const r of results) {
+    const arr = groups.get(r.noteId) ?? [];
+    arr.push(r);
+    groups.set(r.noteId, arr);
+  }
+
+  const merged: SearchResult[] = [];
+
+  for (const noteChunks of groups.values()) {
+    noteChunks.sort((a, b) => a.seqIndex - b.seqIndex);
+
+    let current = { ...noteChunks[0]! };
+    let currentEndSeq = current.seqIndex;
+
+    for (let i = 1; i < noteChunks.length; i++) {
+      const next = noteChunks[i]!;
+      if (next.seqIndex === currentEndSeq + 1) {
+        // Adjacent — merge
+        current.content = current.content + "\n" + next.content;
+        current.score = Math.max(current.score, next.score);
+        current.offsetEnd = next.offsetEnd;
+        current.tokenCount = current.tokenCount + next.tokenCount;
+        currentEndSeq = next.seqIndex;
+      } else {
+        merged.push(current);
+        current = { ...next };
+        currentEndSeq = next.seqIndex;
+      }
+    }
+    merged.push(current);
+  }
+
+  // Re-sort by score
+  merged.sort((a, b) => b.score - a.score);
+  return merged;
+}
+
+// ─── Hybrid search ──────────────────────────────────────────────────────────
 
 export interface HybridSearchOptions {
   topk?: number;
   filter?: string;
-  rrfK?: number;
+  alpha?: number;
   minScore?: number;
+  semanticMin?: number;
+  keywordMin?: number;
 }
 
-/** 시맨틱 + 키워드 하이브리드 검색을 수행하고 RRF로 병합한다. */
+/**
+ * Hybrid search: dense vector (zvec) + FTS5 keyword (pre-fetched) + linear fusion.
+ *
+ * Keyword results must be fetched separately via MetaDB.searchFts() and passed in.
+ * This function handles the vector retrieval + score fusion.
+ */
 export function hybridSearch(
   collection: ZVecCollection,
   denseVector: number[],
-  sparseVector: Record<number, number>,
+  keywordResults: FtsResult[],
   options: HybridSearchOptions = {},
 ): SearchResult[] {
-  const { topk = 10, filter, rrfK = 60, minScore } = options;
+  const {
+    topk = 10,
+    filter,
+    alpha = DEFAULT_FUSION_ALPHA,
+    minScore,
+    semanticMin,
+    keywordMin,
+  } = options;
 
-  const semQ = semanticQuery(denseVector, topk * 2, filter);
-  const kwQ = keywordQuery(sparseVector, topk * 2, filter);
+  // Semantic retrieval
+  const semQ = semanticQuery(denseVector, topk * 3, filter);
+  const semResults = collection.querySync(semQ).map(toSearchResult);
 
-  const semResults = collection.querySync(semQ);
-  const kwResults = collection.querySync(kwQ);
+  // Apply per-channel minimums before fusion
+  const filteredSemantic = semanticMin != null
+    ? semResults.filter((r) => r.score >= semanticMin)
+    : semResults;
+  const filteredKeyword = keywordMin != null
+    ? keywordResults.filter((r) => r.score >= keywordMin)
+    : keywordResults;
 
-  let results = mergeByRRF(semResults, kwResults, topk, rrfK);
+  // Linear fusion
+  let results = mergeByLinearFusion(filteredSemantic, filteredKeyword, topk, alpha);
 
+  // Post-fusion score cutoff
   if (minScore != null) {
     results = results.filter((r) => r.score >= minScore);
   }
 
-  return results;
+  // Deduplicate adjacent chunks
+  results = deduplicateAdjacentChunks(results);
+
+  return results.slice(0, topk);
 }
 
 // ─── Filter expression helpers ────────────────────────────────────────────────
 
-/** 태그 필터 생성 — 지정한 태그를 모두 포함하는 문서 필터 */
+/** Tag filter — documents containing ALL specified tags. */
 export function tagFilter(tags: string[]): string {
   const values = tags.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(", ");
   return `tags CONTAIN_ALL (${values})`;
 }
 
-/** 날짜 범위 필터 (epoch ms) */
+/** Date range filter (epoch ms). */
 export function dateFilter(after?: Date, before?: Date): string {
   const parts: string[] = [];
   if (after) parts.push(`created_at >= ${after.getTime()}`);
@@ -407,7 +600,7 @@ export function dateFilter(after?: Date, before?: Date): string {
   return parts.join(" AND ");
 }
 
-/** 여러 필터를 AND로 결합 */
+/** Combine multiple filters with AND. */
 export function combineFilters(...filters: (string | undefined)[]): string | undefined {
   const valid = filters.filter((f): f is string => !!f);
   return valid.length > 0 ? valid.join(" AND ") : undefined;
