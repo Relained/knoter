@@ -172,6 +172,8 @@
 - [x] Break-point scoring + 이차 거리 감쇠 + 코드펜스 보호
 - [x] 구조적 메타데이터: heading_path, seq_index
 - [ ] AST-aware 청킹 (선택, `--chunk-strategy auto`): 향후 구현
+- [ ] CJK 문장 경계 보존: `Intl.Segmenter(locale, { granularity: 'sentence' })` 활용
+- [ ] CJK 텍스트 청크 크기 자동 축소 (~40%): 정보 밀도 차이 반영
 
 ### 3.3 콘텐츠 해셔 (`src/pipeline/hasher.ts`)
 - [x] SHA-256 해시 (Bun.CryptoHasher), 증분 인덱싱, `--force` 강제 재인덱싱
@@ -275,13 +277,13 @@
 - [x] 배치/단일 모드 자동 전환
 
 ### 7.2 `kn context`
-- [ ] context add/list/remove/set-global (미구현)
+- [x] context add/list/remove/set-global
 
 **검증 체크리스트:**
 - [x] `kn get docs/guide.md` → 파일 내용 + 메타데이터 반환
 - [x] `kn get docs/guide.md --section Installation` → 해당 섹션만 추출
 - [x] `kn get nonexist.md` → notFound + suggestions 구조
-- [ ] `kn context` 미구현
+- [x] `kn context add/list/remove/set-global` 구현 완료
 
 ---
 
@@ -462,6 +464,38 @@
 
 ---
 
+## Phase 14: CJK Optimization
+
+> Derived from analysis of CJK (Korean/Chinese/Japanese) data handling challenges.
+> Depends on Phase 9 (preprocessor) and Phase 13 (AI backend).
+
+### 14.1 Chunker CJK awareness
+- [ ] Integrate `Intl.Segmenter` for sentence boundary detection (Bun/V8 built-in, no external deps)
+- [ ] Auto-detect CJK-dominant content and reduce target chunk size (~300 chars vs 500 for Latin)
+- [ ] Recursive character splitting hierarchy: `['\n\n', '\n', '。', '？', '！', '.', '?', '!', ' ', '']`
+
+### 14.2 Embedding model selection for CJK
+- [ ] Prioritize BGE-M3 (1024d) for CJK vaults — best multilingual/multi-grained performance
+- [ ] Multilingual-E5 as alternative — "query:"/"passage:" prefix convention fits RAG well
+- [ ] Auto-suggest model at `kn vault create` based on detected locale or `--locale` option
+
+### 14.3 Language detection & metadata
+- [ ] Per-note `language` field in notes table (auto-detected via `Intl.Segmenter` or heuristic)
+- [ ] Language-aware search filter: `--lang ko` to narrow results
+- [ ] Language stats in `kn vault status` output
+
+### 14.4 FTS5 tokenizer enhancement
+- [ ] `Intl.Segmenter('ko', { granularity: 'word' })` as tokenizer preprocessor (Phase 9 integration)
+- [ ] Consider `trigram` tokenizer as CJK fallback when no preprocessor is bound
+
+**Verification checklist:**
+- [ ] CJK-dominant markdown chunked at ~300 char target with sentence boundaries preserved
+- [ ] `kn add korean.md` with BGE-M3 produces meaningful vectors
+- [ ] `kn search "한국어 질의"` returns relevant results via both keyword and semantic channels
+- [ ] `kn vault status` shows language distribution
+
+---
+
 ## Phase 간 의존성 맵
 
 ```
@@ -480,6 +514,8 @@ Phase 1 (백본)
         └─▶ Phase 13 (AI 백엔드) ◀── Phase 3,8 ┘
               embedder placeholder → 실제 프로바이더 교체
               ask placeholder → 실제 LLM 연결
+        └─▶ Phase 14 (CJK 최적화) ◀── Phase 3,9,13
+              chunker CJK awareness + language detection + FTS5 tokenizer
 ```
 
 ---
@@ -505,6 +541,8 @@ Phase 1 (백본)
 | 2026-04-16 | 5 | kn sync 구현: recovery, file scan, prune, reconciliation | 완료 |
 | 2026-04-16 | 6 | kn tag 구현: list/add/remove/auto + vector tag sync | 완료 |
 | 2026-04-16 | 7 | kn get 구현: 4단계 경로해석, section 추출, batch 모드 | 완료 |
+| 2026-04-16 | 7.2 | kn context 구현: add/list/remove/set-global CRUD | 완료 |
+| 2026-04-16 | 14 | Phase 14 (CJK 최적화) plan 추가: Intl.Segmenter, 청크 크기 조정, 언어 감지 | 완료 |
 
 ---
 
