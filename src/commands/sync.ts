@@ -5,7 +5,8 @@ import ora from "ora";
 import { parseNote } from "../pipeline/parser";
 import { chunkDocument } from "../pipeline/chunker";
 import { hashContent } from "../pipeline/hasher";
-import { Embedder, formatForEmbedding, type EmbeddingProvider } from "../pipeline/embedder";
+import { Embedder, formatForEmbedding } from "../pipeline/embedder";
+import { createEmbeddingProvider } from "../providers/factory";
 import { MetaDB, type NoteRow, type ChunkInsert, type ChunkRow } from "../stores/meta-store";
 import { openVaultCollection, toZVecDoc, type ChunkInput } from "../stores/vec-store";
 import type { ZVecCollection } from "@zvec/zvec";
@@ -14,19 +15,6 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { withLock } from "../core/lock";
 import { setVerbose, logger } from "../core/logger";
-
-// Placeholder embedding provider for development
-class PlaceholderEmbeddingProvider implements EmbeddingProvider {
-  readonly name = "placeholder";
-  readonly isLocal = true;
-
-  constructor(private dimension: number = 768) {}
-
-  async embed(texts: string[]): Promise<number[][]> {
-    logger.warn("Using placeholder embeddings — replace with real provider");
-    return texts.map(() => new Array(this.dimension).fill(0));
-  }
-}
 
 interface SyncResult {
   recovered: number;
@@ -104,9 +92,8 @@ async function processSync(
       errors: [],
     };
 
-    const dimension = vaultConfig.embedding?.model === "bge-m3" ? 1024 : 768;
     const embedder = new Embedder({
-      provider: new PlaceholderEmbeddingProvider(dimension),
+      provider: createEmbeddingProvider(vaultConfig),
     });
 
     // Step 1: Recovery — resume pending vector syncs

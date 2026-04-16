@@ -6,18 +6,7 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose, logger } from "../core/logger";
 import { hashContent } from "../pipeline/hasher";
-
-// ─── Placeholder LLM Provider ────────────────────────────────────────────────
-
-class PlaceholderLLMProvider {
-  readonly name = "placeholder";
-
-  async generate(systemPrompt: string, userPrompt: string): Promise<string> {
-    // Count context chunks from system prompt (rough estimate)
-    const sourceCount = (systemPrompt.match(/\[Source:/g) || []).length;
-    return `[Placeholder LLM Response]\n\nQuestion: ${userPrompt.substring(0, 100)}${userPrompt.length > 100 ? "..." : ""}\n\nThis is a placeholder response. Configure an LLM provider to get real answers.\nContext was provided from ${sourceCount} sources.`;
-  }
-}
+import { createLLMProvider } from "../providers/factory";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -181,7 +170,7 @@ async function executeAsk(
 
     // Step 5: Assemble prompts and call LLM
     const systemPrompt = `You are a helpful assistant answering questions based on provided context.\n\n${contextResult.formattedContext}`;
-    const llmProvider = new PlaceholderLLMProvider();
+    const llmProvider = createLLMProvider(vaultConfig);
     const answer = await llmProvider.generate(systemPrompt, question);
 
     // Step 6: Store in cache

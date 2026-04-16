@@ -418,21 +418,21 @@
 > 이 Phase에서 실제 AI 백엔드를 연결하여 임베딩/LLM/리랭킹을 실운영 가능하게 한다.
 
 ### 13.1 임베딩 프로바이더
-- [ ] **OpenAI API**: `text-embedding-3-small`, `text-embedding-3-large`
+- [x] **OpenAI API**: `text-embedding-3-small`, `text-embedding-3-large`
   - `baseUrl` + `apiKey` 기반, `EmbeddingProvider` 인터페이스 구현
-- [ ] **Ollama (로컬)**: `nomic-embed-text`, `bge-m3` 등
-  - `http://localhost:11434/api/embeddings` 호출, `isLocal: true`
+- [x] **Ollama (로컬)**: `nomic-embed-text`, `bge-m3` 등
+  - `http://localhost:11434/api/embed` 호출, `isLocal: true`
 - [ ] **Anthropic (향후)**: 임베딩 API 제공 시 추가
 - [ ] **HuggingFace Inference API**: sentence-transformers 모델군
 
 ### 13.2 LLM 프로바이더 (`kn ask` 용)
-- [ ] **OpenAI API**: `gpt-4o`, `gpt-4o-mini` 등
-  - Chat Completions API, 스트리밍 응답 지원
+- [x] **OpenAI API**: `gpt-4o`, `gpt-4o-mini` 등
+  - Chat Completions API
 - [ ] **Anthropic Claude API**: `claude-sonnet-4-20250514` 등
   - Messages API, `@anthropic-ai/sdk` 활용
-- [ ] **Ollama (로컬)**: `llama3`, `qwen3` 등
+- [x] **Ollama (로컬)**: `llama3`, `qwen3` 등
   - `http://localhost:11434/api/chat`
-- [ ] **OpenAI-호환 API**: LM Studio, vLLM, Together AI 등
+- [x] **OpenAI-호환 API**: LM Studio, vLLM, Together AI 등
   - OpenAI SDK로 `baseUrl`만 교체하여 연결
 
 ### 13.3 리랭커 프로바이더 (`--rerank` 용)
@@ -441,11 +441,11 @@
 - [ ] **Jina Reranker API**
 
 ### 13.4 통합 프로바이더 팩토리
-- [ ] `src/providers/factory.ts`: vault config 기반 프로바이더 자동 생성
+- [x] `src/providers/factory.ts`: vault config 기반 프로바이더 자동 생성
   - config의 `embedding.baseUrl` / `llm.baseUrl` 패턴으로 프로바이더 타입 자동 감지
   - 예: `localhost:11434` → Ollama, `api.openai.com` → OpenAI
-- [ ] `src/providers/openai.ts`: OpenAI 호환 프로바이더 (embedding + LLM)
-- [ ] `src/providers/ollama.ts`: Ollama 프로바이더 (embedding + LLM + reranker)
+- [x] `src/providers/openai.ts`: OpenAI 호환 프로바이더 (embedding + LLM)
+- [x] `src/providers/ollama.ts`: Ollama 프로바이더 (embedding + LLM)
 - [ ] `src/providers/anthropic.ts`: Claude 프로바이더 (LLM)
 - [ ] 프로바이더 헬스체크: `kn vault status`에 프로바이더 연결 상태 포함
 
@@ -543,6 +543,9 @@ Phase 1 (백본)
 | 2026-04-16 | 7 | kn get 구현: 4단계 경로해석, section 추출, batch 모드 | 완료 |
 | 2026-04-16 | 7.2 | kn context 구현: add/list/remove/set-global CRUD | 완료 |
 | 2026-04-16 | 14 | Phase 14 (CJK 최적화) plan 추가: Intl.Segmenter, 청크 크기 조정, 언어 감지 | 완료 |
+| 2026-04-16 | 8 | kn ask RAG 파이프라인: search→expand→assemble→LLM→cache | 완료 |
+| 2026-04-16 | 13 | AI 백엔드: Ollama/OpenAI 프로바이더 + factory + placeholder 교체 | 완료 |
+| 2026-04-16 | 13 | 리뷰: apiKey 빈 문자열 검증, 토큰 예산 continue, 캐시키 mutation 수정 | 완료 |
 
 ---
 
@@ -550,11 +553,11 @@ Phase 1 (백본)
 
 ### 현재 상태 (2026-04-16 기준)
 
-**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7 (부분)
-**브랜치**: `dev/cli` (커밋 7개, main 대비)
+**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7, 8, 13 (부분)
+**브랜치**: `dev/cli` (커밋 11개+, main 대비)
 **테스트**: 56 pass / 0 fail (기존 meta-store, vec-store 테스트)
 
-### 구현 완료 파일 (28개 .ts)
+### 구현 완료 파일 (31개+ .ts)
 
 ```
 src/
@@ -578,6 +581,10 @@ src/
     query-builder.ts        # tagFilter/dateFilter/combineFilters
     fusion.ts               # linearFusion, strong-signal, 인접청크병합
     hybrid.ts               # semantic/keyword/hybrid 오케스트레이터
+  providers/
+    ollama.ts               # ✅ Ollama embedding + LLM (LLMProvider 인터페이스 정의)
+    openai.ts               # ✅ OpenAI 호환 embedding + LLM
+    factory.ts              # ✅ vault config 기반 프로바이더 자동 생성
   commands/
     vault.ts                # ✅ 실구현 (create/list/switch/delete/status)
     add.ts                  # ✅ 실구현 (전체 인제스천 파이프라인)
@@ -585,8 +592,8 @@ src/
     sync.ts                 # ✅ 실구현 (recovery/prune/reconciliation)
     tag.ts                  # ✅ 실구현 (list/add/remove/auto)
     get.ts                  # ✅ 실구현 (4단계 경로해석)
-    context.ts              # 🔲 스텁만 존재
-    ask.ts                  # 🔲 스텁만 존재
+    context.ts              # ✅ 실구현 (add/list/remove/set-global)
+    ask.ts                  # ✅ 실구현 (RAG 파이프라인 + LLM 캐시)
     serve.ts                # 🔲 스텁만 존재
     cluster.ts              # 🔲 스텁만 존재
     schedule.ts             # 🔲 스텁만 존재
@@ -595,13 +602,12 @@ src/
 
 ### 미완료 Phase 우선순위
 
-1. **Phase 7.2 `kn context`** — contexts 테이블 이미 MetaDB에 존재. CRUD만 구현하면 됨. 가장 빠름.
-2. **Phase 8 `kn ask`** — search 파이프라인 재사용 + LLM 호출. PlaceholderLLM으로 파이프라인만 잡으면 됨.
-3. **Phase 13 AI 백엔드** — Ollama/OpenAI 프로바이더 교체. `kn add`/`kn ask` 실사용 전 필수.
-4. **Phase 9 `kn preprocessor`** — CJK FTS5 품질. 한국어 사용 시 필수.
-5. **Phase 10 `kn serve`** — MCP 서버. `@modelcontextprotocol/sdk` 설치 필요.
-6. **Phase 11 `kn cluster`** — HDBSCAN. 외부 라이브러리 선택 필요.
-7. **Phase 12 `kn schedule`** — launchd/cron. 다른 커맨드 안정화 후.
+1. **Phase 9 `kn preprocessor`** — CJK FTS5 품질. 한국어 사용 시 필수.
+2. **Phase 10 `kn serve`** — MCP 서버. `@modelcontextprotocol/sdk` 설치 필요.
+3. **Phase 11 `kn cluster`** — HDBSCAN. 외부 라이브러리 선택 필요.
+4. **Phase 12 `kn schedule`** — launchd/cron. 다른 커맨드 안정화 후.
+5. **Phase 13 미완료 항목** — Anthropic 프로바이더, 리랭커, 라우팅, 헬스체크.
+6. **Phase 14 CJK 최적화** — Intl.Segmenter 청킹, 언어 감지, FTS5 토크나이저.
 
 ### 알아야 할 핵심 패턴
 
@@ -611,5 +617,7 @@ src/
 - **async/finally 주의**: `try { return await fn(); } finally { db.close(); }` — `await` 필수
 - **zvec open**: `openVaultCollection(path, {})` — 빈 객체 `{}` 필수 (undefined 불가)
 - **searchFts**: 내부에서 `buildFtsQuery` 호출함 — 외부에서 중복 호출 금지
-- **PlaceholderEmbeddingProvider**: add.ts, sync.ts, hybrid.ts에 각각 정의됨 → Phase 13에서 공통 모듈로 통합
+- **프로바이더 팩토리**: `createEmbeddingProvider(vaultConfig)`, `createLLMProvider(vaultConfig)` — vault config의 baseUrl로 Ollama/OpenAI 자동 감지
+- **LLMProvider 인터페이스**: `src/providers/ollama.ts`에 정의, `generate(systemPrompt, userPrompt): Promise<string>`
+- **Sonnet 리뷰 미반영 항목**: LLMProvider를 providers/types.ts로 분리, factory에 explicit provider 필드 추가, options any 타입 정리
 - **루트 파일 정리**: `meta-store.ts`, `vec-store.ts`, `*.test.ts`가 루트에 아직 남아있음 (src/stores/에 복사본 존재). 테스트가 루트 경로에 의존하므로 보존 중

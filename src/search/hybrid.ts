@@ -3,6 +3,8 @@ import { openVaultCollection, semanticQuery, type EmbeddingModel } from "../stor
 import type { SearchFilters } from "./query-builder";
 import { linearFusion, isStrongSignal, isBm25StrongSignal, mergeAdjacentChunks, DEFAULT_ALPHA, type FusedResult } from "./fusion";
 import { logger } from "../core/logger";
+import { loadVaultConfig } from "../core/config";
+import { createEmbeddingProvider } from "../providers/factory";
 import { join } from "node:path";
 
 export type SearchMode = "semantic" | "keyword" | "hybrid";
@@ -26,22 +28,6 @@ export interface SearchResult {
   mode: SearchMode;
   totalFound: number;
   strongSignal: boolean;
-}
-
-/**
- * Placeholder embedding provider for query embedding.
- * For now, returns zero vectors since we don't have a real embedder for queries.
- */
-class PlaceholderEmbeddingProvider {
-  readonly name = "placeholder";
-  readonly isLocal = true;
-
-  constructor(private dimension: number = 768) {}
-
-  async embed(texts: string[]): Promise<number[][]> {
-    logger.warn("Using placeholder query embeddings — results based on keyword search only");
-    return texts.map(() => new Array(this.dimension).fill(0));
-  }
 }
 
 /**
@@ -143,8 +129,9 @@ async function semanticSearch(
   const metaDb = new MetaDB(vaultRoot);
 
   try {
-    // Generate query embedding (placeholder for now)
-    const embedder = new PlaceholderEmbeddingProvider(768);
+    // Generate query embedding from vault config provider
+    const vaultConfig = await loadVaultConfig(vaultRoot);
+    const embedder = createEmbeddingProvider(vaultConfig);
     const embeddings = await embedder.embed([query]);
     const queryEmbedding = embeddings[0];
 
@@ -249,7 +236,8 @@ async function hybridSearch(
   }
 
   // Step 3: Do semantic search
-  const embedder = new PlaceholderEmbeddingProvider(768);
+  const vaultConfig = await loadVaultConfig(vaultRoot);
+  const embedder = createEmbeddingProvider(vaultConfig);
   const embeddings = await embedder.embed([query]);
   const queryEmbedding = embeddings[0];
 

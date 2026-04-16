@@ -6,7 +6,8 @@ import ora from "ora";
 import { parseNote } from "../pipeline/parser";
 import { chunkDocument } from "../pipeline/chunker";
 import { hashContent } from "../pipeline/hasher";
-import { Embedder, formatForEmbedding, type EmbeddingProvider } from "../pipeline/embedder";
+import { Embedder, formatForEmbedding } from "../pipeline/embedder";
+import { createEmbeddingProvider } from "../providers/factory";
 import { MetaDB, type ChunkInsert } from "../stores/meta-store";
 import { openVaultCollection, toZVecDoc, createVaultCollection, createChunkSchema, type ChunkInput } from "../stores/vec-store";
 import { resolveVaultRoot, loadVaultConfig, loadGlobalConfig } from "../core/config";
@@ -14,19 +15,6 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { withLock } from "../core/lock";
 import { setVerbose, logger } from "../core/logger";
-
-// Placeholder embedding provider for development
-class PlaceholderEmbeddingProvider implements EmbeddingProvider {
-  readonly name = "placeholder";
-  readonly isLocal = true;
-
-  constructor(private dimension: number = 768) {}
-
-  async embed(texts: string[]): Promise<number[][]> {
-    logger.warn("Using placeholder embeddings — replace with real provider");
-    return texts.map(() => new Array(this.dimension).fill(0));
-  }
-}
 
 // File discovery
 function discoverFiles(target: string, recursive: boolean): string[] {
@@ -165,10 +153,9 @@ async function processAdd(
       }
     }
 
-    // Create embedder with placeholder provider
-    const dimension = options.embeddingModel === "bge-m3" ? 1024 : 768;
+    // Create embedder with real provider from vault config
     const embedder = new Embedder({
-      provider: new PlaceholderEmbeddingProvider(dimension),
+      provider: createEmbeddingProvider(options.vaultConfig),
     });
 
     // Process each file
