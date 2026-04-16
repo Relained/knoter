@@ -505,3 +505,73 @@ Phase 1 (백본)
 | 2026-04-16 | 5 | kn sync 구현: recovery, file scan, prune, reconciliation | 완료 |
 | 2026-04-16 | 6 | kn tag 구현: list/add/remove/auto + vector tag sync | 완료 |
 | 2026-04-16 | 7 | kn get 구현: 4단계 경로해석, section 추출, batch 모드 | 완료 |
+
+---
+
+## 다음 세션 시작 가이드
+
+### 현재 상태 (2026-04-16 기준)
+
+**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7 (부분)
+**브랜치**: `dev/cli` (커밋 7개, main 대비)
+**테스트**: 56 pass / 0 fail (기존 meta-store, vec-store 테스트)
+
+### 구현 완료 파일 (28개 .ts)
+
+```
+src/
+  cli.ts                    # 엔트리포인트 (commander, 12개 서브커맨드)
+  core/
+    config.ts               # 글로벌/볼트 2계층 설정
+    errors.ts               # KnError + ErrorCode enum
+    lock.ts                 # 볼트 파일 락 (PID+timestamp)
+    logger.ts               # consola 래퍼 + verbose 토글
+    output.ts               # success/error envelope + text/json/jsonl
+  stores/
+    meta-store.ts           # SQLite 메타데이터 (루트에서 복사)
+    vec-store.ts            # zvec 벡터 저장소 (루트에서 복사)
+    index.ts                # barrel 재익스포트
+  pipeline/
+    parser.ts               # gray-matter 프론트매터 추출
+    chunker.ts              # break-point scoring 스마트 청킹
+    hasher.ts               # Bun.CryptoHasher SHA-256
+    embedder.ts             # provider 추상화 + retry/fallback
+  search/
+    query-builder.ts        # tagFilter/dateFilter/combineFilters
+    fusion.ts               # linearFusion, strong-signal, 인접청크병합
+    hybrid.ts               # semantic/keyword/hybrid 오케스트레이터
+  commands/
+    vault.ts                # ✅ 실구현 (create/list/switch/delete/status)
+    add.ts                  # ✅ 실구현 (전체 인제스천 파이프라인)
+    search.ts               # ✅ 실구현 (3모드 하이브리드)
+    sync.ts                 # ✅ 실구현 (recovery/prune/reconciliation)
+    tag.ts                  # ✅ 실구현 (list/add/remove/auto)
+    get.ts                  # ✅ 실구현 (4단계 경로해석)
+    context.ts              # 🔲 스텁만 존재
+    ask.ts                  # 🔲 스텁만 존재
+    serve.ts                # 🔲 스텁만 존재
+    cluster.ts              # 🔲 스텁만 존재
+    schedule.ts             # 🔲 스텁만 존재
+    preprocessor.ts         # 🔲 스텁만 존재
+```
+
+### 미완료 Phase 우선순위
+
+1. **Phase 7.2 `kn context`** — contexts 테이블 이미 MetaDB에 존재. CRUD만 구현하면 됨. 가장 빠름.
+2. **Phase 8 `kn ask`** — search 파이프라인 재사용 + LLM 호출. PlaceholderLLM으로 파이프라인만 잡으면 됨.
+3. **Phase 13 AI 백엔드** — Ollama/OpenAI 프로바이더 교체. `kn add`/`kn ask` 실사용 전 필수.
+4. **Phase 9 `kn preprocessor`** — CJK FTS5 품질. 한국어 사용 시 필수.
+5. **Phase 10 `kn serve`** — MCP 서버. `@modelcontextprotocol/sdk` 설치 필요.
+6. **Phase 11 `kn cluster`** — HDBSCAN. 외부 라이브러리 선택 필요.
+7. **Phase 12 `kn schedule`** — launchd/cron. 다른 커맨드 안정화 후.
+
+### 알아야 할 핵심 패턴
+
+- **global opts 접근**: `cmd.optsWithGlobals?.()` — `--format`, `--vault`, `--verbose`
+- **vault 해석**: `resolveVaultRoot(globalOpts.vault)` → 볼트 루트 경로
+- **vault 이름**: config에서 `activeVault` fallback
+- **async/finally 주의**: `try { return await fn(); } finally { db.close(); }` — `await` 필수
+- **zvec open**: `openVaultCollection(path, {})` — 빈 객체 `{}` 필수 (undefined 불가)
+- **searchFts**: 내부에서 `buildFtsQuery` 호출함 — 외부에서 중복 호출 금지
+- **PlaceholderEmbeddingProvider**: add.ts, sync.ts, hybrid.ts에 각각 정의됨 → Phase 13에서 공통 모듈로 통합
+- **루트 파일 정리**: `meta-store.ts`, `vec-store.ts`, `*.test.ts`가 루트에 아직 남아있음 (src/stores/에 복사본 존재). 테스트가 루트 경로에 의존하므로 보존 중
