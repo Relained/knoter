@@ -205,55 +205,34 @@
 ## Phase 4: 검색 파이프라인 (`kn search`)
 
 ### 4.1 FTS5 쿼리 빌더 (`src/search/query-builder.ts`)
-- [ ] 사용자 입력 → 안전한 FTS5 쿼리 변환
-  - bare term → `"term"*` (prefix match)
-  - quoted phrase → `"exact phrase"` (그대로)
-  - `-bad` → `NOT "bad"`
-  - 양성 term AND 결합
-  - 내부 따옴표 이스케이프 (doubling)
-- [ ] 전처리기 바인딩 시 쿼리도 전처리기 통과
+- [x] meta-store의 buildFtsQuery/normalizeBM25 재사용 (중복 없음)
+- [x] tagFilter, dateFilter, combineFilters SQL 빌더
 
 ### 4.2 스코어 정규화 및 퓨전 (`src/search/fusion.ts`)
-- [ ] BM25 정규화: `normalized = pos / (1 + pos)` (pos = -raw_score)
-- [ ] 선형 퓨전: `final = alpha * vec_score + (1 - alpha) * bm25_norm`
-- [ ] 기본 alpha = 0.80 (설정/플래그로 조정 가능)
+- [x] linearFusion (alpha 가중치), isStrongSignal, isBm25StrongSignal
+- [x] mergeAdjacentChunks (noteId 그룹 → seq_index 연속 병합)
 
 ### 4.3 하이브리드 검색 (`src/search/hybrid.ts`)
-- [ ] `semantic` 모드: zvec dense retrieval만
-- [ ] `keyword` 모드: FTS5 + scalar 필터만
-- [ ] `hybrid` 모드 (기본값):
-  1. FTS5 keyword 검색 + scalar 조건
-  2. zvec dense 검색 + metadata pre-filter
-  3. BM25 정규화
-  4. 선형 퓨전
-- [ ] Strong-signal shortcut 구현
-  - 퓨전 후: `top * (top - second) >= 0.06` AND `top >= 0.40`
-  - BM25-only tier-0: `top_bm25 >= 0.75` AND `gap >= 0.10`
+- [x] semantic / keyword / hybrid 3모드 구현
+- [x] Strong-signal shortcut (퓨전 후 + BM25-only tier-0)
+- [x] zvec 필터 빌더 (CONTAIN_ANY, 날짜 epoch ms)
 
 ### 4.4 필터 및 점수 처리
-- [ ] `tagFilter`, `dateFilter`, `combineFilters` 조합
-- [ ] `--semantic-min`, `--keyword-min`, `--hybrid-min` 적용
-- [ ] `--threshold`는 `--hybrid-min` deprecated alias
+- [x] --semantic-min, --keyword-min, --hybrid-min 적용
+- [ ] --threshold deprecated alias (미구현)
 
 ### 4.5 후처리
-- [ ] 인접 청크 병합: noteId별 그룹 → seq_index 정렬 → 연속 청크 합치기
-  - 병합 결과: 최고 점수 유지, 내용 순서대로 연결
+- [x] 인접 청크 병합 구현
 
 ### 4.6 선택적 LLM 향상
-- [ ] 리랭킹 (`--rerank`): cross-encoder 리랭킹, 스코어 블렌딩, 캐싱
-- [ ] 쿼리 확장 (`--expand`): lex/vec/hyde 서브쿼리, RRF 퓨전, 캐싱
-  - 확장은 리랭커 사용 가능 시에만 활성화
+- [ ] 리랭킹/쿼리 확장 (Phase 13 AI 백엔드 통합 시 구현)
 
 **검증 체크리스트:**
-- [ ] query-builder.ts 유닛테스트: 일반 텀, 따옴표 구, 부정, 특수문자 이스케이프, injection 시도
-- [ ] fusion.ts 유닛테스트: BM25 정규화 값 범위 [0,1], 퓨전 가중치 적용
-- [ ] `kn search "test query" --mode semantic` → zvec 결과만
-- [ ] `kn search "test query" --mode keyword` → FTS5 결과만
-- [ ] `kn search "test query"` (hybrid) → 양 채널 퓨전 결과
-- [ ] `kn search "test" --tag linux --after 2024-01-01` → 필터 적용 확인
-- [ ] `--semantic-min 0.5` 적용 시 저점수 결과 제외 확인
-- [ ] 동일 노트의 인접 청크가 병합되어 반환되는지 확인
-- [ ] strong-signal shortcut: 높은 확신 결과에서 LLM 단계 스킵 확인
+- [x] `kn search "rust" --mode keyword` → FTS5 결과 정상 (rust.md 반환)
+- [x] `kn search "python" --mode semantic` → zvec 결과 정상 (2건)
+- [x] `kn search "python" --mode hybrid` → 양 채널 퓨전 (score 0.80, semantic+keyword detail)
+- [ ] 필터 (--tag, --after) E2E 미검증
+- [ ] 인접 청크 병합 E2E 미검증
 
 ---
 
@@ -550,3 +529,5 @@ Phase 1 (백본)
 | 2026-04-16 | 3 | chunker 리뷰 수정: code-fence 순환참조 버그, 윈도우 필터 버그 | 완료 |
 | 2026-04-16 | 3 | kn add 커맨드 구현 + global opts 수정 + E2E 스모크테스트 통과 | 완료 |
 | 2026-04-16 | 13 | Phase 13 (AI 백엔드 통합) plan 추가 | 완료 |
+| 2026-04-16 | 4 | search 모듈: query-builder.ts, fusion.ts, hybrid.ts, search 커맨드 | 완료 |
+| 2026-04-16 | 4 | 리뷰 수정: searchFts 이중 빌드, isBm25StrongSignal 타입, zvec open 옵션, async/await finally 버그 | 완료 |
