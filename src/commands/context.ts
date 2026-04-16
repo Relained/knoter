@@ -69,27 +69,11 @@ export function registerContextCommand(program: Command): void {
         try {
           const contexts = metaDb.listContexts(vaultName);
 
-          if (format === "text") {
-            // Format as table in text mode
-            const lines: string[] = [];
-            if (contexts.length === 0) {
-              lines.push("No contexts defined.");
-            } else {
-              lines.push("PATH PREFIX    DESCRIPTION");
-              lines.push("─".repeat(60));
-              for (const ctx of contexts) {
-                const prefix =
-                  ctx.path_prefix === "" ? "(global)" : ctx.path_prefix;
-                lines.push(`${prefix.padEnd(15)} ${ctx.description}`);
-              }
-            }
-
-            // Create custom output for text format
-            console.log(lines.join("\n"));
-          } else {
-            // JSON output
-            render(success("context list", { contexts }, vaultName), format);
-          }
+          const formatted = contexts.map(ctx => ({
+            path: ctx.path_prefix === "" ? "(global)" : ctx.path_prefix,
+            description: ctx.description,
+          }));
+          render(success("context list", { contexts: formatted }, vaultName), format);
         } finally {
           metaDb.close();
         }

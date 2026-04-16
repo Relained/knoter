@@ -122,6 +122,9 @@ async function executeAsk(
     // Load vault config to get model profile and max context
     const vaultConfig = await loadVaultConfig(vaultRoot);
     const modelProfile = vaultConfig.modelProfiles[options.model];
+    if (!modelProfile) {
+      logger.warn(`No model profile for "${options.model}", using default budget (4000 tokens)`);
+    }
     const maxContextTokens = modelProfile?.maxContext ?? 4000;
     const reservedTokens = 500; // overhead for system prompt
     const availableTokens = Math.max(100, maxContextTokens - reservedTokens);
@@ -155,7 +158,8 @@ async function executeAsk(
     logger.debug(`Assembled context from ${contextResult.sourceCount} sources`);
 
     // Step 3: Compute cache key
-    const cacheInput = `${options.model}|${question}|${contextResult.chunkIds.sort().join(",")}`;
+    const sortedIds = [...contextResult.chunkIds].sort();
+    const cacheInput = JSON.stringify([options.model, question, sortedIds]);
     const cacheKey = hashContent(cacheInput);
     logger.debug(`Cache key: ${cacheKey}`);
 
@@ -166,7 +170,7 @@ async function executeAsk(
       return {
         question,
         answer: cachedAnswer,
-        sources: options.showSources ? extractSources(searchResult.results) : undefined,
+        sources: options.showSources ? extractSources(searchResult.results, contextResult.chunkIds) : undefined,
         cached: true,
         model: options.model,
         routing: options.routing,
@@ -187,7 +191,7 @@ async function executeAsk(
     return {
       question,
       answer,
-      sources: options.showSources ? extractSources(searchResult.results) : undefined,
+      sources: options.showSources ? extractSources(searchResult.results, contextResult.chunkIds) : undefined,
       cached: false,
       model: options.model,
       routing: options.routing,
@@ -235,8 +239,8 @@ function assembleContext(
     const estimatedTokens = Math.ceil(contentSize / 4);
 
     if (tokensUsed + estimatedTokens > tokenBudget) {
-      logger.debug(`Token budget exceeded (${tokensUsed} + ${estimatedTokens} > ${tokenBudget}), dropping result`);
-      break;
+      logger.debug(`Token budget exceeded (${tokensUsed} + ${estimatedTokens} > ${tokenBudget}), skipping result`);
+      continue;
     }
 
     // Get context description if registered
@@ -330,7 +334,7 @@ function expandContextWindow(
   }
 
   // Merge chunks into single content block
-  const content = chunks.map(c => c.content).join("\n");
+  const content = chunks.map(c => c.content).join("\n\n");
 
   logger.debug(`Expanded context from 1 to ${chunks.length} chunks`);
 
@@ -341,17 +345,21 @@ function expandContextWindow(
  * Extract source information from search results for display.
  */
 function extractSources(
-  results: any[]
+  results: any[],
+  assembledChunkIds: string[]
 ): Array<{
   filePath: string;
   heading?: string | null;
   headingPath?: string | null;
   content: string;
 }> {
-  return results.map(result => ({
-    filePath: result.filePath,
-    heading: result.heading || undefined,
-    headingPath: result.headingPath || undefined,
-    content: result.content.substring(0, 200) + (result.content.length > 200 ? "..." : ""),
-  }));
+  const idSet = new Set(assembledChunkIds);
+  return results
+    .filter(r => idSet.has(r.chunkId))
+    .map(result => ({
+      filePath: result.filePath,
+      heading: result.heading || undefined,
+      headingPath: result.headingPath || undefined,
+      content: result.content.substring(0, 200) + (result.content.length > 200 ? "..." : ""),
+    }));
 }
