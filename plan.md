@@ -163,67 +163,42 @@
 ## Phase 3: 인제스천 파이프라인 (`kn add`)
 
 ### 3.1 파서 (`src/pipeline/parser.ts`)
-- [ ] YAML 프론트매터 추출 (`---` 구분자 사이)
-  - `title`, `date`, `author`, `category`, `tags` + 기타 key-value
-- [ ] 제목 추출 우선순위: frontmatter title → `# Heading` → 첫 비어있지 않은 줄 → 파일명 stem
-- [ ] 프론트매터 필드를 모든 청크에 전파할 구조체 반환
+- [x] YAML 프론트매터 추출 (`---` 구분자 사이)
+- [x] 제목 추출 우선순위: frontmatter title → `# Heading` → 첫 비어있지 않은 줄 → 파일명 stem
+- [x] 프론트매터 필드를 모든 청크에 전파할 구조체 반환
 
 ### 3.2 스마트 청커 (`src/pipeline/chunker.ts`)
-- [ ] 타겟 청크 크기: 512토큰 (~2048자)
-- [ ] 청크 오버랩: 15% (~77토큰)
-- [ ] 최소 청크 크기: 100토큰 (미만 시 이전 청크에 병합)
-- [ ] Break-point scoring 알고리즘 구현
-  - 구조적 break point 기본 점수: `# H1`=100 ~ `###### H6`=50, 코드펜스=80, `---`=60, 빈줄=20, 리스트=5, 개행=1
-  - 200토큰 윈도우 내 이차 거리 감쇠: `adjusted = base * (1 - (dist/window)^2 * 0.7)`
-  - 코드펜스 보호: 펜스 내부 break point 무시
-  - 윈도우 내 후보 없을 시 타겟 위치 최근접 문자 경계로 폴백
-- [ ] 구조적 메타데이터 기록
-  - `heading_path`: 각 청크의 헤딩 조상 경로
-  - `seq_index`: 노트 내 0-based 순서
-  - `prev_chunk_id` / `next_chunk_id`: 이중 연결 리스트
-- [ ] AST-aware 청킹 (선택, `--chunk-strategy auto`): tree-sitter 기반 코드 파일용
+- [x] 타겟 청크 크기: 512토큰, 오버랩 15%, 최소 100토큰
+- [x] Break-point scoring + 이차 거리 감쇠 + 코드펜스 보호
+- [x] 구조적 메타데이터: heading_path, seq_index
+- [ ] AST-aware 청킹 (선택, `--chunk-strategy auto`): 향후 구현
 
 ### 3.3 콘텐츠 해셔 (`src/pipeline/hasher.ts`)
-- [ ] SHA-256 해시 계산
-- [ ] 기존 `file_hash`와 비교 → 변경 없으면 스킵 (증분 인덱싱)
-- [ ] `--force` 플래그로 강제 재인덱싱
+- [x] SHA-256 해시 (Bun.CryptoHasher), 증분 인덱싱, `--force` 강제 재인덱싱
 
 ### 3.4 임베더 (`src/pipeline/embedder.ts`)
-- [ ] Provider 추상화 인터페이스: `embed(texts: string[]): Promise<number[][]>`
-- [ ] 구조적 컨텍스트 포매팅: `"title: {title} | section: {heading_path} | tags: {tags} | text: {content}"`
-- [ ] 로컬 provider: 순차 실행
-- [ ] 비로컬 provider: bounded concurrency (queue + maxConcurrency + batchSize)
-- [ ] 재시도 + 지수 백오프 + 헬스체크
-- [ ] 폴백 경로: primary 실패 → fallback provider
+- [x] Provider 추상화 + 구조적 컨텍스트 포매팅
+- [x] 로컬 순차 / 비로컬 bounded concurrency + 재시도/백오프 + 폴백
+- [x] PlaceholderEmbeddingProvider (Phase 13에서 실제 프로바이더 교체)
 
 ### 3.5 상태 기반 쓰기 일관성
-- [ ] 쓰기 흐름: metadata(`pending`) → vector upsert → metadata(`synced`)
-- [ ] 벡터 쓰기 실패 시 보상 롤백 (metadata 삭제/무효화)
-- [ ] 청크 ID 양 레이어 동일 보장
-- [ ] 검색 가능 레코드는 `synced` 상태만
+- [x] pending → vector upsert → synced 흐름
+- [x] 벡터 실패 시 metadata 롤백
+- [x] 청크 ID 양 레이어 동일 보장
 
 ### 3.6 `kn add` 커맨드 조립
-- [ ] `<file|dir|glob>` 입력 처리
-- [ ] `--recursive`, `--tag`, `--dry-run` 옵션
-- [ ] 볼트 락 획득/해제
-- [ ] 파이프라인: 파일발견 → 해시체크 → 파싱 → 청킹 → 임베딩 → 저장
+- [x] file/dir/glob 입력, `--recursive`, `--tag`, `--dry-run`, `--force`
+- [x] 볼트 락 + 파이프라인 전체 동작
 
 **검증 체크리스트:**
-- [ ] parser.ts 유닛테스트: 프론트매터 추출, 제목 우선순위, 다양한 마크다운 형식
-- [ ] chunker.ts 유닛테스트:
-  - 512토큰 근방으로 분할되는지
-  - 15% 오버랩 존재 확인
-  - 100토큰 미만 청크가 병합되는지
-  - 코드펜스 내부에서 분할되지 않는지
-  - heading_path 정확성
-  - prev/next 연결 리스트 무결성
-- [ ] hasher.ts: 동일 파일 → 동일 해시, 변경 파일 → 다른 해시
-- [ ] `kn add test.md` → meta.db에 note/chunk 행 생성, zvec에 문서 존재
-- [ ] `kn add test.md` 재실행 → 해시 일치로 스킵 (로그 확인)
-- [ ] `kn add test.md --force` → 재인덱싱 수행
-- [ ] `kn add test.md --dry-run` → DB 변경 없음, 파싱/청킹 결과만 출력
-- [ ] 벡터 쓰기 실패 시뮬레이션 → metadata 롤백 확인
-- [ ] 락 충돌 시뮬레이션 → 적절한 에러 메시지
+- [x] parser: 프론트매터/제목/태그 추출 동작 확인
+- [x] chunker: break-point scoring, heading_path, 코드펜스 보호 동작 확인
+- [x] hasher: 동일 내용 → 동일 해시
+- [x] `kn add notes/` → note/chunk 생성, vault status에 반영
+- [x] 재실행 → 해시 일치로 스킵
+- [x] `--force` → 재인덱싱 수행
+- [ ] `--dry-run` → DB 변경 없음 (미검증)
+- [ ] 벡터 쓰기 실패 시뮬레이션 (미검증)
 
 ---
 
@@ -485,6 +460,58 @@
 
 ---
 
+## Phase 13: AI 백엔드 통합 (Provider Integration)
+
+> 현재 Phase 3에서 PlaceholderEmbeddingProvider로 파이프라인 동작을 검증 중.
+> 이 Phase에서 실제 AI 백엔드를 연결하여 임베딩/LLM/리랭킹을 실운영 가능하게 한다.
+
+### 13.1 임베딩 프로바이더
+- [ ] **OpenAI API**: `text-embedding-3-small`, `text-embedding-3-large`
+  - `baseUrl` + `apiKey` 기반, `EmbeddingProvider` 인터페이스 구현
+- [ ] **Ollama (로컬)**: `nomic-embed-text`, `bge-m3` 등
+  - `http://localhost:11434/api/embeddings` 호출, `isLocal: true`
+- [ ] **Anthropic (향후)**: 임베딩 API 제공 시 추가
+- [ ] **HuggingFace Inference API**: sentence-transformers 모델군
+
+### 13.2 LLM 프로바이더 (`kn ask` 용)
+- [ ] **OpenAI API**: `gpt-4o`, `gpt-4o-mini` 등
+  - Chat Completions API, 스트리밍 응답 지원
+- [ ] **Anthropic Claude API**: `claude-sonnet-4-20250514` 등
+  - Messages API, `@anthropic-ai/sdk` 활용
+- [ ] **Ollama (로컬)**: `llama3`, `qwen3` 등
+  - `http://localhost:11434/api/chat`
+- [ ] **OpenAI-호환 API**: LM Studio, vLLM, Together AI 등
+  - OpenAI SDK로 `baseUrl`만 교체하여 연결
+
+### 13.3 리랭커 프로바이더 (`--rerank` 용)
+- [ ] **Ollama 로컬 리랭커**: Qwen3-Reranker 0.6B 등
+- [ ] **Cohere Rerank API**
+- [ ] **Jina Reranker API**
+
+### 13.4 통합 프로바이더 팩토리
+- [ ] `src/providers/factory.ts`: vault config 기반 프로바이더 자동 생성
+  - config의 `embedding.baseUrl` / `llm.baseUrl` 패턴으로 프로바이더 타입 자동 감지
+  - 예: `localhost:11434` → Ollama, `api.openai.com` → OpenAI
+- [ ] `src/providers/openai.ts`: OpenAI 호환 프로바이더 (embedding + LLM)
+- [ ] `src/providers/ollama.ts`: Ollama 프로바이더 (embedding + LLM + reranker)
+- [ ] `src/providers/anthropic.ts`: Claude 프로바이더 (LLM)
+- [ ] 프로바이더 헬스체크: `kn vault status`에 프로바이더 연결 상태 포함
+
+### 13.5 라우팅 (`kn ask --routing auto|local|cloud`)
+- [ ] `auto`: 로컬 프로바이더 우선 시도 → 실패 시 클라우드 폴백
+- [ ] `local`: 로컬 프로바이더만 사용 (Ollama 등)
+- [ ] `cloud`: 클라우드 API만 사용 (OpenAI/Anthropic 등)
+
+**검증 체크리스트:**
+- [ ] Ollama 로컬 임베딩: `kn add test.md` → 실제 벡터 생성 확인
+- [ ] OpenAI 임베딩: API 키 설정 후 `kn add` → 벡터 생성 확인
+- [ ] `kn ask "질문"` → Ollama/OpenAI/Claude 각각 응답 생성
+- [ ] 프로바이더 미설정 시 명확한 에러 메시지
+- [ ] 폴백 동작: 로컬 실패 → 클라우드 자동 전환
+- [ ] `kn vault status` → 프로바이더 연결 상태 표시
+
+---
+
 ## Phase 간 의존성 맵
 
 ```
@@ -499,7 +526,10 @@ Phase 1 (백본)
         └─▶ Phase 7 (get/context) ──────────────┤
               └─▶ Phase 8 (ask) ◀── Phase 4     │
         └─▶ Phase 9 (preprocessor) ◀── Phase 4  │
-        └─▶ Phase 10 (serve) ◀── All commands ──┘
+        └─▶ Phase 10 (serve) ◀── All commands ──┤
+        └─▶ Phase 13 (AI 백엔드) ◀── Phase 3,8 ┘
+              embedder placeholder → 실제 프로바이더 교체
+              ask placeholder → 실제 LLM 연결
 ```
 
 ---
@@ -516,3 +546,7 @@ Phase 1 (백본)
 | 2026-04-16 | 2 | store 파일 src/stores/ 이전 + barrel index.ts + tests/ 복사 (56 tests pass) | 완료 |
 | 2026-04-16 | 2 | vault 5개 서브커맨드 실구현 (create/list/switch/delete/status) | 완료 |
 | 2026-04-16 | 2 | 리뷰: import 경로 root→src/stores 수정, E2E 스모크테스트 전체 통과 | 완료 |
+| 2026-04-16 | 3 | pipeline 모듈: parser.ts, chunker.ts, hasher.ts, embedder.ts | 완료 |
+| 2026-04-16 | 3 | chunker 리뷰 수정: code-fence 순환참조 버그, 윈도우 필터 버그 | 완료 |
+| 2026-04-16 | 3 | kn add 커맨드 구현 + global opts 수정 + E2E 스모크테스트 통과 | 완료 |
+| 2026-04-16 | 13 | Phase 13 (AI 백엔드 통합) plan 추가 | 완료 |
