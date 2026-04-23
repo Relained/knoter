@@ -155,7 +155,7 @@ This project uses **zvec + SQLite** side by side. They serve different roles:
 | Vector search | Semantic + sparse (BM25) similarity ranking | zvec (`schema.ts`) |
 | Metadata management | Note/chunk/tag CRUD, aggregation, change detection, FTS5 keyword search, transactional consistency | SQLite via `bun:sqlite` (`db.ts`) |
 
-- Each vault has its own zvec index AND its own SQLite DB at `<vault_root>/.km/meta.db`.
+- Each vault has its own zvec index AND its own SQLite DB at `<vault_root>/.kn/meta.db`.
 - The zvec vector ID and `chunks.id` in SQLite are the same value — they share the chunk ID as a join key.
 - When indexing a note: write to SQLite first (source of truth), then to zvec.
 - SQLite provides `ON DELETE CASCADE` — deleting a note auto-removes its chunks and tags.

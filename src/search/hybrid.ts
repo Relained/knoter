@@ -18,8 +18,8 @@ export interface SearchOptions {
   tags?: string[];
   after?: string;
   before?: string;
+  lang?: string;              // language filter: "cjk", "latin", "mixed", etc.
   alpha?: number;             // fusion weight, default 0.80
-  rerank?: boolean;
   expand?: boolean;
 }
 
@@ -283,8 +283,13 @@ async function hybridSearch(
   logger.debug(`Strong fused signal: ${strongSignal}`);
 
   // Merge adjacent chunks and sort
-  let finalResults = mergeAdjacentChunks(filtered);
-  finalResults = finalResults.slice(0, options.top);
+  let finalResults = mergeAdjacentChunks(filtered).slice(0, options.top ?? 10);
+
+  // Apply language filter if specified
+  if (options.lang) {
+    finalResults = filterByLanguage(metaDb, finalResults, options.lang);
+    logger.debug(`After language filter (${options.lang}): ${finalResults.length} results`);
+  }
 
   return {
     results: finalResults,
@@ -534,5 +539,23 @@ function filterByDates(
     }
 
     return true;
+  });
+}
+
+/**
+ * Filter FusedResult by language.
+ */
+function filterByLanguage(
+  metaDb: MetaDB,
+  results: FusedResult[],
+  lang?: string
+): FusedResult[] {
+  if (!lang) return results;
+
+  return results.filter(r => {
+    const noteRow = metaDb.getNote(r.noteId);
+    if (!noteRow?.language) return true; // Include results with no language set
+
+    return noteRow.language === lang;
   });
 }

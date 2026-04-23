@@ -39,3 +39,20 @@ export function setVerbose(enabled: boolean): void {
 export function getVerbose(): boolean {
   return verboseMode;
 }
+
+/**
+ * Force all log output (including warn/error) onto stderr.
+ * Used by stdio-transport commands (e.g. `kn mcp --transport stdio`) so that
+ * stdout is reserved exclusively for protocol framing.
+ */
+export function redirectLogsToStderr(): void {
+  consola.setReporters([
+    {
+      log: (logObj) => {
+        const msg =
+          (logObj.args ?? []).map((a: unknown) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+        process.stderr.write(`[${logObj.type}] ${msg}\n`);
+      },
+    },
+  ]);
+}

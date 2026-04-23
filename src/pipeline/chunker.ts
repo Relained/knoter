@@ -34,6 +34,105 @@ const DEFAULTS = {
 
 const CHARS_PER_TOKEN = 4;
 
+/**
+ * Detect the ratio of CJK characters in text.
+ * CJK ranges:
+ * - CJK Unified Ideographs: U+4E00–U+9FFF
+ * - Hangul Syllables: U+AC00–U+D7AF
+ * - Hiragana: U+3040–U+309F
+ * - Katakana: U+30A0–U+30FF
+ */
+function detectCJKRatio(text: string): number {
+  if (text.length === 0) return 0;
+
+  let cjkCount = 0;
+  let nonWhitespaceCount = 0;
+
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (code === undefined) continue;
+    if (/\s/.test(char)) continue;
+    nonWhitespaceCount++;
+
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
+      (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
+      (code >= 0x20000 && code <= 0x2a6df) || // CJK Extension B
+      (code >= 0x2a700 && code <= 0x2ebef) || // CJK Extensions C–F
+      (code >= 0xac00 && code <= 0xd7af) || // Hangul Syllables
+      (code >= 0x3040 && code <= 0x309f) || // Hiragana
+      (code >= 0x30a0 && code <= 0x30ff)    // Katakana
+    ) {
+      cjkCount++;
+    }
+  }
+
+  return nonWhitespaceCount === 0 ? 0 : cjkCount / nonWhitespaceCount;
+}
+
+/**
+ * Detect document language based on CJK character ratio.
+ */
+export function detectLanguage(text: string): "cjk" | "latin" | "mixed" {
+  const ratio = detectCJKRatio(text);
+  if (ratio > 0.5) return "cjk";
+  if (ratio < 0.1) return "latin";
+  return "mixed";
+}
+
+/**
+ * Detect CJK locale heuristically based on character frequency.
+ */
+function detectCJKLocale(text: string): "ko" | "ja" | "zh" {
+  let hangulCount = 0;
+  let hiraganaCount = 0;
+  let katakanaCount = 0;
+
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (!code) continue;
+
+    if (code >= 0xac00 && code <= 0xd7af) {
+      hangulCount++;
+    } else if (code >= 0x3040 && code <= 0x309f) {
+      hiraganaCount++;
+    } else if (code >= 0x30a0 && code <= 0x30ff) {
+      katakanaCount++;
+    }
+  }
+
+  if (hangulCount > hiraganaCount && hangulCount > katakanaCount) {
+    return "ko";
+  }
+  if (hiraganaCount + katakanaCount > hangulCount) {
+    return "ja";
+  }
+  return "zh";
+}
+
+/**
+ * Find sentence boundaries using Intl.Segmenter.
+ * Returns array of character offsets marking the end of each sentence.
+ */
+function findSentenceBoundaries(text: string, locale: "ko" | "ja" | "zh" | "en" | "und"): number[] {
+  const boundaries: number[] = [];
+
+  try {
+    const segmenter = new Intl.Segmenter(locale, { granularity: "sentence" });
+    const segments = segmenter.segment(text);
+
+    let offset = 0;
+    for (const segment of segments) {
+      offset += segment.segment.length;
+      boundaries.push(offset);
+    }
+  } catch (err) {
+    // If Intl.Segmenter fails, return empty array (fallback to no boundary boost)
+  }
+
+  return boundaries;
+}
+
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
@@ -174,8 +273,20 @@ export function chunkDocument(
     minSize: options?.minSize ?? DEFAULTS.minSize,
   };
 
-  const targetSizeChars = opts.targetSize * CHARS_PER_TOKEN;
-  const overlapChars = Math.round(opts.targetSize * opts.overlapRatio * CHARS_PER_TOKEN);
+  // Adjust chunk size for CJK content (high CJK ratio → smaller chunks)
+  const cjkRatio = detectCJKRatio(content);
+  let adjustedTargetSize = opts.targetSize;
+  let adjustedMinSize = opts.minSize;
+  if (cjkRatio > 0.3) {
+    // For CJK-heavy content, reduce target to ~60% and min to ~60 tokens
+    adjustedTargetSize = Math.round(opts.targetSize * 0.6);
+    adjustedMinSize = Math.round(opts.minSize * 0.6);
+    // Ensure minimum bounds
+    adjustedMinSize = Math.max(adjustedMinSize, 30);
+  }
+
+  const targetSizeChars = adjustedTargetSize * CHARS_PER_TOKEN;
+  const overlapChars = Math.round(adjustedTargetSize * opts.overlapRatio * CHARS_PER_TOKEN);
   const windowChars = 200 * CHARS_PER_TOKEN; // 800 chars
 
   // Step 1: Find all break points
@@ -183,6 +294,16 @@ export function chunkDocument(
 
   // Step 2: Filter out break points inside code fences (use original list for fence detection)
   const breakPoints = allBreakPoints.filter((bp) => !isInsideCodeFence(content, bp.position, allBreakPoints));
+
+  // Step 3: Detect sentence boundaries for CJK-heavy content
+  const sentenceBoundaries = new Set<number>();
+  if (cjkRatio > 0.3) {
+    const locale = detectCJKLocale(content);
+    const boundaries = findSentenceBoundaries(content, locale);
+    for (const b of boundaries) {
+      sentenceBoundaries.add(b);
+    }
+  }
 
   // Step 4: Chunking loop
   const chunks: Array<{
@@ -221,11 +342,26 @@ export function chunkDocument(
       (bp) => bp.position > position && bp.position >= windowStart && bp.position <= targetEnd
     );
 
-    // Score with quadratic distance decay
+    // Score with quadratic distance decay, with boost for sentence boundaries
     const scored = candidates.map((candidate) => {
       const distance = targetEnd - candidate.position;
       const decay = 1 - Math.pow(distance / windowChars, 2) * 0.7;
-      const adjustedScore = candidate.score * decay;
+      let adjustedScore = candidate.score * decay;
+
+      // Boost score if near a sentence boundary (CJK-aware)
+      if (sentenceBoundaries.size > 0) {
+        let nearBoundary = false;
+        for (const boundary of sentenceBoundaries) {
+          if (Math.abs(boundary - candidate.position) <= 10) {
+            nearBoundary = true;
+            break;
+          }
+        }
+        if (nearBoundary) {
+          adjustedScore += 3; // Add boost for sentence boundary alignment
+        }
+      }
+
       return { ...candidate, adjustedScore };
     });
 
@@ -274,7 +410,7 @@ export function chunkDocument(
     const chunk = chunks[i];
     const tokenCount = estimateTokens(chunk.content);
 
-    if (tokenCount < opts.minSize) {
+    if (tokenCount < adjustedMinSize) {
       if (i === 0 && chunks.length > 1) {
         // First chunk is too small — merge with next
         const nextChunk = chunks[i + 1];

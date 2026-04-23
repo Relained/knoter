@@ -9,9 +9,7 @@ export type {
   FtsResult,
   VaultConfigRow,
   VaultStatus,
-  ContextRow,
   PreprocessorRow,
-  LlmCacheRow,
   VectorSyncStatus,
 } from "./meta-store";
 export { buildFtsQuery, normalizeBM25 } from "./meta-store";

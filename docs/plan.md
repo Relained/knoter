@@ -13,7 +13,7 @@
   ```bash
   bun add ansis ora @clack/prompts consola gray-matter
   ```
-- [ ] Phase 10에서 MCP SDK 설치 (지연 설치):
+- [x] Phase 10에서 MCP SDK 설치:
   ```bash
   bun add @modelcontextprotocol/sdk
   ```
@@ -52,11 +52,8 @@
       tag.ts          # kn tag
       cluster.ts      # kn cluster
       get.ts          # kn get
-      context.ts      # kn context
-      ask.ts          # kn ask
-      serve.ts        # kn serve
+      mcp.ts          # kn mcp
       schedule.ts     # kn schedule
-      preprocessor.ts # kn preprocessor
     core/
       config.ts       # 글로벌/볼트 설정 관리
       output.ts       # 표준 출력 envelope (success/error)
@@ -172,8 +169,8 @@
 - [x] Break-point scoring + 이차 거리 감쇠 + 코드펜스 보호
 - [x] 구조적 메타데이터: heading_path, seq_index
 - [ ] AST-aware 청킹 (선택, `--chunk-strategy auto`): 향후 구현
-- [ ] CJK 문장 경계 보존: `Intl.Segmenter(locale, { granularity: 'sentence' })` 활용
-- [ ] CJK 텍스트 청크 크기 자동 축소 (~40%): 정보 밀도 차이 반영
+- [x] CJK 문장 경계 보존: `Intl.Segmenter(locale, { granularity: 'sentence' })` 활용 (Phase 14)
+- [x] CJK 텍스트 청크 크기 자동 축소 (~60%): `detectCJKRatio` > 0.3 시 적용 (Phase 14)
 
 ### 3.3 콘텐츠 해셔 (`src/pipeline/hasher.ts`)
 - [x] SHA-256 해시 (Bun.CryptoHasher), 증분 인덱싱, `--force` 강제 재인덱싱
@@ -227,7 +224,8 @@
 - [x] 인접 청크 병합 구현
 
 ### 4.6 선택적 LLM 향상
-- [ ] 리랭킹/쿼리 확장 (Phase 13 AI 백엔드 통합 시 구현)
+- [ ] 리랭킹: Ollama 구현 있었으나 프로바이더 단일화로 철거 (향후 TEI/외부 API로 재구성)
+- [ ] 쿼리 확장: 미구현
 
 **검증 체크리스트:**
 - [x] `kn search "rust" --mode keyword` → FTS5 결과 정상 (rust.md 반환)
@@ -268,7 +266,7 @@
 
 ---
 
-## Phase 7: 문서 조회 (`kn get`) 및 컨텍스트 (`kn context`)
+## Phase 7: 문서 조회 (`kn get`)
 
 ### 7.1 `kn get`
 - [x] 4단계 경로 해석: exact → suffix → substring → ID
@@ -276,139 +274,99 @@
 - [x] miss 시 유사 경로 제안
 - [x] 배치/단일 모드 자동 전환
 
-### 7.2 `kn context`
-- [x] context add/list/remove/set-global
-
 **검증 체크리스트:**
 - [x] `kn get docs/guide.md` → 파일 내용 + 메타데이터 반환
 - [x] `kn get docs/guide.md --section Installation` → 해당 섹션만 추출
 - [x] `kn get nonexist.md` → notFound + suggestions 구조
-- [x] `kn context add/list/remove/set-global` 구현 완료
+
+> Phase 7.2 `kn context`는 커맨드/테이블 모두 철거 (2026-04-24 결정).
 
 ---
 
-## Phase 8: RAG 응답 (`kn ask`)
+## Phase 8: RAG ~~응답 (`kn ask`)~~ — 철거
 
-### 8.1 기본 파이프라인
-- [ ] `kn search` (hybrid) 결과 기반 컨텍스트 조립
-- [ ] 청크 연결 리스트로 context window 확장 (`--context-window`)
-- [ ] `kn context` 설명 포함한 컨텍스트 포매팅
-  ```
-  [Source: {filePath} | Section: {headingPath}]
-  {context_description}
-  {expanded_content}
-  ```
-
-### 8.2 모델 프로필 안전장치
-- [ ] config 모델 프로필에서 max context 로드
-- [ ] 시스템 프롬프트/템플릿 오버헤드 예산 예약
-- [ ] 남은 예산 내에서만 컨텍스트 패킹
-- [ ] 오버플로우 시: 최저 점수부터 제거 → 마지막 결과 잘라내기
-
-### 8.3 LLM 캐시
-- [ ] 캐시 키: `sha256(model + query + sorted_chunk_ids)`
-- [ ] 캐시 히트 시 즉시 반환 (`cached: true`)
-
-### 8.4 옵션
-- [ ] `--context-limit`, `--context-window`, `--model`, `--routing`, `--show-sources`, `--raw`
-
-**검증 체크리스트:**
-- [ ] `kn ask "What is X?"` → 검색 + LLM 응답 생성
-- [ ] `--show-sources` → 소스 경로/청크 ID 포함
-- [ ] context window 확장: 인접 청크 포함 확인
-- [ ] context budget 초과 시 graceful truncation 확인
-- [ ] 동일 쿼리 재실행 → 캐시 히트 확인
-- [ ] `--format json` → 구조화된 응답 envelope
+> 외부 RAG 클라이언트가 MCP 경유로 `kn_search` + `kn_get`을 사용해 자체 조립하는 방식으로 전환.
+> `kn ask` 커맨드, `LLMProvider`, `llm_cache` 테이블, `modelProfiles`, `kn_ask` MCP 도구 전부 제거 (2026-04-24).
 
 ---
 
-## Phase 9: 전처리기 (`kn preprocessor`)
+## Phase 9: 전처리기 (내부 모듈)
+
+> 커맨드로 노출하지 않고 `src/pipeline/preprocessor.ts`의 런타임 함수로만 유지. vault config 편집으로 바인딩.
 
 ### 9.1 프로토콜 런타임
-- [ ] stdin/stdout 라인 단위 프로토콜 구현
-- [ ] 프로세스 풀 관리 (alive 유지, 라인 간 재생성 없음)
+- [x] stdin/stdout JSON 라인 프로토콜 (`PreprocessorRunner`)
+- [x] 프로세스 풀 관리 (Subprocess alive 유지)
 
-### 9.2 커맨드 구현
-- [ ] `kn preprocessor install <language>` (ko/ja/zh)
-- [ ] `kn preprocessor add <alias> <command>` — 커스텀 등록
-- [ ] `kn preprocessor bind <alias> [vault]` — 볼트 바인딩 + FTS5 재인덱스
-- [ ] `kn preprocessor list` — 목록 표시
-- [ ] `kn preprocessor remove <alias> [--delete]`
-
-### 9.3 FTS5 통합
-- [ ] 바인딩 시 FTS5 토크나이저 `trigram` → `unicode61` 전환
-- [ ] 인덱스/쿼리 양쪽 전처리기 통과
+### 9.2 FTS5 통합
+- [x] 토크나이저 전환 (`rebuildFtsWithTokenizer`)
+- [ ] 인덱스측 적용: 청크 insert 시 전처리
 - [ ] 체이닝: 다수 전처리기 직렬 파이프
 
-**검증 체크리스트:**
-- [ ] `kn preprocessor add echo "cat"` → 등록 확인
-- [ ] `kn preprocessor bind echo` → FTS5 재인덱스 트리거
-- [ ] 전처리기 바인딩 후 `kn add korean.md` → 형태소 분석된 FTS 인덱스
-- [ ] `kn search "한국어쿼리"` → 전처리기 통과 후 검색
-- [ ] 전처리기 제거 → FTS5 재인덱스
+> `kn preprocessor` 서브커맨드는 철거 (2026-04-24). 기존 `add/bind/list/remove/install` 로직은 vault.json 수동 편집으로 이관.
 
 ---
 
-## Phase 10: MCP 서버 (`kn serve`)
+## Phase 10: MCP 서버 (`kn mcp`)
 
 ### 10.1 트랜스포트
-- [ ] `stdio` (기본): MCP 클라이언트 서브프로세스
-- [ ] `sse`: Server-Sent Events
-- [ ] `http`: `POST /mcp` + `GET /health`
+- [x] `stdio` (기본): MCP 클라이언트 서브프로세스
+- [ ] `sse`: Server-Sent Events (미구현)
+- [x] `http`: `POST /mcp` + `GET /health`
 
 ### 10.2 데몬 모드
-- [ ] `--daemon` + PID 파일 관리
-- [ ] `kn serve stop` → PID로 정지
-- [ ] 임베딩/리랭커 모델 warm 유지, 5분 idle 시 dispose
+- [x] `--daemon` + PID 파일 관리 (재귀 fork)
+- [x] `kn mcp stop` → PID로 정지
+- [ ] 임베딩/리랭커 모델 warm 유지, 5분 idle 시 dispose (미구현)
 
 ### 10.3 도구 매핑
-- [ ] `kn_search`, `kn_add_note`, `kn_vault_status`, `kn_cluster`, `kn_tag_auto`, `kn_ask`, `kn_get`, `kn_multi_get`, `kn_context`, `kn_update`
+- [x] 구현: `kn_search`, `kn_get`, `kn_vault_status`
+- [ ] 스켈레톤만 (not implemented 반환): `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update`
 
 **검증 체크리스트:**
-- [ ] `kn serve --transport stdio` → MCP 프로토콜 핸드셰이크
-- [ ] `kn serve --transport http --port 3000` → `/health` 200 응답
-- [ ] MCP `kn_search` 도구 호출 → JSON 결과
-- [ ] 데몬 시작/정지 → PID 파일 생성/제거
+- [x] `kn mcp --transport stdio` → MCP 프로토콜 핸드셰이크 (stdout 오염 수정)
+- [x] `kn mcp --transport http` → `/health` 응답
+- [x] MCP `kn_search` 도구 호출 → JSON 결과
+- [x] 데몬 시작/정지 → PID 파일 생성/제거
 
 ---
 
 ## Phase 11: 클러스터링 (`kn cluster`)
 
 ### 11.1 구현
-- [ ] HDBSCAN 기본 알고리즘
-- [ ] dense vector + metadata 입력
-- [ ] `--min-cluster`, `--tag`, `--suggest-merge`, `--apply` 옵션
+- [x] DBSCAN 인라인 구현 (`src/cluster/dbscan.ts`) — HDBSCAN 업그레이드는 후순위
+- [x] dense vector + metadata 입력
+- [x] `--epsilon`, `--min-cluster`, `--suggest-merge`, `--apply` 옵션
 
 ### 11.2 성능
-- [ ] 워커 스레드 오프로딩 (메인 CLI 스레드 비차단)
-- [ ] 선택적 Bun FFI 네이티브 경로
+- [ ] 워커 스레드 오프로딩 (후순위)
+- [ ] 선택적 Bun FFI 네이티브 경로 (후순위)
 
 **검증 체크리스트:**
-- [ ] `kn cluster` → 클러스터 그룹 출력
-- [ ] `--suggest-merge` → 병합 제안 포함
-- [ ] `--apply` → 태그/메타데이터 업데이트 확인
-- [ ] 대용량 데이터셋에서 메인 스레드 블로킹 없음 확인
+- [x] `kn cluster` → 클러스터 그룹 출력
+- [x] `--suggest-merge` → 병합 제안
+- [x] `--apply` → 태그 업데이트
 
 ---
 
 ## Phase 12: 스케줄러 (`kn schedule`)
 
 ### 12.1 커맨드
-- [ ] `kn schedule enable [--interval]` — OS 스케줄러 등록
-- [ ] `kn schedule disable` — 등록 해제
-- [ ] `kn schedule status` — 상태 조회
-- [ ] `kn schedule run-now` — 즉시 실행
+- [x] `kn schedule enable [--interval]`
+- [x] `kn schedule disable`
+- [x] `kn schedule status`
+- [x] `kn schedule run-now`
 
 ### 12.2 OS 연동
-- [ ] macOS: launchd plist 생성/등록
-- [ ] Linux: cron/systemd timer
-- [ ] 작업 체인: `kn sync --prune` → `kn tag auto` → `kn cluster --suggest-merge`
+- [x] macOS: launchd plist 생성/등록
+- [x] Linux: systemd user timer
+- [x] 작업 체인 (sync/tag/cluster) + `~/.kn/schedule.json` 상태
 
 **검증 체크리스트:**
-- [ ] `kn schedule enable --interval 1h` → launchd/cron 등록 확인
-- [ ] `kn schedule status` → 등록 상태 + 마지막 실행 정보
-- [ ] `kn schedule run-now` → 작업 체인 즉시 실행
-- [ ] `kn schedule disable` → 스케줄러 항목 제거 확인
+- [x] `kn schedule enable` → 등록 확인
+- [x] `kn schedule status` → 상태 출력
+- [x] `kn schedule run-now` → 즉시 실행 (POSIX 이스케이핑 + NaN 가드)
+- [x] `kn schedule disable` → 제거
 
 ---
 
@@ -418,49 +376,30 @@
 > 이 Phase에서 실제 AI 백엔드를 연결하여 임베딩/LLM/리랭킹을 실운영 가능하게 한다.
 
 ### 13.1 임베딩 프로바이더
-- [x] **OpenAI API**: `text-embedding-3-small`, `text-embedding-3-large`
-  - `baseUrl` + `apiKey` 기반, `EmbeddingProvider` 인터페이스 구현
-- [x] **Ollama (로컬)**: `nomic-embed-text`, `bge-m3` 등
-  - `http://localhost:11434/api/embed` 호출, `isLocal: true`
-- [ ] **Anthropic (향후)**: 임베딩 API 제공 시 추가
-- [ ] **HuggingFace Inference API**: sentence-transformers 모델군
+- [x] **OpenAI 호환 단일 프로바이더**: OpenAI API + OpenAI-호환 로컬 서버(TEI, vLLM, LM Studio, llama-server, ollama `/v1`) 공통
+  - `baseUrl`이 localhost면 `isLocal=true`, apiKey 선택
 
 ### 13.2 LLM 프로바이더 (`kn ask` 용)
-- [x] **OpenAI API**: `gpt-4o`, `gpt-4o-mini` 등
-  - Chat Completions API
-- [ ] **Anthropic Claude API**: `claude-sonnet-4-20250514` 등
-  - Messages API, `@anthropic-ai/sdk` 활용
-- [x] **Ollama (로컬)**: `llama3`, `qwen3` 등
-  - `http://localhost:11434/api/chat`
-- [x] **OpenAI-호환 API**: LM Studio, vLLM, Together AI 등
-  - OpenAI SDK로 `baseUrl`만 교체하여 연결
+- [x] **OpenAI 호환**: Chat Completions API — OpenAI 클라우드 or 로컬 OpenAI-호환 서버
 
-### 13.3 리랭커 프로바이더 (`--rerank` 용)
-- [ ] **Ollama 로컬 리랭커**: Qwen3-Reranker 0.6B 등
-- [ ] **Cohere Rerank API**
-- [ ] **Jina Reranker API**
+### 13.3 리랭커
+- [ ] 현재 미구현 (단일 프로바이더 전환으로 철거)
 
 ### 13.4 통합 프로바이더 팩토리
-- [x] `src/providers/factory.ts`: vault config 기반 프로바이더 자동 생성
-  - config의 `embedding.baseUrl` / `llm.baseUrl` 패턴으로 프로바이더 타입 자동 감지
-  - 예: `localhost:11434` → Ollama, `api.openai.com` → OpenAI
-- [x] `src/providers/openai.ts`: OpenAI 호환 프로바이더 (embedding + LLM)
-- [x] `src/providers/ollama.ts`: Ollama 프로바이더 (embedding + LLM)
-- [ ] `src/providers/anthropic.ts`: Claude 프로바이더 (LLM)
-- [ ] 프로바이더 헬스체크: `kn vault status`에 프로바이더 연결 상태 포함
+- [x] `src/providers/factory.ts`: vault config 기반 OpenAI 호환 프로바이더 생성 (embedding/LLM)
+- [x] `src/providers/openai.ts`: OpenAI 호환 embedding + LLM, `fetchWithContainerRetry` 훅
+- [x] `src/providers/types.ts`: LLMProvider + ContainerSpec 타입
+- [x] `src/providers/health.ts`: `kn vault status --check-providers`
 
-### 13.5 라우팅 (`kn ask --routing auto|local|cloud`)
-- [ ] `auto`: 로컬 프로바이더 우선 시도 → 실패 시 클라우드 폴백
-- [ ] `local`: 로컬 프로바이더만 사용 (Ollama 등)
-- [ ] `cloud`: 클라우드 API만 사용 (OpenAI/Anthropic 등)
+### 13.5 로컬 컨테이너 lazy-start
+- [x] `src/core/container.ts`: `tryStartContainer` + `waitForReady` + `fetchWithContainerRetry`
+- [x] embedding/llm 호출 시 ECONNREFUSED → `podman start <name>` (또는 docker) → 준비 대기 → 1회 재시도
+- [x] `VaultConfig.embedding.container` / `llm.container` 설정 필드 (`{ name, runtime? }`)
 
 **검증 체크리스트:**
-- [ ] Ollama 로컬 임베딩: `kn add test.md` → 실제 벡터 생성 확인
-- [ ] OpenAI 임베딩: API 키 설정 후 `kn add` → 벡터 생성 확인
-- [ ] `kn ask "질문"` → Ollama/OpenAI/Claude 각각 응답 생성
-- [ ] 프로바이더 미설정 시 명확한 에러 메시지
-- [ ] 폴백 동작: 로컬 실패 → 클라우드 자동 전환
-- [ ] `kn vault status` → 프로바이더 연결 상태 표시
+- [ ] OpenAI API 임베딩/LLM: `kn add` / `kn ask` (API 키 설정 시)
+- [ ] TEI 로컬 컨테이너: 정지 상태에서 `kn add` 호출 → 컨테이너 자동 시작 후 임베딩 성공
+- [x] `kn vault status --check-providers` → 연결 상태 표시
 
 ---
 
@@ -470,29 +409,27 @@
 > Depends on Phase 9 (preprocessor) and Phase 13 (AI backend).
 
 ### 14.1 Chunker CJK awareness
-- [ ] Integrate `Intl.Segmenter` for sentence boundary detection (Bun/V8 built-in, no external deps)
-- [ ] Auto-detect CJK-dominant content and reduce target chunk size (~300 chars vs 500 for Latin)
-- [ ] Recursive character splitting hierarchy: `['\n\n', '\n', '。', '？', '！', '.', '?', '!', ' ', '']`
+- [x] `Intl.Segmenter` sentence boundary boost
+- [x] `detectCJKRatio` > 0.3 → 청크 크기 ~60% 축소 (`codePointAt` 사용, supplementary plane 대응)
+- [x] Break-point scoring hierarchy with CJK sentence markers
 
 ### 14.2 Embedding model selection for CJK
-- [ ] Prioritize BGE-M3 (1024d) for CJK vaults — best multilingual/multi-grained performance
-- [ ] Multilingual-E5 as alternative — "query:"/"passage:" prefix convention fits RAG well
-- [ ] Auto-suggest model at `kn vault create` based on detected locale or `--locale` option
+- [x] `detectCJKLocale` helper 존재
+- [ ] `kn vault create`에서 자동 모델 제안 (미구현, 수동 `--model` 필요)
 
 ### 14.3 Language detection & metadata
-- [ ] Per-note `language` field in notes table (auto-detected via `Intl.Segmenter` or heuristic)
-- [ ] Language-aware search filter: `--lang ko` to narrow results
-- [ ] Language stats in `kn vault status` output
+- [x] `notes.language` 컬럼 (ALTER 마이그레이션), `kn add`에서 언어 기록
+- [x] `kn search --lang` 필터
+- [ ] Language stats in `kn vault status` (미구현)
 
 ### 14.4 FTS5 tokenizer enhancement
-- [ ] `Intl.Segmenter('ko', { granularity: 'word' })` as tokenizer preprocessor (Phase 9 integration)
-- [ ] Consider `trigram` tokenizer as CJK fallback when no preprocessor is bound
+- [x] Preprocessor 경로로 `Intl.Segmenter` 기반 토크나이저 연동 가능 (Phase 9)
+- [ ] `trigram` 자동 fallback (현재 수동 전환)
 
 **Verification checklist:**
-- [ ] CJK-dominant markdown chunked at ~300 char target with sentence boundaries preserved
-- [ ] `kn add korean.md` with BGE-M3 produces meaningful vectors
-- [ ] `kn search "한국어 질의"` returns relevant results via both keyword and semantic channels
-- [ ] `kn vault status` shows language distribution
+- [x] CJK-dominant 청크가 문장경계 보존하며 축소됨
+- [x] `kn search "한국어 질의"` + `--lang ko` 필터 동작 (tests/korean.test.ts)
+- [ ] `kn vault status`에 language 분포 표시 (미구현)
 
 ---
 
@@ -557,16 +494,22 @@ Phase 1 (백본)
 | 2026-04-23 | 14 | Intl.Segmenter 문장경계 boost, `detectCJKLocale`, `notes.language` 컬럼 (ALTER 마이그레이션), `kn add`에서 언어 기록, `kn search --lang` 필터 | 완료 |
 | 2026-04-23 | 10 | MCP serve: stdio/http 트랜스포트, `createMcpServer` factory, kn_search/kn_get/kn_ask/kn_vault_status/kn_context 도구, --daemon, `serve stop` | 완료 |
 | 2026-04-23 | 10 | 리뷰 수정: stdio stdout 오염 (logger→stderr), --daemon 재귀 fork, tool 인자 옵셔널 필드 | 완료 |
+| 2026-04-23 | — | 프로젝트 구조 정리: 레거시 루트 파일(index.ts, meta-store.ts, vec-store.ts, 중복 테스트) 제거, docs/·dist/ 분리, CLAUDE.md `.km`→`.kn` 교정, tests/ import 경로 갱신 (38 pass) | 완료 |
+| 2026-04-23 | — | plan.md 체크박스 실제 구현 상태에 맞춰 동기화 | 완료 |
+| 2026-04-23 | 13 | 프로바이더 단일화: Ollama/Anthropic/리랭커 철거, OpenAI 호환만 유지, `src/core/container.ts` 추가 (podman/docker lazy-start, ECONNREFUSED 시 1회 재시도), `--rerank`/`--routing` 제거 | 완료 |
+| 2026-04-23 | 10 | `kn serve` → `kn mcp` rename (파일/함수/커맨드명/PID 파일) | 완료 |
+| 2026-04-24 | 7/8/9 | 커맨드 축소: `kn ask`/`kn context`/`kn preprocessor` 철거, `kn_ask`/`kn_context` MCP 도구 제거, LLMProvider/llm_cache/contexts/modelProfiles 전부 삭제, preprocessor는 `src/pipeline/preprocessor.ts` 내부 모듈로만 유지 | 완료 |
 
 ---
 
 ## 다음 세션 시작 가이드
 
-### 현재 상태 (2026-04-16 기준)
+### 현재 상태 (2026-04-23 기준)
 
-**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 (전체 파이프라인 동작)
+**완료된 Phase**: 1~14 (전체 파이프라인 동작, 후순위 항목만 잔여)
 **브랜치**: `dev/cli`
-**테스트**: 56 pass / 0 fail
+**테스트**: 38 pass / 0 fail (tests/meta-store, vec-store, korean)
+**프로젝트 구조**: `src/` 소스, `tests/` 테스트, `docs/` 설계문서, `dist/` 바이너리 산출물
 
 ### 구현 완료 파일 (31개+ .ts)
 
@@ -593,32 +536,44 @@ src/
     fusion.ts               # linearFusion, strong-signal, 인접청크병합
     hybrid.ts               # semantic/keyword/hybrid 오케스트레이터
   providers/
-    ollama.ts               # ✅ Ollama embedding + LLM (LLMProvider 인터페이스 정의)
-    openai.ts               # ✅ OpenAI 호환 embedding + LLM
-    factory.ts              # ✅ vault config 기반 프로바이더 자동 생성
+    types.ts                # ✅ LLMProvider + ContainerSpec 타입
+    openai.ts               # ✅ OpenAI 호환 embedding + LLM (container retry 훅)
+    factory.ts              # ✅ vault config → OpenAI 호환 프로바이더
+    health.ts               # ✅ 프로바이더 연결 상태 점검
+  cluster/
+    dbscan.ts               # ✅ DBSCAN 인라인 구현
+  core/
+    scheduler.ts            # ✅ systemd timer / launchd plist
+    container.ts            # ✅ podman/docker lazy-start + fetch retry
+  serve/                    # ✅ MCP stdio/http 서버 구현
   commands/
-    vault.ts                # ✅ 실구현 (create/list/switch/delete/status)
-    add.ts                  # ✅ 실구현 (전체 인제스천 파이프라인)
-    search.ts               # ✅ 실구현 (3모드 하이브리드)
-    sync.ts                 # ✅ 실구현 (recovery/prune/reconciliation)
-    tag.ts                  # ✅ 실구현 (list/add/remove/auto)
-    get.ts                  # ✅ 실구현 (4단계 경로해석)
-    context.ts              # ✅ 실구현 (add/list/remove/set-global)
-    ask.ts                  # ✅ 실구현 (RAG 파이프라인 + LLM 캐시)
-    serve.ts                # 🔲 스텁만 존재
-    cluster.ts              # 🔲 스텁만 존재
-    schedule.ts             # 🔲 스텁만 존재
-    preprocessor.ts         # 🔲 스텁만 존재
+    vault.ts                # ✅ create/list/switch/delete/status (+ --check-providers)
+    add.ts                  # ✅ 전체 인제스천 파이프라인
+    search.ts               # ✅ 3모드 하이브리드 + --lang
+    sync.ts                 # ✅ recovery/prune/reconciliation
+    tag.ts                  # ✅ list/add/remove/auto
+    get.ts                  # ✅ 4단계 경로해석
+    context.ts              # ✅ add/list/remove/set-global
+    ask.ts                  # ✅ RAG + LLM 캐시
+    mcp.ts                  # ✅ MCP stdio/http, --daemon, mcp stop
+    cluster.ts              # ✅ DBSCAN (--suggest-merge/--apply)
+    schedule.ts             # ✅ enable/disable/status/run-now
+    preprocessor.ts         # ✅ add/bind/list/remove (install 스켈레톤)
 ```
 
 ### 잔여 작업 (후순위)
 
-- **Phase 10 MCP 도구 확장**: `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update` — 현재 등록되었지만 "not implemented" 반환. 필요 시 실제 파이프라인 연결.
-- **Phase 13 리랭커 확장**: Cohere/Jina API 지원 (드문 셋업, 필요 시).
-- **Phase 13 라우팅 폴백**: `--routing auto` 시 로컬 실패 → 클라우드 자동 전환 (현재는 검증만).
+- **Phase 1.2 패키지 메타**: `package.json` `name` → `knoter`, `bin.kn` 등록, tsconfig rootDir/outDir 조정.
+- **Phase 3 검증**: `--dry-run` / 벡터 쓰기 실패 시뮬레이션 미검증.
+- **Phase 4 검증**: filter (`--tag`/`--after`) / 인접 청크 병합 E2E 미검증.
 - **Phase 9 preprocessor 프리셋**: `install <language>` 실제 번들 (한국어 mecab 등).
-- **Phase 9 인덱스측 preprocessor**: 청크 insert 시 FTS5 전처리 적용.
-- **Phase 11 HDBSCAN 업그레이드**: 현재 DBSCAN, 필요 시 계층적 HDBSCAN으로 교체.
+- **Phase 9 인덱스측 preprocessor**: 청크 insert 시 FTS5 전처리 적용 + 체이닝.
+- **Phase 10 MCP 도구 확장**: `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update` — 현재 "not implemented" 반환.
+- **Phase 10 SSE 트랜스포트 + idle dispose**: warm 유지 후 5분 idle 해제.
+- **Phase 11 HDBSCAN 업그레이드**: 현재 DBSCAN.
+- **Phase 13 리랭커 재도입**: TEI / Cohere / Jina 중 택1 (현재 철거 상태).
+- **Phase 13 컨테이너 `run` 지원**: 현재 `podman start` (기존 컨테이너 전제). `container.image` 설정 시 `run --name ... -p ...` 자동 생성까지 확장 여지.
+- **Phase 14 vault status language 분포** + `kn vault create` CJK 모델 자동 제안.
 
 ### 알아야 할 핵심 패턴
 
@@ -630,5 +585,4 @@ src/
 - **searchFts**: 내부에서 `buildFtsQuery` 호출함 — 외부에서 중복 호출 금지
 - **프로바이더 팩토리**: `createEmbeddingProvider(vaultConfig)`, `createLLMProvider(vaultConfig)` — vault config의 baseUrl로 Ollama/OpenAI 자동 감지
 - **LLMProvider 인터페이스**: `src/providers/ollama.ts`에 정의, `generate(systemPrompt, userPrompt): Promise<string>`
-- **Sonnet 리뷰 미반영 항목**: LLMProvider를 providers/types.ts로 분리, factory에 explicit provider 필드 추가, options any 타입 정리
-- **루트 파일 정리**: `meta-store.ts`, `vec-store.ts`, `*.test.ts`가 루트에 아직 남아있음 (src/stores/에 복사본 존재). 테스트가 루트 경로에 의존하므로 보존 중
+- **프로바이더 타입**: `src/providers/types.ts`에 `LLMProvider`/`EmbeddingProvider`/`RerankerProvider` 정의, factory는 explicit `provider` 필드로 분기

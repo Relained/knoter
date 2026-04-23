@@ -17,7 +17,7 @@ export function registerSearchCommand(program: Command): void {
     .option("--tag <tag...>", "Filter by tags")
     .option("--after <date>", "Results after date")
     .option("--before <date>", "Results before date")
-    .option("--rerank", "Enable reranking")
+    .option("--lang <lang>", "Filter by language (ko/ja/zh→cjk, en→latin, or cjk/latin)")
     .option("--expand", "Enable query expansion")
     .action(async (query, options, cmd) => {
       try {
@@ -33,6 +33,14 @@ export function registerSearchCommand(program: Command): void {
           vaultName = config.activeVault || "default";
         }
 
+        // Map language codes to buckets
+        let lang = options.lang;
+        if (lang === "ko" || lang === "ja" || lang === "zh") {
+          lang = "cjk";
+        } else if (lang === "en") {
+          lang = "latin";
+        }
+
         const result = await search(vaultRoot, vaultName, query, {
           mode: (options.mode || "hybrid") as SearchMode,
           top: parseInt(options.top) || 10,
@@ -42,7 +50,7 @@ export function registerSearchCommand(program: Command): void {
           tags: options.tag,
           after: options.after,
           before: options.before,
-          rerank: options.rerank,
+          lang,
           expand: options.expand,
         });
 

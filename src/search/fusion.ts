@@ -32,6 +32,7 @@ export interface FusedResult {
     semantic?: number;
     keyword?: number;
     fused: number;
+    rerank?: number;
   };
 }
 

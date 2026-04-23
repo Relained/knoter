@@ -39,7 +39,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.db-shm
 
 # Vault metadata
-.km/
+.kn/
 
 # zvec test index
 test_zvec_index/
+
+.claude/

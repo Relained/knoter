@@ -8,18 +8,18 @@ export interface GlobalConfig {
   vaults: Record<string, { name: string; path: string }>;
 }
 
+export interface ContainerConfig {
+  name: string;
+  runtime?: "podman" | "docker";
+}
+
 export interface VaultConfig {
   embedding: {
     baseUrl?: string;
     apiKey?: string;
     model: string;
+    container?: ContainerConfig;
   };
-  llm: {
-    baseUrl?: string;
-    apiKey?: string;
-    model?: string;
-  };
-  modelProfiles: Record<string, { maxContext: number }>;
   search: {
     fusionAlpha: number;
   };
@@ -41,8 +41,6 @@ const DEFAULT_VAULT_CONFIG: VaultConfig = {
   embedding: {
     model: "nomic-embed-text",
   },
-  llm: {},
-  modelProfiles: {},
   search: {
     fusionAlpha: 0.8,
   },

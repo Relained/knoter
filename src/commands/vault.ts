@@ -17,6 +17,8 @@ import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose, logger } from "../core/logger";
 import { MetaDB } from "../stores/meta-store";
 import { createVaultCollection, type EmbeddingModel } from "../stores/vec-store";
+import { createEmbeddingProvider } from "../providers/factory";
+import { checkEmbeddingHealth } from "../providers/health";
 import type { OutputFormat } from "../core/output";
 
 export function registerVaultCommand(program: Command): void {
@@ -85,8 +87,6 @@ export function registerVaultCommand(program: Command): void {
           embedding: {
             model,
           },
-          llm: {},
-          modelProfiles: {},
           search: {
             fusionAlpha: 0.8,
           },
@@ -286,6 +286,7 @@ export function registerVaultCommand(program: Command): void {
 
   vaultCmd
     .command("status [name]")
+    .option("--check-providers", "Check health of embedding provider")
     .action(async (name, options, cmd) => {
       try {
         const globalOpts = cmd.optsWithGlobals?.() || {};
@@ -313,6 +314,16 @@ export function registerVaultCommand(program: Command): void {
         // Close MetaDB
         meta.close();
 
+        // Check provider health if requested
+        let providerHealth: any = undefined;
+        if (options.checkProviders) {
+          logger.debug("Checking provider health...");
+          const embeddingProvider = createEmbeddingProvider(vaultConfig);
+          const embeddingStatus = await checkEmbeddingHealth(embeddingProvider);
+          providerHealth = { embedding: embeddingStatus };
+          logger.debug(`Provider health: ${JSON.stringify(providerHealth)}`);
+        }
+
         const envelope = success(
           "vault status",
           {
@@ -323,6 +334,7 @@ export function registerVaultCommand(program: Command): void {
               embedding: vaultConfig.embedding,
               preprocessor: vaultConfig.preprocessor,
             },
+            ...(providerHealth && { providerHealth }),
           },
           vaultName
         );

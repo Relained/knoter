@@ -26,9 +26,7 @@ test("schema tables are created", () => {
   expect(names).toContain("chunks_ad");
   expect(names).toContain("chunks_au");
   // v3 additions
-  expect(names).toContain("contexts");
   expect(names).toContain("preprocessors");
-  expect(names).toContain("llm_cache");
 });
 
 // ── Notes CRUD ──────────────────────────────────────────────────────────────

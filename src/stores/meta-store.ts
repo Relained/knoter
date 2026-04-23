@@ -17,6 +17,7 @@ export interface NoteRow {
   created_at: string | null;
   updated_at: string | null;
   indexed_at: string | null;
+  language: string | null;    // "cjk", "latin", "mixed", etc.
 }
 
 export interface NoteInput {
@@ -28,6 +29,7 @@ export interface NoteInput {
   frontmatter?: Record<string, string>;
   createdAt?: Date;
   updatedAt?: Date;
+  language?: string;         // "cjk", "latin", "mixed", etc.
 }
 
 export interface ChunkRow {
@@ -92,23 +94,10 @@ export interface VaultStatus {
   preprocessorAlias: string | null;
 }
 
-export interface ContextRow {
-  vault_id: string;
-  path_prefix: string;
-  description: string;
-}
-
 export interface PreprocessorRow {
   alias: string;
   command: string;
   language: string | null;
-}
-
-export interface LlmCacheRow {
-  cache_key: string;
-  cache_type: string;
-  value: string;
-  created_at: string;
 }
 
 // ─── FTS5 Query Builder ─────────────────────────────────────────────────────
@@ -245,9 +234,17 @@ export class MetaDB {
           vector_sync_status  TEXT NOT NULL DEFAULT 'pending',
           created_at          TEXT,
           updated_at          TEXT,
-          indexed_at          TEXT
+          indexed_at          TEXT,
+          language            TEXT
         )
       `);
+
+      // Migration: add language column if it doesn't exist
+      try {
+        this.db.run("ALTER TABLE notes ADD COLUMN language TEXT");
+      } catch {
+        // Column already exists, ignore error
+      }
       this.db.run(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_vault_path
         ON notes(vault_id, file_path)
@@ -319,16 +316,6 @@ export class MetaDB {
         END
       `);
 
-      // ── Path context descriptions ─────────────────────────────────────────
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS contexts (
-          vault_id    TEXT NOT NULL,
-          path_prefix TEXT NOT NULL,
-          description TEXT NOT NULL,
-          PRIMARY KEY (vault_id, path_prefix)
-        )
-      `);
-
       // ── Preprocessor registry ─────────────────────────────────────────────
       this.db.run(`
         CREATE TABLE IF NOT EXISTS preprocessors (
@@ -336,20 +323,6 @@ export class MetaDB {
           command  TEXT NOT NULL,
           language TEXT
         )
-      `);
-
-      // ── LLM cache (reranker scores, expander outputs) ────────────────────
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS llm_cache (
-          cache_key  TEXT PRIMARY KEY,
-          cache_type TEXT NOT NULL,
-          value      TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        )
-      `);
-      this.db.run(`
-        CREATE INDEX IF NOT EXISTS idx_llm_cache_type
-        ON llm_cache(cache_type)
       `);
     })();
   }
@@ -393,8 +366,8 @@ export class MetaDB {
     const now = new Date().toISOString();
     const fm = note.frontmatter ? JSON.stringify(note.frontmatter) : null;
     this.db.run(
-      `INSERT INTO notes (id, vault_id, file_path, title, file_hash, frontmatter, vector_sync_status, created_at, updated_at, indexed_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      `INSERT INTO notes (id, vault_id, file_path, title, file_hash, frontmatter, vector_sync_status, created_at, updated_at, indexed_at, language)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          file_path          = excluded.file_path,
          title              = excluded.title,
@@ -402,7 +375,8 @@ export class MetaDB {
          frontmatter        = excluded.frontmatter,
          vector_sync_status = 'pending',
          updated_at         = excluded.updated_at,
-         indexed_at         = excluded.indexed_at`,
+         indexed_at         = excluded.indexed_at,
+         language           = excluded.language`,
       [
         note.id,
         note.vaultId,
@@ -413,6 +387,7 @@ export class MetaDB {
         note.createdAt?.toISOString() ?? now,
         note.updatedAt?.toISOString() ?? now,
         now,
+        note.language ?? null,
       ],
     );
   }
@@ -663,43 +638,6 @@ export class MetaDB {
     ).map((r) => ({ ...r, score: normalizeBM25(r.rank) }));
   }
 
-  // ── Context CRUD ──────────────────────────────────────────────────────────
-
-  addContext(vaultId: string, pathPrefix: string, description: string): void {
-    this.db.run(
-      `INSERT INTO contexts (vault_id, path_prefix, description)
-       VALUES (?, ?, ?)
-       ON CONFLICT(vault_id, path_prefix) DO UPDATE SET description = excluded.description`,
-      [vaultId, pathPrefix, description],
-    );
-  }
-
-  removeContext(vaultId: string, pathPrefix: string): void {
-    this.db.run(
-      "DELETE FROM contexts WHERE vault_id = ? AND path_prefix = ?",
-      [vaultId, pathPrefix],
-    );
-  }
-
-  listContexts(vaultId: string): ContextRow[] {
-    return this.db
-      .query("SELECT * FROM contexts WHERE vault_id = ? ORDER BY path_prefix")
-      .all(vaultId) as ContextRow[];
-  }
-
-  /** Find the most specific context matching a file path. */
-  getContextForPath(vaultId: string, filePath: string): string | null {
-    const row = this.db
-      .query(
-        `SELECT description FROM contexts
-         WHERE vault_id = ? AND ? LIKE (path_prefix || '%')
-         ORDER BY length(path_prefix) DESC
-         LIMIT 1`,
-      )
-      .get(vaultId, filePath) as { description: string } | null;
-    return row?.description ?? null;
-  }
-
   // ── Preprocessor Registry ─────────────────────────────────────────────────
 
   registerPreprocessor(alias: string, command: string, language?: string): void {
@@ -726,48 +664,6 @@ export class MetaDB {
     return this.db
       .query("SELECT * FROM preprocessors ORDER BY alias")
       .all() as PreprocessorRow[];
-  }
-
-  // ── LLM Cache ─────────────────────────────────────────────────────────────
-
-  getLlmCache(cacheKey: string): string | null {
-    const row = this.db
-      .query("SELECT value FROM llm_cache WHERE cache_key = ?")
-      .get(cacheKey) as { value: string } | null;
-    return row?.value ?? null;
-  }
-
-  setLlmCache(cacheKey: string, cacheType: string, value: string): void {
-    const now = new Date().toISOString();
-    this.db.run(
-      `INSERT INTO llm_cache (cache_key, cache_type, value, created_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(cache_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at`,
-      [cacheKey, cacheType, value, now],
-    );
-  }
-
-  getLlmCacheBatch(cacheKeys: string[]): Map<string, string> {
-    const result = new Map<string, string>();
-    if (cacheKeys.length === 0) return result;
-    const placeholders = cacheKeys.map(() => "?").join(",");
-    const rows = this.db
-      .query(
-        `SELECT cache_key, value FROM llm_cache WHERE cache_key IN (${placeholders})`,
-      )
-      .all(...cacheKeys) as Array<{ cache_key: string; value: string }>;
-    for (const row of rows) {
-      result.set(row.cache_key, row.value);
-    }
-    return result;
-  }
-
-  deleteLlmCache(cacheType?: string): void {
-    if (cacheType) {
-      this.db.run("DELETE FROM llm_cache WHERE cache_type = ?", [cacheType]);
-    } else {
-      this.db.run("DELETE FROM llm_cache");
-    }
   }
 
   // ── Vault Status ──────────────────────────────────────────────────────────
@@ -798,6 +694,88 @@ export class MetaDB {
          FROM note_stats ns, chunk_stats cs, tag_stats ts, pending_stats ps`,
       )
       .get(vaultId) as VaultStatus;
+  }
+
+  // ── FTS5 Tokenizer Management ────────────────────────────────────────────
+
+  /**
+   * Get the current FTS5 tokenizer for chunks_fts.
+   * Parses the CREATE VIRTUAL TABLE statement to extract tokenize="...".
+   * Returns the tokenizer string (e.g. "trigram", "unicode61", etc.).
+   * Returns "trigram" (the default) if not found or not yet created.
+   */
+  getFtsTokenizer(): string {
+    try {
+      const row = this.db
+        .query(
+          `SELECT sql FROM sqlite_master WHERE type='table' AND name='chunks_fts'`
+        )
+        .get() as { sql: string } | null;
+
+      if (!row || !row.sql) {
+        return "trigram";
+      }
+
+      const match = row.sql.match(/tokenize="([^"]+)"/);
+      return match?.[1] ?? "trigram";
+    } catch {
+      return "trigram";
+    }
+  }
+
+  /**
+   * Rebuild chunks_fts with a new tokenizer.
+   * Validates tokenizer string to prevent SQL injection.
+   * Drops the old FTS table and its triggers, recreates with new tokenizer,
+   * then runs FTS rebuild.
+   */
+  rebuildFtsWithTokenizer(tokenizer: string): void {
+    // Validate tokenizer: alphanumeric, underscore, space only
+    if (!/^[a-zA-Z0-9_ ]+$/.test(tokenizer)) {
+      throw new Error(
+        `Invalid tokenizer: "${tokenizer}". Only alphanumeric, underscore, and space allowed.`
+      );
+    }
+
+    this.db.transaction(() => {
+      // Drop triggers (must drop before table)
+      this.db.run("DROP TRIGGER IF EXISTS chunks_ai");
+      this.db.run("DROP TRIGGER IF EXISTS chunks_ad");
+      this.db.run("DROP TRIGGER IF EXISTS chunks_au");
+
+      // Drop the FTS table
+      this.db.run("DROP TABLE IF EXISTS chunks_fts");
+
+      // Recreate with new tokenizer
+      this.db.run(`
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(
+          content, content=chunks, content_rowid=rowid, tokenize="${tokenizer}"
+        )
+      `);
+
+      // Recreate triggers
+      this.db.run(`
+        CREATE TRIGGER chunks_ai AFTER INSERT ON chunks BEGIN
+          INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+        END
+      `);
+      this.db.run(`
+        CREATE TRIGGER chunks_ad AFTER DELETE ON chunks BEGIN
+          INSERT INTO chunks_fts(chunks_fts, rowid, content)
+            VALUES('delete', old.rowid, old.content);
+        END
+      `);
+      this.db.run(`
+        CREATE TRIGGER chunks_au AFTER UPDATE ON chunks BEGIN
+          INSERT INTO chunks_fts(chunks_fts, rowid, content)
+            VALUES('delete', old.rowid, old.content);
+          INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+        END
+      `);
+
+      // Rebuild FTS index
+      this.db.run("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')");
+    })();
   }
 
   // ── Sync / Reindex ────────────────────────────────────────────────────────

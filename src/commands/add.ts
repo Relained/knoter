@@ -4,7 +4,7 @@ import { readdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import ora from "ora";
 import { parseNote } from "../pipeline/parser";
-import { chunkDocument } from "../pipeline/chunker";
+import { chunkDocument, detectLanguage } from "../pipeline/chunker";
 import { hashContent } from "../pipeline/hasher";
 import { Embedder, formatForEmbedding } from "../pipeline/embedder";
 import { createEmbeddingProvider } from "../providers/factory";
@@ -222,15 +222,23 @@ async function processAdd(
 
         // Link chunks
         for (let i = 0; i < chunkInserts.length; i++) {
-          if (i > 0) chunkInserts[i].prevChunkId = chunkInserts[i - 1].id;
-          if (i < chunkInserts.length - 1) chunkInserts[i].nextChunkId = chunkInserts[i + 1].id;
+          const curr = chunkInserts[i];
+          if (!curr) continue;
+          if (i > 0) {
+            const prev = chunkInserts[i - 1];
+            if (prev) curr.prevChunkId = prev.id;
+          }
+          if (i < chunkInserts.length - 1) {
+            const next = chunkInserts[i + 1];
+            if (next) curr.nextChunkId = next.id;
+          }
         }
 
         // Merge tags
         const allTags = new Set([...parsed.tags, ...(options.tag || [])]);
         const tagList = Array.from(allTags).map(tag => ({
           tag,
-          source: options.tag?.includes(tag) ? "manual" : "frontmatter",
+          source: (options.tag?.includes(tag) ? "manual" : "frontmatter") as "manual" | "frontmatter",
         }));
 
         // If dry-run, just log and skip persistence
@@ -247,6 +255,9 @@ async function processAdd(
           continue;
         }
 
+        // Detect language from content
+        const language = detectLanguage(parsed.content);
+
         // Write metadata (with pending status)
         const now = new Date();
         metaDb.reindexNote(
@@ -259,6 +270,7 @@ async function processAdd(
             frontmatter: parsed.frontmatter as Record<string, string>,
             createdAt: now,
             updatedAt: now,
+            language,
           },
           chunkInserts,
           tagList
@@ -267,6 +279,14 @@ async function processAdd(
         // Format and embed chunks
         const textsToEmbed = chunkInserts.map((chunk, idx) => {
           const originalChunk = chunks[idx];
+          if (!originalChunk) {
+            return formatForEmbedding({
+              docTitle: parsed.title,
+              headingPath: [],
+              tags: Array.from(allTags),
+              content: chunk.content,
+            });
+          }
           return formatForEmbedding({
             docTitle: parsed.title,
             headingPath: originalChunk.headingPath,
@@ -281,6 +301,10 @@ async function processAdd(
 
         // Build and upsert vector documents
         const zvecDocs = chunkInserts.map((chunk, idx) => {
+          const embedding = embeddings[idx];
+          if (!embedding) {
+            throw new Error(`No embedding for chunk ${idx}`);
+          }
           const chunkInput: ChunkInput = {
             id: chunk.id,
             noteId: chunk.noteId,
@@ -296,7 +320,7 @@ async function processAdd(
             docTitle: parsed.title,
             tags: Array.from(allTags),
             createdAt: now,
-            embedding: embeddings[idx],
+            embedding: embedding,
           };
           return toZVecDoc(chunkInput);
         });
