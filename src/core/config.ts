@@ -29,7 +29,7 @@ export interface VaultConfig {
   } | null;
 }
 
-const KN_DIR = join(homedir(), ".kn");
+const KN_DIR = process.env.KN_HOME || join(homedir(), ".kn");
 const GLOBAL_CONFIG_PATH = join(KN_DIR, "config.json");
 
 const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {

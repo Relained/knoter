@@ -45,3 +45,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 test_zvec_index/
 
 .claude/
+testdata/
+
+# Test environment
+.test-vault/
+.test-kn-home/

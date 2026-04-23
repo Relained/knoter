@@ -14,6 +14,57 @@ export function isConnectionError(err: unknown): boolean {
   );
 }
 
+export interface TEICreateSpec extends ContainerSpec {
+  image: string;
+  hostPort: number;
+  modelId: string;
+  volumeName?: string;
+}
+
+async function containerExists(runtime: string, name: string): Promise<boolean> {
+  const proc = Bun.spawn([runtime, "container", "exists", name], {
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  return (await proc.exited) === 0;
+}
+
+/**
+ * Create a TEI container if one with the given name does not exist.
+ * Triggers an image pull on first invocation. Idempotent.
+ */
+export async function ensureTEIContainerCreated(spec: TEICreateSpec): Promise<boolean> {
+  const runtime = spec.runtime ?? "podman";
+  if (await containerExists(runtime, spec.name)) {
+    logger.debug(`Container ${spec.name} already exists — skipping create`);
+    return false;
+  }
+
+  const volume = spec.volumeName ?? `${spec.name}-models`;
+  const args = [
+    "create",
+    "--name", spec.name,
+    "-p", `${spec.hostPort}:80`,
+    "-v", `${volume}:/data`,
+    spec.image,
+    "--model-id", spec.modelId,
+  ];
+
+  logger.info(`Creating ${runtime} container ${spec.name} (image: ${spec.image}, model: ${spec.modelId})`);
+  logger.info("This may take several minutes on first run while the image is pulled.");
+
+  const proc = Bun.spawn([runtime, ...args], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    throw new Error(`${runtime} create failed with exit code ${exitCode}`);
+  }
+  logger.info(`Container ${spec.name} created`);
+  return true;
+}
+
 export async function tryStartContainer(spec: ContainerSpec): Promise<boolean> {
   const runtime = spec.runtime ?? "podman";
   logger.info(`Attempting ${runtime} start ${spec.name}`);

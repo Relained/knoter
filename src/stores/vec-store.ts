@@ -17,12 +17,13 @@ import type {
 import type { FtsResult } from "./meta-store";
 
 // ─── Embedding model dimensions ───────────────────────────────────────────────
-export const EMBEDDING_DIMENSIONS = {
+export const EMBEDDING_DIMENSIONS: Record<string, number> = {
   "nomic-embed-text": 768,
   "bge-m3": 1024,
-} as const;
+  "dragonkue/snowflake-arctic-embed-l-v2.0-ko": 1024,
+};
 
-export type EmbeddingModel = keyof typeof EMBEDDING_DIMENSIONS;
+export type EmbeddingModel = string;
 
 // ─── Score fusion defaults ──────────────────────────────────────────────────
 /** Weight for vector channel in linear fusion (BEIR-tuned default). */

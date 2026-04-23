@@ -16,7 +16,8 @@ import { success, error, render } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose, logger } from "../core/logger";
 import { MetaDB } from "../stores/meta-store";
-import { createVaultCollection, type EmbeddingModel } from "../stores/vec-store";
+import { createVaultCollection, EMBEDDING_DIMENSIONS, type EmbeddingModel } from "../stores/vec-store";
+import { ensureTEIContainerCreated } from "../core/container";
 import { createEmbeddingProvider } from "../providers/factory";
 import { checkEmbeddingHealth } from "../providers/health";
 import type { OutputFormat } from "../core/output";
@@ -29,7 +30,13 @@ export function registerVaultCommand(program: Command): void {
   vaultCmd
     .command("create <name>")
     .option("--path <dir>", "Vault directory path")
-    .option("--model <model>", "Embedding model to use")
+    .option("--model <model>", "Embedding model id (HuggingFace id for TEI, or preset)")
+    .option("--dim <n>", "Embedding dimension (required for unknown models)")
+    .option("--no-tei", "Skip TEI container creation (bring your own baseUrl/apiKey)")
+    .option("--tei-image <image>", "TEI container image", "ghcr.io/huggingface/text-embeddings-inference:cpu-latest")
+    .option("--tei-port <port>", "Host port mapped to TEI :80", "8080")
+    .option("--container-name <name>", "Podman/Docker container name", "kn-tei")
+    .option("--runtime <runtime>", "Container runtime (podman|docker)", "podman")
     .action(async (name, options, cmd) => {
       try {
         const globalOpts = cmd.optsWithGlobals?.() || {};
@@ -41,16 +48,19 @@ export function registerVaultCommand(program: Command): void {
         // Resolve vault path: use --path or default to current directory
         const vaultPath = options.path ? options.path : join(process.cwd(), name);
         const modelStr = options.model || "nomic-embed-text";
+        const model = modelStr as EmbeddingModel;
 
-        // Validate that the model is a supported embedding model
-        const supportedModels = ["nomic-embed-text", "bge-m3"];
-        if (!supportedModels.includes(modelStr)) {
+        // Resolve dimension: explicit --dim overrides the preset table.
+        const presetDim = EMBEDDING_DIMENSIONS[modelStr];
+        const dim = options.dim ? parseInt(options.dim, 10) : presetDim;
+        if (!dim || isNaN(dim)) {
           throw new KnError(
             ErrorCode.CONFIG_INVALID,
-            `Unsupported embedding model: ${modelStr}. Supported: ${supportedModels.join(", ")}`
+            `Unknown embedding dimension for model "${modelStr}". Pass --dim <n> explicitly.`
           );
         }
-        const model = modelStr as EmbeddingModel;
+        // Register so downstream createVaultCollection can look it up.
+        EMBEDDING_DIMENSIONS[modelStr] = dim;
 
         logger.debug(`Vault path: ${vaultPath}`);
         logger.debug(`Embedding model: ${model}`);
@@ -82,10 +92,34 @@ export function registerVaultCommand(program: Command): void {
         await registerVault(name, vaultPath);
         logger.info(`Registered vault in global config`);
 
-        // Save vault config with chosen model
+        // Resolve runtime + TEI settings.
+        const useTei = options.tei !== false;
+        const runtime = (options.runtime as "podman" | "docker") || "podman";
+        const teiPort = parseInt(options.teiPort || "8080", 10);
+        const containerName = options.containerName || "kn-tei";
+
+        // If TEI path is chosen, create the container up-front so the image is
+        // pulled at vault-create time rather than on the first kn add.
+        if (useTei) {
+          await ensureTEIContainerCreated({
+            name: containerName,
+            runtime,
+            image: options.teiImage,
+            hostPort: teiPort,
+            modelId: modelStr,
+          });
+        }
+
+        // Save vault config with chosen model (+ TEI wiring if applicable)
         const defaultVaultConfig = {
           embedding: {
-            model,
+            model: modelStr,
+            ...(useTei
+              ? {
+                  baseUrl: `http://localhost:${teiPort}`,
+                  container: { name: containerName, runtime },
+                }
+              : {}),
           },
           search: {
             fusionAlpha: 0.8,
@@ -103,7 +137,11 @@ export function registerVaultCommand(program: Command): void {
           {
             name,
             path: vaultPath,
-            model,
+            model: modelStr,
+            dim,
+            tei: useTei
+              ? { container: containerName, port: teiPort, image: options.teiImage }
+              : null,
           },
           name
         );
