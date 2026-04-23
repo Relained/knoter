@@ -15,9 +15,9 @@ import {
   isBM25StrongSignal,
   deduplicateAdjacentChunks,
   EMBEDDING_DIMENSIONS,
-} from "../vec-store";
-import type { SearchResult } from "../vec-store";
-import type { FtsResult } from "../meta-store";
+} from "../src/stores/vec-store";
+import type { SearchResult } from "../src/stores/vec-store";
+import type { FtsResult } from "../src/stores/meta-store";
 
 const TEST_INDEX_DIR = "./test_zvec_index";
 const DIM = EMBEDDING_DIMENSIONS["nomic-embed-text"]; // 768

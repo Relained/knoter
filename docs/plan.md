@@ -546,6 +546,17 @@ Phase 1 (백본)
 | 2026-04-16 | 8 | kn ask RAG 파이프라인: search→expand→assemble→LLM→cache | 완료 |
 | 2026-04-16 | 13 | AI 백엔드: Ollama/OpenAI 프로바이더 + factory + placeholder 교체 | 완료 |
 | 2026-04-16 | 13 | 리뷰: apiKey 빈 문자열 검증, 토큰 예산 continue, 캐시키 mutation 수정 | 완료 |
+| 2026-04-23 | 13 | providers/types.ts 분리 + Anthropic 프로바이더 + factory explicit provider field + health.ts + vault status --check-providers + ask routing local/cloud/auto | 완료 |
+| 2026-04-23 | 14 | chunker CJK 감지 (`detectCJKRatio`/`detectLanguage`) + CJK 비율>0.3 시 청크 크기 ~60%로 축소 + codePointAt 사용 (supplementary plane) | 완료 |
+| 2026-04-23 | 9 | preprocessor 구현: `PreprocessorRunner` stdin/stdout JSON 라인 프로토콜, FTS5 tokenizer 전환(`rebuildFtsWithTokenizer`), add/list/bind/remove/install 커맨드 | 완료 |
+| 2026-04-23 | 9 | 리뷰 수정: writeQueue rejection poison, stderr 미드레인 데드락, bind rollback, Subprocess 타입 | 완료 |
+| 2026-04-23 | 12 | schedule 구현: `src/core/scheduler.ts` systemd user timer + launchd plist, enable/disable/status/run-now, `~/.kn/schedule.json` 상태 | 완료 |
+| 2026-04-23 | 12 | 리뷰 수정: POSIX single-quote shell 이스케이핑 (JSON.stringify 인젝션), NaN 날짜 크래시 가드 | 완료 |
+| 2026-04-23 | 11 | DBSCAN 인라인 구현 (`src/cluster/dbscan.ts`) + `kn cluster` 커맨드 (--epsilon, --min-cluster, --suggest-merge, --apply) | 완료 |
+| 2026-04-23 | 13 | Ollama 리랭커 프로바이더 + factory `createRerankerProvider` + `kn search --rerank` + 15s 타임아웃 + rerank pool ≫ top (recovery 가능) | 완료 |
+| 2026-04-23 | 14 | Intl.Segmenter 문장경계 boost, `detectCJKLocale`, `notes.language` 컬럼 (ALTER 마이그레이션), `kn add`에서 언어 기록, `kn search --lang` 필터 | 완료 |
+| 2026-04-23 | 10 | MCP serve: stdio/http 트랜스포트, `createMcpServer` factory, kn_search/kn_get/kn_ask/kn_vault_status/kn_context 도구, --daemon, `serve stop` | 완료 |
+| 2026-04-23 | 10 | 리뷰 수정: stdio stdout 오염 (logger→stderr), --daemon 재귀 fork, tool 인자 옵셔널 필드 | 완료 |
 
 ---
 
@@ -553,9 +564,9 @@ Phase 1 (백본)
 
 ### 현재 상태 (2026-04-16 기준)
 
-**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7, 8, 13 (부분)
-**브랜치**: `dev/cli` (커밋 11개+, main 대비)
-**테스트**: 56 pass / 0 fail (기존 meta-store, vec-store 테스트)
+**완료된 Phase**: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 (전체 파이프라인 동작)
+**브랜치**: `dev/cli`
+**테스트**: 56 pass / 0 fail
 
 ### 구현 완료 파일 (31개+ .ts)
 
@@ -600,14 +611,14 @@ src/
     preprocessor.ts         # 🔲 스텁만 존재
 ```
 
-### 미완료 Phase 우선순위
+### 잔여 작업 (후순위)
 
-1. **Phase 9 `kn preprocessor`** — CJK FTS5 품질. 한국어 사용 시 필수.
-2. **Phase 10 `kn serve`** — MCP 서버. `@modelcontextprotocol/sdk` 설치 필요.
-3. **Phase 11 `kn cluster`** — HDBSCAN. 외부 라이브러리 선택 필요.
-4. **Phase 12 `kn schedule`** — launchd/cron. 다른 커맨드 안정화 후.
-5. **Phase 13 미완료 항목** — Anthropic 프로바이더, 리랭커, 라우팅, 헬스체크.
-6. **Phase 14 CJK 최적화** — Intl.Segmenter 청킹, 언어 감지, FTS5 토크나이저.
+- **Phase 10 MCP 도구 확장**: `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update` — 현재 등록되었지만 "not implemented" 반환. 필요 시 실제 파이프라인 연결.
+- **Phase 13 리랭커 확장**: Cohere/Jina API 지원 (드문 셋업, 필요 시).
+- **Phase 13 라우팅 폴백**: `--routing auto` 시 로컬 실패 → 클라우드 자동 전환 (현재는 검증만).
+- **Phase 9 preprocessor 프리셋**: `install <language>` 실제 번들 (한국어 mecab 등).
+- **Phase 9 인덱스측 preprocessor**: 청크 insert 시 FTS5 전처리 적용.
+- **Phase 11 HDBSCAN 업그레이드**: 현재 DBSCAN, 필요 시 계층적 HDBSCAN으로 교체.
 
 ### 알아야 할 핵심 패턴
 

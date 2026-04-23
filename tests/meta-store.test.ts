@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test";
-import { MetaDB } from "../meta-store";
-import type { NoteInput, ChunkInsert } from "../meta-store";
+import { MetaDB } from "../src/stores/meta-store";
+import type { NoteInput, ChunkInsert } from "../src/stores/meta-store";
 
 const db = MetaDB.openInMemory();
 
