@@ -33,8 +33,10 @@ export function registerVaultCommand(program: Command): void {
     .option("--model <model>", "Embedding model id (HuggingFace id for TEI, or preset)")
     .option("--dim <n>", "Embedding dimension (required for unknown models)")
     .option("--no-tei", "Skip TEI container creation (bring your own baseUrl/apiKey)")
-    .option("--tei-image <image>", "TEI container image", "ghcr.io/huggingface/text-embeddings-inference:cpu-latest")
+    .option("--tei-image <image>", "TEI container image (defaults by --tei-gpu)")
     .option("--tei-port <port>", "Host port mapped to TEI :80", "8080")
+    .option("--tei-gpu", "Use CUDA TEI image + pass nvidia.com/gpu=all via CDI")
+    .option("--gpu-device <spec>", "Override CDI device spec", "nvidia.com/gpu=all")
     .option("--container-name <name>", "Podman/Docker container name", "kn-tei")
     .option("--runtime <runtime>", "Container runtime (podman|docker)", "podman")
     .action(async (name, options, cmd) => {
@@ -101,12 +103,19 @@ export function registerVaultCommand(program: Command): void {
         // If TEI path is chosen, create the container up-front so the image is
         // pulled at vault-create time rather than on the first kn add.
         if (useTei) {
+          const useGpu = !!options.teiGpu;
+          const teiImage =
+            options.teiImage ||
+            (useGpu
+              ? "ghcr.io/huggingface/text-embeddings-inference:latest"
+              : "ghcr.io/huggingface/text-embeddings-inference:cpu-latest");
           await ensureTEIContainerCreated({
             name: containerName,
             runtime,
-            image: options.teiImage,
+            image: teiImage,
             hostPort: teiPort,
             modelId: modelStr,
+            gpuDevice: useGpu ? options.gpuDevice : undefined,
           });
         }
 
@@ -116,7 +125,7 @@ export function registerVaultCommand(program: Command): void {
             model: modelStr,
             ...(useTei
               ? {
-                  baseUrl: `http://localhost:${teiPort}`,
+                  baseUrl: `http://127.0.0.1:${teiPort}`,
                   container: { name: containerName, runtime },
                 }
               : {}),
@@ -140,7 +149,11 @@ export function registerVaultCommand(program: Command): void {
             model: modelStr,
             dim,
             tei: useTei
-              ? { container: containerName, port: teiPort, image: options.teiImage }
+              ? {
+                  container: containerName,
+                  port: teiPort,
+                  gpu: !!options.teiGpu,
+                }
               : null,
           },
           name

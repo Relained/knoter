@@ -19,8 +19,10 @@
 #   KN_EMBED_CONTAINER   default kn-tei  (podman container name for lazy-start)
 #   KN_EMBED_RUNTIME     default podman  (podman|docker)
 #   KN_TEI_IMAGE         default ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+#                        (auto-switched to :latest when KN_TEI_GPU=1 if unset)
 #   KN_TEI_PORT          default 8080    (host port mapped to container :80)
 #   KN_TEI_VOLUME        default kn-tei-models  (named volume for HF model cache)
+#   KN_TEI_GPU           default 0       (set to 1 for CUDA TEI + nvidia.com/gpu=all CDI)
 
 set -euo pipefail
 
@@ -36,7 +38,12 @@ EMBED_MODEL="${KN_EMBED_MODEL:-dragonkue/snowflake-arctic-embed-l-v2.0-ko}"
 EMBED_API_KEY="${KN_EMBED_API_KEY:-}"
 EMBED_CONTAINER="${KN_EMBED_CONTAINER:-kn-tei}"
 EMBED_RUNTIME="${KN_EMBED_RUNTIME:-podman}"
-TEI_IMAGE="${KN_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-latest}"
+TEI_GPU="${KN_TEI_GPU:-0}"
+if [[ "$TEI_GPU" == "1" ]]; then
+  TEI_IMAGE="${KN_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:latest}"
+else
+  TEI_IMAGE="${KN_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-latest}"
+fi
 TEI_PORT="${KN_TEI_PORT:-8080}"
 TEI_VOLUME="${KN_TEI_VOLUME:-kn-tei-models}"
 
@@ -81,10 +88,16 @@ tei_install() {
   echo "    model:  $EMBED_MODEL"
   echo "    port:   $TEI_PORT → 80"
   echo "    volume: $TEI_VOLUME → /data"
+  local gpu_args=()
+  if [[ "$TEI_GPU" == "1" ]]; then
+    gpu_args=(--device nvidia.com/gpu=all)
+    echo "    gpu:    nvidia.com/gpu=all"
+  fi
   "$EMBED_RUNTIME" create \
     --name "$EMBED_CONTAINER" \
     -p "$TEI_PORT:80" \
     -v "$TEI_VOLUME:/data" \
+    "${gpu_args[@]}" \
     "$TEI_IMAGE" \
     --model-id "$EMBED_MODEL"
 
@@ -113,13 +126,18 @@ setup() {
 
   echo "→ creating test vault at $VAULT_PATH (TEI container auto-created if missing)"
   mkdir -p "$VAULT_PATH"
+  local gpu_flag=()
+  if [[ "$TEI_GPU" == "1" ]]; then
+    gpu_flag=(--tei-gpu)
+  fi
   run_kn vault create "$VAULT_NAME" \
     --path "$VAULT_PATH" \
     --model "$EMBED_MODEL" \
     --tei-image "$TEI_IMAGE" \
     --tei-port "$TEI_PORT" \
     --container-name "$EMBED_CONTAINER" \
-    --runtime "$EMBED_RUNTIME"
+    --runtime "$EMBED_RUNTIME" \
+    "${gpu_flag[@]}"
 
   echo "→ indexing testdata/"
   run_kn add testdata/ --recursive --vault "$VAULT_NAME"

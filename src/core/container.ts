@@ -19,6 +19,8 @@ export interface TEICreateSpec extends ContainerSpec {
   hostPort: number;
   modelId: string;
   volumeName?: string;
+  /** CDI device spec, e.g. "nvidia.com/gpu=all". Omit for CPU-only. */
+  gpuDevice?: string;
 }
 
 async function containerExists(runtime: string, name: string): Promise<boolean> {
@@ -46,11 +48,15 @@ export async function ensureTEIContainerCreated(spec: TEICreateSpec): Promise<bo
     "--name", spec.name,
     "-p", `${spec.hostPort}:80`,
     "-v", `${volume}:/data`,
-    spec.image,
-    "--model-id", spec.modelId,
   ];
+  if (spec.gpuDevice) {
+    args.push("--device", spec.gpuDevice);
+  }
+  args.push(spec.image, "--model-id", spec.modelId);
 
-  logger.info(`Creating ${runtime} container ${spec.name} (image: ${spec.image}, model: ${spec.modelId})`);
+  logger.info(
+    `Creating ${runtime} container ${spec.name} (image: ${spec.image}, model: ${spec.modelId}${spec.gpuDevice ? `, gpu: ${spec.gpuDevice}` : ""})`
+  );
   logger.info("This may take several minutes on first run while the image is pulled.");
 
   const proc = Bun.spawn([runtime, ...args], {
