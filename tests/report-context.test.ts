@@ -115,6 +115,42 @@ async function createFixture(): Promise<{
       language: "mixed",
     });
 
+    metaDb.upsertNote({
+      id: "note_prev_rewritten_1",
+      vaultId: vaultName,
+      filePath: "rewritten/2026-05-07/daily.md",
+      title: "Previous rewritten daily note",
+      fileHash: "hash-prev-rewritten-1",
+      docDate: "2026-05-07",
+      layer: "rewritten",
+      kind: "daily",
+      language: "mixed",
+    });
+
+    metaDb.upsertNote({
+      id: "note_prev_source_1",
+      vaultId: vaultName,
+      filePath: "sources/2026-05-03/raw-note.md",
+      title: "Previous source note",
+      fileHash: "hash-prev-source-1",
+      docDate: "2026-05-03",
+      layer: "source",
+      kind: "daily-source",
+      language: "mixed",
+    });
+
+    metaDb.upsertNote({
+      id: "note_prev_artifact_1",
+      vaultId: vaultName,
+      filePath: "artifacts/2026-05-06/daily-report.md",
+      title: "Previous artifact note",
+      fileHash: "hash-prev-artifact-1",
+      docDate: "2026-05-06",
+      layer: "artifact",
+      kind: "daily-report",
+      language: "mixed",
+    });
+
     metaDb.insertChunks([
       {
         id: "chunk_source_1",
@@ -149,11 +185,45 @@ async function createFixture(): Promise<{
         tokenCount: 15,
         seqIndex: 0,
       },
+      {
+        id: "chunk_prev_rewritten_1",
+        noteId: "note_prev_rewritten_1",
+        heading: "어제",
+        content:
+          "2026-05-07 task todo keep open tasks and workout continuity",
+        offsetStart: 0,
+        offsetEnd: 90,
+        tokenCount: 16,
+        seqIndex: 0,
+      },
+      {
+        id: "chunk_prev_source_1",
+        noteId: "note_prev_source_1",
+        heading: "source",
+        content: "2026-05-03 source note area llm-wiki follow-up",
+        offsetStart: 0,
+        offsetEnd: 68,
+        tokenCount: 12,
+        seqIndex: 0,
+      },
+      {
+        id: "chunk_prev_artifact_1",
+        noteId: "note_prev_artifact_1",
+        heading: "artifact",
+        content: "2026-05-06 artifact generated summary",
+        offsetStart: 0,
+        offsetEnd: 50,
+        tokenCount: 8,
+        seqIndex: 0,
+      },
     ]);
 
     metaDb.markSynced("note_source_1");
     metaDb.markSynced("note_rewritten_1");
     metaDb.markSynced("note_artifact_1");
+    metaDb.markSynced("note_prev_rewritten_1");
+    metaDb.markSynced("note_prev_source_1");
+    metaDb.markSynced("note_prev_artifact_1");
 
     metaDb.addNoteSignal({
       noteId: "note_rewritten_1",
@@ -169,6 +239,38 @@ async function createFixture(): Promise<{
       kind: "workout",
       key: "pushup",
       value: { name: "pushup", count: 30, sets: 3 },
+      source: "fixture",
+    });
+    metaDb.addNoteSignal({
+      noteId: "note_prev_rewritten_1",
+      chunkId: "chunk_prev_rewritten_1",
+      kind: "task",
+      key: "open",
+      value: { text: "carry unfinished task", status: "open" },
+      source: "fixture",
+    });
+    metaDb.addNoteSignal({
+      noteId: "note_prev_rewritten_1",
+      chunkId: "chunk_prev_rewritten_1",
+      kind: "workout",
+      key: "run",
+      value: { name: "run", distanceKm: 5 },
+      source: "fixture",
+    });
+    metaDb.addNoteSignal({
+      noteId: "note_prev_source_1",
+      chunkId: "chunk_prev_source_1",
+      kind: "area",
+      key: "llm-wiki",
+      value: { area: "llm-wiki", status: "active" },
+      source: "fixture",
+    });
+    metaDb.addNoteSignal({
+      noteId: "note_prev_artifact_1",
+      chunkId: "chunk_prev_artifact_1",
+      kind: "task",
+      key: "artifact-task",
+      value: { text: "artifact-only task", status: "open" },
       source: "fixture",
     });
   } finally {
@@ -288,6 +390,32 @@ describe("report context command", () => {
         }),
       );
 
+      expect(envelope.data.continuity).toEqual(
+        expect.objectContaining({
+          windowDays: 7,
+          fromDate: "2026-05-01",
+          toDate: "2026-05-07",
+        }),
+      );
+      const continuityNotes = envelope.data.continuity.notes as Array<any>;
+      expect(continuityNotes.map((n) => n.docDate)).toEqual([
+        "2026-05-07",
+      ]);
+      expect(
+        continuityNotes.some((n) => n.filePath === "sources/2026-05-03/raw-note.md"),
+      ).toBe(false);
+      expect(
+        continuityNotes.some((n) => n.filePath === "artifacts/2026-05-06/daily-report.md"),
+      ).toBe(false);
+      expect(envelope.data.continuity.signals.tasks.length).toBe(1);
+      expect(envelope.data.continuity.signals.workouts.length).toBe(1);
+      expect(envelope.data.continuity.signals.areas.length).toBe(0);
+      expect(
+        envelope.data.continuity.signals.all.some(
+          (s: any) => s.note?.layer === "artifact",
+        ),
+      ).toBe(false);
+
       expect(envelope.data.retrieval.backend).toBe("fts");
       const taskResults = envelope.data.retrieval.groups.tasks.results as Array<any>;
       expect(taskResults.length).toBeGreaterThan(0);
@@ -342,6 +470,19 @@ describe("report context command", () => {
       const dailyPaths = (envelope.data.dailyNotes as Array<any>).map((n) => n.filePath);
       expect(dailyPaths).toContain(ARTIFACT_PATH);
 
+      const continuityNotes = envelope.data.continuity.notes as Array<any>;
+      expect(
+        continuityNotes.some((n) => n.filePath === "sources/2026-05-03/raw-note.md"),
+      ).toBe(false);
+      expect(
+        continuityNotes.some((n) => n.filePath === "artifacts/2026-05-06/daily-report.md"),
+      ).toBe(true);
+      expect(
+        envelope.data.continuity.signals.all.some(
+          (s: any) => s.note?.layer === "artifact",
+        ),
+      ).toBe(true);
+
       const allRetrievalRows = flattenRetrievalRows(envelope);
       expect(
         allRetrievalRows.some(
@@ -383,7 +524,7 @@ describe("report context command", () => {
     }
   });
 
-  test("--layer artifact retrieval includes artifact rows without include-artifacts", async () => {
+  test("--layer artifact retrieval requires include-artifacts", async () => {
     const fixture = await createFixture();
     try {
       const result = await runCli(
@@ -403,11 +544,38 @@ describe("report context command", () => {
       expect(result.code).toBe(0);
       const envelope = JSON.parse(result.stdout);
       const rows = flattenRetrievalRows(envelope);
-      expect(rows.length).toBeGreaterThan(0);
-      expect(rows.every((row: any) => row.note?.layer === "artifact")).toBe(true);
+      expect(rows.length).toBe(0);
 
       const dailyPaths = (envelope.data.dailyNotes as Array<any>).map((n) => n.filePath);
       expect(dailyPaths).not.toContain(ARTIFACT_PATH);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test("--layer artifact --include-artifacts retrieves artifact rows", async () => {
+    const fixture = await createFixture();
+    try {
+      const result = await runCli(
+        [
+          "--format",
+          "json",
+          "report",
+          "context",
+          "--date",
+          TARGET_DATE,
+          "--layer",
+          "artifact",
+          "--include-artifacts",
+        ],
+        { KN_HOME: fixture.knHome },
+      );
+
+      expect(result.code).toBe(0);
+      const envelope = JSON.parse(result.stdout);
+      const rows = flattenRetrievalRows(envelope);
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((row: any) => row.note?.layer === "artifact")).toBe(true);
     } finally {
       fixture.cleanup();
     }

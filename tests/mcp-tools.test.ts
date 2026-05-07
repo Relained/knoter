@@ -180,7 +180,7 @@ describe("mcp payload helpers", () => {
     }
   });
 
-  test("shared report-context builder excludes artifacts by default and returns artifact rows when layer is artifact", async () => {
+  test("shared report-context builder requires includeArtifacts for artifact retrieval", async () => {
     const fixture = await createFixture();
     const metaDb = new MetaDB(fixture.vaultRoot);
     try {
@@ -219,8 +219,27 @@ describe("mcp payload helpers", () => {
 
       const groups = (artifactBundle.retrieval as any).groups as Record<string, any>;
       const rows = Object.values(groups).flatMap((group: any) => group.results as Array<any>);
-      expect(rows.length).toBeGreaterThan(0);
-      expect(rows.every((row) => row.note?.layer === "artifact")).toBe(true);
+      expect(rows.length).toBe(0);
+
+      const includedArtifactBundle = await buildReportContextBundle({
+        metaDb,
+        vaultName: "work",
+        date: TARGET_DATE,
+        layer: "artifact",
+        top: 20,
+        includeArtifacts: true,
+        templateOverride: {
+          source: "vault",
+          path: join(fixture.vaultRoot, ".kn", "template.md"),
+          content: "# MCP Template",
+          metadata: { id: "mcp-template" },
+        },
+      });
+
+      const includedGroups = (includedArtifactBundle.retrieval as any).groups as Record<string, any>;
+      const includedRows = Object.values(includedGroups).flatMap((group: any) => group.results as Array<any>);
+      expect(includedRows.length).toBeGreaterThan(0);
+      expect(includedRows.every((row) => row.note?.layer === "artifact")).toBe(true);
     } finally {
       metaDb.close();
       fixture.cleanup();

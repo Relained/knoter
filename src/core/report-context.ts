@@ -21,6 +21,7 @@ const RETRIEVAL_QUERIES: Record<RetrievalGroup, string> = {
 };
 
 const MAX_NOTE_ROWS = 5000;
+const CONTINUITY_WINDOW_DAYS = 7;
 
 export function parseDateOption(raw: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
@@ -110,6 +111,30 @@ export async function buildReportContextBundle(input: {
     notesById,
   });
 
+  const continuityWindow = getContinuityWindow(input.date, CONTINUITY_WINDOW_DAYS);
+  const continuityNotes = listContinuityNotes(
+    input.metaDb,
+    input.vaultName,
+    continuityWindow.fromDate,
+    continuityWindow.toDate,
+    input.includeArtifacts,
+  );
+  const continuitySignals = listContinuitySignals(
+    input.metaDb,
+    input.vaultName,
+    continuityWindow.fromDate,
+    continuityWindow.toDate,
+    input.includeArtifacts,
+  );
+  const continuityNotesById = new Map(continuityNotes.map((note) => [note.id, note]));
+  const continuity = {
+    windowDays: CONTINUITY_WINDOW_DAYS,
+    fromDate: continuityWindow.fromDate,
+    toDate: continuityWindow.toDate,
+    notes: continuityNotes.map(serializeNoteRow),
+    signals: groupSignals(continuitySignals, continuityNotesById, input.includeArtifacts),
+  };
+
   return {
     date: input.date,
     timezone,
@@ -122,8 +147,69 @@ export async function buildReportContextBundle(input: {
     rewrittenSources,
     dailyNotes,
     signals,
+    continuity,
     retrieval,
   };
+}
+
+function getContinuityWindow(
+  targetDate: string,
+  windowDays: number,
+): { fromDate: string; toDate: string } {
+  const target = new Date(`${targetDate}T00:00:00.000Z`);
+  const to = new Date(target);
+  to.setUTCDate(to.getUTCDate() - 1);
+  const from = new Date(target);
+  from.setUTCDate(from.getUTCDate() - windowDays);
+  return {
+    fromDate: from.toISOString().slice(0, 10),
+    toDate: to.toISOString().slice(0, 10),
+  };
+}
+
+function listContinuityNotes(
+  metaDb: MetaDB,
+  vaultId: string,
+  fromDate: string,
+  toDate: string,
+  includeArtifacts: boolean,
+): NoteRow[] {
+  const layerClause = includeArtifacts
+    ? "AND n.layer IN ('rewritten', 'artifact')"
+    : "AND n.layer = 'rewritten'";
+  return metaDb.db
+    .query(
+      `SELECT n.* FROM notes n
+       WHERE n.vault_id = ?
+         AND n.doc_date >= ?
+         AND n.doc_date <= ?
+         ${layerClause}
+       ORDER BY n.doc_date DESC, n.layer, n.file_path, n.id`,
+    )
+    .all(vaultId, fromDate, toDate) as NoteRow[];
+}
+
+function listContinuitySignals(
+  metaDb: MetaDB,
+  vaultId: string,
+  fromDate: string,
+  toDate: string,
+  includeArtifacts: boolean,
+): NoteSignalRow[] {
+  const layerClause = includeArtifacts
+    ? "AND n.layer IN ('rewritten', 'artifact')"
+    : "AND n.layer = 'rewritten'";
+  return metaDb.db
+    .query(
+      `SELECT s.* FROM note_signals s
+       JOIN notes n ON s.note_id = n.id
+       WHERE n.vault_id = ?
+         AND n.doc_date >= ?
+         AND n.doc_date <= ?
+         ${layerClause}
+       ORDER BY n.doc_date DESC, n.layer, n.file_path, s.id`,
+    )
+    .all(vaultId, fromDate, toDate) as NoteSignalRow[];
 }
 
 function resolveTemplateId(
@@ -382,7 +468,7 @@ function searchReportScopedFts(
 
 function buildReportLayerClause(layer: ReportLayer, includeArtifacts: boolean): string {
   if (layer === "artifact") {
-    return "AND n.layer = 'artifact'";
+    return includeArtifacts ? "AND n.layer = 'artifact'" : "AND 1 = 0";
   }
   if (layer === "all") {
     return includeArtifacts ? "" : "AND n.layer != 'artifact'";

@@ -793,6 +793,7 @@ Phase 1 (백본)
 ### 잔여 작업 (우선순위 재정렬)
 
 - **P0 `kn report context`**: date/template 기반 JSON context bundle 생성. LLM 호출 없음.
+  - [x] 이전 7일 continuity (`fromDate`~`toDate`) rewritten notes/signals 배치 포함, source 제외, 기본 artifact 제외 및 `--include-artifacts` 시 포함.
 - **P0 `kn template` 확장**: required variables/sections 등 template contract validation 강화.
 - **P0 MCP 도구 확장**: `kn_add_note`, `kn_report_context`, `kn_template_get`, `kn_rewrite_context`.
 - **P0 source/rewrite/artifact 저장 검증**: source는 metadata-only, rewritten/artifact만 chunk/index/embed.
