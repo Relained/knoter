@@ -19,8 +19,8 @@ export interface SearchOptions {
   after?: string;
   before?: string;
   lang?: string;              // language filter: "cjk", "latin", "mixed", etc.
+  includeArtifacts?: boolean; // artifact chunks are excluded by default
   alpha?: number;             // fusion weight, default 0.80
-  expand?: boolean;
 }
 
 export interface SearchResult {
@@ -73,7 +73,7 @@ async function keywordSearch(
   logger.debug(`Keyword search for: "${query}"`);
 
   // searchFts internally builds the FTS5 query, so pass raw query
-  let results = metaDb.searchFts(query, options.top * 2, vaultId);
+  let results = metaDb.searchFts(query, options.top * 2, vaultId, 0, !!options.includeArtifacts);
 
   logger.debug(`FTS returned ${results.length} results`);
 
@@ -148,6 +148,13 @@ async function semanticSearch(
     const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
     const queryResult = collection.querySync(zvecQuery);
     let results = queryResult || [];
+    if (!options.includeArtifacts) {
+      results = results.filter((r: any) => {
+        const noteId = r.fields?.note_id || r.data?.note_id;
+        const noteRow = metaDb.getNote(noteId);
+        return noteRow?.layer !== "artifact";
+      });
+    }
 
     logger.debug(`Semantic search returned ${results.length} results`);
 
@@ -196,7 +203,7 @@ async function hybridSearch(
   logger.debug(`Hybrid search for: "${query}" with alpha=${alpha}`);
 
   // Step 1: Keyword search (searchFts builds FTS5 query internally)
-  let keywordResults = metaDb.searchFts(query, options.top * 2, vaultId);
+  let keywordResults = metaDb.searchFts(query, options.top * 2, vaultId, 0, !!options.includeArtifacts);
   logger.debug(`Keyword search returned ${keywordResults.length} results`);
 
   // Apply keyword score filter if provided
@@ -251,6 +258,13 @@ async function hybridSearch(
   const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
   const queryResult = collection.querySync(zvecQuery);
   let semanticResults = queryResult || [];
+  if (!options.includeArtifacts) {
+    semanticResults = semanticResults.filter((r: any) => {
+      const noteId = r.fields?.note_id || r.data?.note_id;
+      const noteRow = metaDb.getNote(noteId);
+      return noteRow?.layer !== "artifact";
+    });
+  }
 
   logger.debug(`Semantic search returned ${semanticResults.length} results`);
 

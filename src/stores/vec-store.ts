@@ -96,6 +96,11 @@ export function createChunkSchema(
           enableExtendedWildcard: true,
         },
       },
+      {
+        name: "layer",
+        dataType: ZVecDataType.STRING,
+        indexParams: { indexType: ZVecIndexType.INVERT },
+      },
 
       // Chunk content
       {
@@ -195,6 +200,8 @@ export interface ChunkInput {
   filePath: string;
   /** Note title */
   title?: string;
+  /** Document layer: rewritten/artifact chunks are indexed, source is metadata-only. */
+  layer?: "rewritten" | "artifact";
   /** Immediate heading */
   heading?: string;
   /** Heading ancestry path (serialized JSON) */
@@ -253,6 +260,7 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
       note_id: chunk.noteId,
       file_path: chunk.filePath,
       title: chunk.title ?? "",
+      layer: chunk.layer ?? "rewritten",
       heading: chunk.heading ?? "",
       heading_path: chunk.headingPath ? JSON.stringify(chunk.headingPath) : "",
       content: chunk.content,
@@ -274,6 +282,7 @@ const DEFAULT_OUTPUT_FIELDS = [
   "note_id",
   "file_path",
   "title",
+  "layer",
   "heading",
   "heading_path",
   "content",

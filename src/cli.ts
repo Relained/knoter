@@ -5,8 +5,8 @@ import { registerAddCommand } from "./commands/add";
 import { registerSearchCommand } from "./commands/search";
 import { registerSyncCommand } from "./commands/sync";
 import { registerTagCommand } from "./commands/tag";
-import { registerClusterCommand } from "./commands/cluster";
 import { registerGetCommand } from "./commands/get";
+import { registerTemplateCommand } from "./commands/template";
 import { registerMcpCommand } from "./commands/mcp";
 import { registerScheduleCommand } from "./commands/schedule";
 
@@ -28,8 +28,8 @@ registerAddCommand(program);
 registerSearchCommand(program);
 registerSyncCommand(program);
 registerTagCommand(program);
-registerClusterCommand(program);
 registerGetCommand(program);
+registerTemplateCommand(program);
 registerMcpCommand(program);
 registerScheduleCommand(program);
 

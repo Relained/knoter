@@ -27,6 +27,10 @@ test("schema tables are created", () => {
   expect(names).toContain("chunks_au");
   // v3 additions
   expect(names).toContain("preprocessors");
+  // document-layer/report additions
+  expect(names).toContain("note_signals");
+  expect(names).toContain("pageindex_documents");
+  expect(names).toContain("pageindex_nodes");
 });
 
 // ── Notes CRUD ──────────────────────────────────────────────────────────────
@@ -48,6 +52,8 @@ test("insert and get note", () => {
   expect(row!.file_path).toBe("notes/linux/btrfs-guide.md");
   expect(row!.title).toBe("BTRFS 관리 가이드");
   expect(row!.file_hash).toBe("abc123hash");
+  expect(row!.layer).toBe("source");
+  expect(row!.kind).toBeNull();
   expect(row!.indexed_at).toBeTruthy();
 });
 
@@ -76,6 +82,54 @@ test("listNotes returns notes for vault", () => {
   // file_path 순 정렬
   expect(notes[0]!.file_path).toBe("notes/capstone/week1.md");
   expect(notes[1]!.file_path).toBe("notes/linux/btrfs-guide.md");
+});
+
+test("document layer, date, kind, and lineage are stored", () => {
+  db.upsertNote({
+    id: "note_rewritten_001",
+    vaultId: "personal",
+    filePath: "rewritten/2026-05-08/daily.md",
+    title: "Daily rewritten source",
+    fileHash: "rewrittenhash",
+    docDate: "2026-05-08T09:00:00Z",
+    layer: "rewritten",
+    kind: "daily",
+    lineage: {
+      sourceNoteId: "note_001",
+      sourcePath: "sources/2026-05-08/raw.md",
+      rewriteAgent: "codex",
+      rewritePromptHash: "prompt_hash",
+    },
+  });
+
+  const row = db.getNote("note_rewritten_001");
+  expect(row!.doc_date).toBe("2026-05-08");
+  expect(row!.layer).toBe("rewritten");
+  expect(row!.kind).toBe("daily");
+  expect(row!.source_note_id).toBe("note_001");
+  expect(row!.source_path).toBe("sources/2026-05-08/raw.md");
+  expect(row!.rewrite_agent).toBe("codex");
+
+  const byDate = db.listNotesByDate("personal", "2026-05-08", "rewritten");
+  expect(byDate.map((note) => note.id)).toContain("note_rewritten_001");
+
+  const derived = db.listDerivedNotes("note_001");
+  expect(derived.map((note) => note.id)).toContain("note_rewritten_001");
+});
+
+test("kind is explicit only and does not infer from path", () => {
+  db.upsertNote({
+    id: "note_no_kind_inference",
+    vaultId: "personal",
+    filePath: "rewritten/2026-05-09/workout-daily-todo.md",
+    title: "운동 todo daily",
+    fileHash: "no-kind-hash",
+    docDate: "2026-05-09",
+    layer: "rewritten",
+  });
+
+  const row = db.getNote("note_no_kind_inference");
+  expect(row!.kind).toBeNull();
 });
 
 // ── Chunks CRUD ─────────────────────────────────────────────────────────────
@@ -143,6 +197,34 @@ test("FTS5 search for non-matching term returns empty", () => {
   expect(results.length).toBe(0);
 });
 
+test("FTS5 excludes artifacts by default and can include them explicitly", () => {
+  db.upsertNote({
+    id: "note_artifact_001",
+    vaultId: "personal",
+    filePath: "artifacts/2026-05-08/daily-report.md",
+    title: "Daily Report",
+    fileHash: "artifacthash",
+    docDate: "2026-05-08",
+    layer: "artifact",
+    kind: "daily-report",
+  });
+  db.insertChunks([
+    {
+      id: "chunk_artifact_001",
+      noteId: "note_artifact_001",
+      content: "artifact-only-search-token",
+      offsetStart: 0,
+      offsetEnd: 26,
+      tokenCount: 7,
+      seqIndex: 0,
+    },
+  ]);
+  db.markSynced("note_artifact_001");
+
+  expect(db.searchFts("artifact-only-search-token", 10, "personal").length).toBe(0);
+  expect(db.searchFts("artifact-only-search-token", 10, "personal", 0, true).length).toBe(1);
+});
+
 // ── Tags CRUD ───────────────────────────────────────────────────────────────
 
 test("setTags and getTagsByNote", () => {
@@ -193,13 +275,81 @@ test("listAllTags returns counts", () => {
   }
 });
 
+// ── Signals / PageIndex ────────────────────────────────────────────────────
+
+test("note signals store structured task and workout data", () => {
+  const signalId = db.addNoteSignal({
+    noteId: "note_rewritten_001",
+    kind: "task",
+    key: "open",
+    value: { text: "template command 구현", status: "open" },
+    confidence: 0.95,
+    source: "extractor",
+  });
+
+  expect(signalId).toBeGreaterThan(0);
+
+  db.addNoteSignal({
+    noteId: "note_rewritten_001",
+    kind: "workout",
+    key: "pushup",
+    value: { count: 30, sets: 3 },
+  });
+
+  const taskSignals = db.getNoteSignals("note_rewritten_001", "task");
+  expect(taskSignals.length).toBe(1);
+  expect(JSON.parse(taskSignals[0]!.value_json).status).toBe("open");
+
+  const dateSignals = db.listSignalsByDate("personal", "2026-05-08");
+  expect(dateSignals.length).toBeGreaterThanOrEqual(2);
+});
+
+test("PageIndex metadata stores document and tree nodes", () => {
+  db.upsertPageIndexDocument({
+    noteId: "note_rewritten_001",
+    indexPath: ".kn/pageindex/note_rewritten_001.json",
+    model: "gpt-4o",
+    status: "ready",
+  });
+  db.replacePageIndexNodes("note_rewritten_001", [
+    {
+      noteId: "note_rewritten_001",
+      nodeId: "0001",
+      title: "Daily Report Source",
+      summary: "Top-level rewritten daily source",
+      depth: 0,
+    },
+    {
+      noteId: "note_rewritten_001",
+      nodeId: "0002",
+      parentNodeId: "0001",
+      title: "Workout",
+      summary: "Workout metrics",
+      startIndex: 10,
+      endIndex: 12,
+      depth: 1,
+    },
+  ]);
+
+  const doc = db.getPageIndexDocument("note_rewritten_001");
+  expect(doc!.status).toBe("ready");
+  expect(doc!.index_path).toBe(".kn/pageindex/note_rewritten_001.json");
+
+  const nodes = db.listPageIndexNodes("note_rewritten_001");
+  expect(nodes.length).toBe(2);
+  expect(nodes[1]!.parent_node_id).toBe("0001");
+});
+
 // ── Vault Status ────────────────────────────────────────────────────────────
 
 test("getVaultStatus", () => {
   const status = db.getVaultStatus("personal");
-  expect(status.noteCount).toBe(2);
-  expect(status.chunkCount).toBe(2); // only note_001 has chunks
+  expect(status.noteCount).toBe(5);
+  expect(status.chunkCount).toBe(3);
   expect(status.tagCount).toBeGreaterThanOrEqual(2);
+  expect(status.sourceCount).toBe(2);
+  expect(status.rewrittenCount).toBe(2);
+  expect(status.artifactCount).toBe(1);
   expect(status.lastIndexedAt).toBeTruthy();
 });
 

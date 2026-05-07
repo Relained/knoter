@@ -243,6 +243,10 @@ async function recoverPending(
       // Build and upsert vector documents
       if (collection) {
         const zvecDocs = chunks.map((chunk, idx) => {
+          const embedding = embeddings[idx];
+          if (!embedding) {
+            throw new Error(`No embedding for pending chunk ${idx}`);
+          }
           const headingPath = chunk.heading_path
             ? JSON.parse(chunk.heading_path)
             : undefined;
@@ -261,7 +265,7 @@ async function recoverPending(
             docTitle: note.title ?? undefined,
             tags,
             createdAt: note.created_at ? new Date(note.created_at) : undefined,
-            embedding: embeddings[idx],
+            embedding,
           });
         });
         collection.upsertSync(zvecDocs);
@@ -293,13 +297,44 @@ async function addFile(
   fileHash: string
 ): Promise<void> {
   const parsed = parseNote(content, relPath);
+  const allTags = parsed.tags.map((tag) => ({
+    tag,
+    source: "frontmatter" as const,
+  }));
+  const now = new Date();
+  const language = undefined;
+  const noteId = randomUUID();
+
+  if (parsed.layer === "source") {
+    metaDb.reindexNote(
+      {
+        id: noteId,
+        vaultId,
+        filePath: relPath,
+        title: parsed.title,
+        fileHash,
+        frontmatter: parsed.frontmatter as Record<string, string>,
+        docDate: parsed.docDate ?? undefined,
+        layer: parsed.layer,
+        kind: parsed.kind,
+        createdAt: now,
+        updatedAt: now,
+        language,
+      },
+      [],
+      allTags
+    );
+    metaDb.markSynced(noteId);
+    logger.info(`Stored source metadata for ${relPath} (no chunks)`);
+    return;
+  }
+
   const chunks = chunkDocument(parsed.content);
   if (chunks.length === 0) {
     logger.warn(`No chunks generated for ${relPath}`);
     return;
   }
 
-  const noteId = randomUUID();
   const chunkInserts: ChunkInsert[] = chunks.map((chunk, idx) => ({
     id: randomUUID(),
     noteId,
@@ -314,16 +349,17 @@ async function addFile(
 
   // Link chunks
   for (let i = 0; i < chunkInserts.length; i++) {
-    if (i > 0) chunkInserts[i].prevChunkId = chunkInserts[i - 1].id;
-    if (i < chunkInserts.length - 1)
-      chunkInserts[i].nextChunkId = chunkInserts[i + 1].id;
+    const curr = chunkInserts[i];
+    if (!curr) continue;
+    if (i > 0) {
+      const prev = chunkInserts[i - 1];
+      if (prev) curr.prevChunkId = prev.id;
+    }
+    if (i < chunkInserts.length - 1) {
+      const next = chunkInserts[i + 1];
+      if (next) curr.nextChunkId = next.id;
+    }
   }
-
-  const allTags = parsed.tags.map((tag) => ({
-    tag,
-    source: "frontmatter" as const,
-  }));
-  const now = new Date();
 
   metaDb.reindexNote(
     {
@@ -333,6 +369,9 @@ async function addFile(
       title: parsed.title,
       fileHash,
       frontmatter: parsed.frontmatter as Record<string, string>,
+      docDate: parsed.docDate ?? undefined,
+      layer: parsed.layer,
+      kind: parsed.kind,
       createdAt: now,
       updatedAt: now,
     },
@@ -342,8 +381,16 @@ async function addFile(
 
   // Format and embed chunks
   const textsToEmbed = chunkInserts.map((chunk, idx) => {
-    const originalChunk = chunks[idx];
-    return formatForEmbedding({
+      const originalChunk = chunks[idx];
+      if (!originalChunk) {
+        return formatForEmbedding({
+          docTitle: parsed.title,
+          headingPath: [],
+          tags: parsed.tags,
+          content: chunk.content,
+        });
+      }
+      return formatForEmbedding({
       docTitle: parsed.title,
       headingPath: originalChunk.headingPath,
       tags: parsed.tags,
@@ -358,11 +405,16 @@ async function addFile(
   // Build and upsert vector documents
   if (collection) {
     const zvecDocs = chunkInserts.map((chunk, idx) => {
+      const embedding = embeddings[idx];
+      if (!embedding) {
+        throw new Error(`No embedding for chunk ${idx}`);
+      }
       const chunkInput: ChunkInput = {
         id: chunk.id,
         noteId: chunk.noteId,
         filePath: relPath,
         title: parsed.title,
+        layer: parsed.layer === "artifact" ? "artifact" : "rewritten",
         heading: chunk.heading,
         headingPath: chunk.headingPath,
         content: chunk.content,
@@ -373,7 +425,7 @@ async function addFile(
         docTitle: parsed.title,
         tags: parsed.tags,
         createdAt: now,
-        embedding: embeddings[idx],
+        embedding,
       };
       return toZVecDoc(chunkInput);
     });

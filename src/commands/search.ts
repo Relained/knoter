@@ -18,7 +18,7 @@ export function registerSearchCommand(program: Command): void {
     .option("--after <date>", "Results after date")
     .option("--before <date>", "Results before date")
     .option("--lang <lang>", "Filter by language (ko/ja/zh→cjk, en→latin, or cjk/latin)")
-    .option("--expand", "Enable query expansion")
+    .option("--include-artifacts", "Include generated artifacts in search results")
     .action(async (query, options, cmd) => {
       try {
         const globalOpts = cmd.optsWithGlobals?.() || {};
@@ -51,7 +51,7 @@ export function registerSearchCommand(program: Command): void {
           after: options.after,
           before: options.before,
           lang,
-          expand: options.expand,
+          includeArtifacts: !!options.includeArtifacts,
         });
 
         const envelope = success("search", {

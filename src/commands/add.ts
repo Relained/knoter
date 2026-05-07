@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { resolve, relative, join } from "node:path";
-import { readdirSync, statSync } from "node:fs";
+import { basename, resolve, relative, join } from "node:path";
+import { mkdirSync, readdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import ora from "ora";
 import { parseNote } from "../pipeline/parser";
@@ -37,6 +37,26 @@ function discoverFiles(target: string, recursive: boolean): string[] {
   }
 
   return [];
+}
+
+async function ensureSourceInVault(
+  vaultRoot: string,
+  relPath: string,
+  absPath: string,
+  content: string,
+  docDate: string | null,
+): Promise<string> {
+  const normalizedRel = relPath.replace(/\\/g, "/");
+  if (!normalizedRel.startsWith("../") && !normalizedRel.startsWith("/") && normalizedRel.startsWith("sources/")) {
+    return normalizedRel;
+  }
+
+  const datePart = docDate ?? new Date().toISOString().slice(0, 10);
+  const targetRel = `sources/${datePart}/${basename(absPath)}`;
+  const targetAbs = join(vaultRoot, targetRel);
+  mkdirSync(join(vaultRoot, "sources", datePart), { recursive: true });
+  await Bun.write(targetAbs, content);
+  return targetRel;
 }
 
 interface AddResult {
@@ -161,13 +181,18 @@ async function processAdd(
     // Process each file
     for (const filePath of files) {
       result.filesProcessed++;
-      const relPath = relative(vaultRoot, filePath);
+      let relPath = relative(vaultRoot, filePath);
       logger.info(`Processing ${relPath}`);
 
       try {
         // Read and hash content
         const fileContent = await Bun.file(filePath).text();
         const fileHash = hashContent(fileContent);
+        const parsed = parseNote(fileContent, filePath);
+
+        if (parsed.layer === "source") {
+          relPath = await ensureSourceInVault(vaultRoot, relPath, filePath, fileContent, parsed.docDate);
+        }
 
         // Check for existing note
         const existingNote = metaDb.getNoteByPath(vaultId, relPath);
@@ -194,8 +219,55 @@ async function processAdd(
           noteId = randomUUID();
         }
 
-        // Parse note
-        const parsed = parseNote(fileContent, filePath);
+        // Merge tags
+        const allTags = new Set([...parsed.tags, ...(options.tag || [])]);
+        const tagList = Array.from(allTags).map(tag => ({
+          tag,
+          source: (options.tag?.includes(tag) ? "manual" : "frontmatter") as "manual" | "frontmatter",
+        }));
+
+        // Source documents are evidence only. They are stored with metadata and
+        // lineage, but not chunked, embedded, or written to vector search.
+        if (parsed.layer === "source") {
+          if (options.dryRun) {
+            logger.info(`[DRY-RUN] Would add source ${relPath} without chunks`);
+          } else {
+            const now = new Date();
+            metaDb.reindexNote(
+              {
+                id: noteId,
+                vaultId,
+                filePath: relPath,
+                title: parsed.title,
+                fileHash,
+                frontmatter: parsed.frontmatter as Record<string, string>,
+                docDate: parsed.docDate ?? undefined,
+                layer: parsed.layer,
+                kind: parsed.kind,
+                createdAt: now,
+                updatedAt: now,
+                language: detectLanguage(parsed.content),
+              },
+              [],
+              tagList
+            );
+            metaDb.markSynced(noteId);
+          }
+
+          result.details.push({
+            filePath: relPath,
+            status: isUpdate ? "updated" : "added",
+            chunkCount: 0,
+            noteId,
+          });
+          if (isUpdate) {
+            result.filesUpdated++;
+          } else {
+            result.filesAdded++;
+          }
+          logger.info(`Stored source metadata for ${relPath} (no chunks)`);
+          continue;
+        }
 
         // Chunk document
         const chunks = chunkDocument(parsed.content);
@@ -234,13 +306,6 @@ async function processAdd(
           }
         }
 
-        // Merge tags
-        const allTags = new Set([...parsed.tags, ...(options.tag || [])]);
-        const tagList = Array.from(allTags).map(tag => ({
-          tag,
-          source: (options.tag?.includes(tag) ? "manual" : "frontmatter") as "manual" | "frontmatter",
-        }));
-
         // If dry-run, just log and skip persistence
         if (options.dryRun) {
           logger.info(`[DRY-RUN] Would add ${relPath} with ${chunkInserts.length} chunks`);
@@ -268,6 +333,9 @@ async function processAdd(
             title: parsed.title,
             fileHash,
             frontmatter: parsed.frontmatter as Record<string, string>,
+            docDate: parsed.docDate ?? undefined,
+            layer: parsed.layer,
+            kind: parsed.kind,
             createdAt: now,
             updatedAt: now,
             language,
@@ -310,6 +378,7 @@ async function processAdd(
             noteId: chunk.noteId,
             filePath: relPath,
             title: parsed.title,
+            layer: parsed.layer === "artifact" ? "artifact" : "rewritten",
             heading: chunk.heading,
             headingPath: chunk.headingPath,
             content: chunk.content,

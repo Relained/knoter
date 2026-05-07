@@ -12,7 +12,7 @@ import { setVerbose, logger } from "../core/logger";
 export function registerScheduleCommand(program: Command): void {
   const scheduleCmd = program
     .command("schedule")
-    .description("Schedule periodic indexing jobs (enable, disable, status, run-now)");
+    .description("Legacy scheduler for periodic sync jobs (enable, disable, status, run-now)");
 
   // kn schedule enable --interval <duration>
   scheduleCmd
@@ -37,7 +37,7 @@ export function registerScheduleCommand(program: Command): void {
         const command = [
           "/bin/sh",
           "-c",
-          `${invoke} sync --prune && ${invoke} tag auto && ${invoke} cluster --suggest-merge`,
+          `${invoke} sync --prune`,
         ];
 
         const state = await enableSchedule({

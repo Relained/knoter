@@ -24,7 +24,7 @@
 |--------|------|--------|
 | `commander` (기존) | 인자 파싱, 서브커맨드 라우팅 | `src/cli.ts`, 모든 커맨드 |
 | `ansis` | 컬러/스타일 터미널 출력 | `src/core/output.ts`, 전체 text 포맷 |
-| `ora` | 스피너 (비동기 작업 진행 표시) | `kn add` 임베딩, `kn sync`, `kn cluster` |
+| `ora` | 스피너 (비동기 작업 진행 표시) | `kn add` 임베딩, `kn sync` |
 | `@clack/prompts` | 인터랙티브 프롬프트 | `kn vault delete` 확인, `kn preprocessor` 바인딩 |
 | `consola` | 구조적 로깅 | `src/core/logger.ts`, `--verbose` 모드 |
 | `gray-matter` | YAML 프론트매터 추출 | `src/pipeline/parser.ts` |
@@ -50,10 +50,10 @@
       search.ts       # kn search
       sync.ts         # kn sync
       tag.ts          # kn tag
-      cluster.ts      # kn cluster
+      cluster.ts      # legacy/deferred: cluster
       get.ts          # kn get
       mcp.ts          # kn mcp
-      schedule.ts     # kn schedule
+      schedule.ts     # legacy/deferred: schedule CLI
     core/
       config.ts       # 글로벌/볼트 설정 관리
       output.ts       # 표준 출력 envelope (success/error)
@@ -255,14 +255,16 @@
 ## Phase 6: 태그 관리 (`kn tag`)
 
 ### 6.1 구현
-- [x] `kn tag list/add/remove/auto` 4개 서브커맨드
+- [x] `kn tag list/add/remove` 3개 서브커맨드
 - [x] 양 레이어 동기화 (syncVectorTags)
-- [x] auto: 헤딩 기반 휴리스틱 (Phase 13에서 LLM으로 교체)
+- [x] 자동 태그 분류 제거:
+  - 태그 후보와 의미 분류는 유저/외부 agent가 판단
+  - `knoter`는 명시 태그 저장/삭제만 수행
 
 **검증 체크리스트:**
 - [x] `kn tag list` → 올바른 분포 (docs:2, guide:1, api:1)
 - [x] `kn tag add docs/guide.md new-tag` → 추가 확인
-- [ ] `kn tag remove`, `kn tag auto` 미검증
+- [ ] `kn tag remove` 미검증
 
 ---
 
@@ -272,14 +274,20 @@
 - [x] 4단계 경로 해석: exact → suffix → substring → ID
 - [x] `--section`, `--offset`, `--max-chars` 옵션
 - [x] miss 시 유사 경로 제안
-- [x] 배치/단일 모드 자동 전환
+- [x] 단일 조회: `kn get <target>`
+
+### 7.2 `kn get batch`
+- [x] 명시적 배치 조회: `kn get batch <targets...>`
+- [x] 응답 구조: `{ found, notFound }`
+- [x] 기존 암묵적 "다중 target이면 batch" 설계는 명령 표면에서 제거
 
 **검증 체크리스트:**
 - [x] `kn get docs/guide.md` → 파일 내용 + 메타데이터 반환
 - [x] `kn get docs/guide.md --section Installation` → 해당 섹션만 추출
+- [ ] `kn get batch docs/a.md docs/b.md` → found/notFound batch envelope 반환
 - [x] `kn get nonexist.md` → notFound + suggestions 구조
 
-> Phase 7.2 `kn context`는 커맨드/테이블 모두 철거 (2026-04-24 결정).
+> `kn context`는 커맨드/테이블 모두 철거 (2026-04-24 결정).
 
 ---
 
@@ -311,8 +319,11 @@
 
 ### 10.1 트랜스포트
 - [x] `stdio` (기본): MCP 클라이언트 서브프로세스
-- [ ] `sse`: Server-Sent Events (미구현)
-- [x] `http`: `POST /mcp` + `GET /health`
+- [x] `stdio` 안정화 우선:
+  - 외부 LLM agent 연동의 기본 경로
+  - stdout 오염 금지, stderr 로깅만 허용
+- [ ] `http`: legacy/선택 경로. stdio 안정화 이후 필요성 재평가
+- [ ] `sse`: 미구현, 우선순위 낮음
 
 ### 10.2 데몬 모드
 - [x] `--daemon` + PID 파일 관리 (재귀 fork)
@@ -321,7 +332,13 @@
 
 ### 10.3 도구 매핑
 - [x] 구현: `kn_search`, `kn_get`, `kn_vault_status`
-- [ ] 스켈레톤만 (not implemented 반환): `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update`
+- [x] `kn_get_batch` (`kn get batch` 대응)
+- [ ] P0: `kn_add_note` (rewritten/artifact 저장)
+- [ ] P0: `kn_template_get`
+- [ ] P0: `kn_report_context`
+- [ ] P0: `kn_rewrite_context`
+- [ ] legacy/deferred 도구는 active MCP 표면에서 제외:
+  - `kn_tag_auto`, `kn_cluster`, `kn_update`
 
 **검증 체크리스트:**
 - [x] `kn mcp --transport stdio` → MCP 프로토콜 핸드셰이크 (stdout 오염 수정)
@@ -331,73 +348,75 @@
 
 ---
 
-## Phase 11: 클러스터링 (`kn cluster`)
+## Phase 11: 클러스터링 (Legacy / Deferred)
 
-### 11.1 구현
-- [x] DBSCAN 인라인 구현 (`src/cluster/dbscan.ts`) — HDBSCAN 업그레이드는 후순위
-- [x] dense vector + metadata 입력
-- [x] `--epsilon`, `--min-cluster`, `--suggest-merge`, `--apply` 옵션
+> 현재 목표에서는 제외한다.
+> 자동 분류/군집화는 유저별 template/kind 공간이 너무 넓어 일반 기능으로 두기 어렵다.
+> 기존 코드는 legacy로 유지하되 active CLI/MCP/typecheck 표면에서 분리한다.
 
-### 11.2 성능
-- [ ] 워커 스레드 오프로딩 (후순위)
-- [ ] 선택적 Bun FFI 네이티브 경로 (후순위)
+### 11.1 Legacy 상태
+- [x] DBSCAN 인라인 구현은 과거 코드로 존재
+- [x] active CLI 등록에서 제거
+- [x] TypeScript active check 대상에서 제외
+- [ ] 필요 시 별도 experimental namespace로 이동
 
 **검증 체크리스트:**
-- [x] `kn cluster` → 클러스터 그룹 출력
-- [x] `--suggest-merge` → 병합 제안
-- [x] `--apply` → 태그 업데이트
+- [ ] 현 단계에서는 신규 검증 없음
 
 ---
 
-## Phase 12: 스케줄러 (`kn schedule`)
+## Phase 12: 자동 실행 설치 마일스톤
 
-### 12.1 커맨드
-- [x] `kn schedule enable [--interval]`
-- [x] `kn schedule disable`
-- [x] `kn schedule status`
-- [x] `kn schedule run-now`
+> 방향 결정: active `kn schedule` 명령으로 타이머를 관리하지 않는다.
+> 프로그램 설치/초기화 시 OS별 launchctl/systemd timer service를 함께 제공하는 방식으로 둔다.
+> 현재 구현된 `kn schedule` 계열은 legacy/deferred로 분류하고, 신규 작업은 설치 산출물 설계로 제한한다.
 
-### 12.2 OS 연동
-- [x] macOS: launchd plist 생성/등록
-- [x] Linux: systemd user timer
-- [x] 작업 체인 (sync/tag/cluster) + `~/.kn/schedule.json` 상태
+### 12.1 설치 산출물
+- [ ] macOS: `launchctl`용 plist template 제공
+- [ ] Linux: `systemd --user` service/timer unit template 제공
+- [ ] 설치/업데이트 시 unit 파일 생성 위치와 권한 정책 정의
+- [ ] 자동 실행 작업 체인 정의:
+  - 기본은 `kn sync`
+  - report/template 생성은 외부 agent가 MCP stdio를 통해 수행
+  - tag auto/cluster는 포함하지 않음
 
 **검증 체크리스트:**
-- [x] `kn schedule enable` → 등록 확인
-- [x] `kn schedule status` → 상태 출력
-- [x] `kn schedule run-now` → 즉시 실행 (POSIX 이스케이핑 + NaN 가드)
-- [x] `kn schedule disable` → 제거
+- [ ] macOS unit install/uninstall dry-run
+- [ ] Linux user timer install/uninstall dry-run
+- [ ] 재부팅 이후 자동 실행 동작 확인
 
 ---
 
 ## Phase 13: AI 백엔드 통합 (Provider Integration)
 
 > 현재 Phase 3에서 PlaceholderEmbeddingProvider로 파이프라인 동작을 검증 중.
-> 이 Phase에서 실제 AI 백엔드를 연결하여 임베딩/LLM/리랭킹을 실운영 가능하게 한다.
+> 이 Phase에서 실제 임베딩 백엔드를 연결하여 인덱싱/검색을 실운영 가능하게 한다.
 
 ### 13.1 임베딩 프로바이더
 - [x] **OpenAI 호환 단일 프로바이더**: OpenAI API + OpenAI-호환 로컬 서버(TEI, vLLM, LM Studio, llama-server, ollama `/v1`) 공통
   - `baseUrl`이 localhost면 `isLocal=true`, apiKey 선택
 
-### 13.2 LLM 프로바이더 (`kn ask` 용)
-- [x] **OpenAI 호환**: Chat Completions API — OpenAI 클라우드 or 로컬 OpenAI-호환 서버
+### 13.2 LLM 프로바이더
+- [x] `kn ask` 철거와 함께 백엔드 내장 LLM 호출 경로 제거
+- [x] 일반 `kn` 명령에서 임베딩 외 LLM 호출 제거
+- [ ] LLM 호출이 필요한 기능은 Phase 15.9 `kn llm` namespace에서만 검토
 
 ### 13.3 리랭커
 - [ ] 현재 미구현 (단일 프로바이더 전환으로 철거)
 
 ### 13.4 통합 프로바이더 팩토리
-- [x] `src/providers/factory.ts`: vault config 기반 OpenAI 호환 프로바이더 생성 (embedding/LLM)
-- [x] `src/providers/openai.ts`: OpenAI 호환 embedding + LLM, `fetchWithContainerRetry` 훅
-- [x] `src/providers/types.ts`: LLMProvider + ContainerSpec 타입
+- [x] `src/providers/factory.ts`: vault config 기반 OpenAI 호환 embedding 프로바이더 생성
+- [x] `src/providers/openai.ts`: OpenAI 호환 embedding, `fetchWithContainerRetry` 훅
+- [x] `src/providers/types.ts`: ContainerSpec 타입
 - [x] `src/providers/health.ts`: `kn vault status --check-providers`
 
 ### 13.5 로컬 컨테이너 lazy-start
 - [x] `src/core/container.ts`: `tryStartContainer` + `waitForReady` + `fetchWithContainerRetry`
-- [x] embedding/llm 호출 시 ECONNREFUSED → `podman start <name>` (또는 docker) → 준비 대기 → 1회 재시도
-- [x] `VaultConfig.embedding.container` / `llm.container` 설정 필드 (`{ name, runtime? }`)
+- [x] embedding 호출 시 ECONNREFUSED → `podman start <name>` (또는 docker) → 준비 대기 → 1회 재시도
+- [x] `VaultConfig.embedding.container` 설정 필드 (`{ name, runtime? }`)
 
 **검증 체크리스트:**
-- [ ] OpenAI API 임베딩/LLM: `kn add` / `kn ask` (API 키 설정 시)
+- [ ] OpenAI API 임베딩: `kn add` / `kn search --mode semantic` (API 키 설정 시)
 - [ ] TEI 로컬 컨테이너: 정지 상태에서 `kn add` 호출 → 컨테이너 자동 시작 후 임베딩 성공
 - [x] `kn vault status --check-providers` → 연결 상태 표시
 
@@ -433,6 +452,234 @@
 
 ---
 
+## Phase 15: Template-driven Daily Report
+
+> 목적: `knoter`를 단순 검색 CLI가 아니라 "기존 기록 프로그램을 대체하는 개인 기록/보고 자동화 백엔드"로 확장한다.
+> 보고서 본문 작성은 백엔드 내장 LLM이 아니라 외부 LLM agent가 담당하고, `knoter`는 template와 검색/조회 context bundle을 안정적으로 제공한다.
+
+### 15.1 Template 명세
+- [x] `docs/template.md` 초안 작성: 일일 보고서 입력/출력 계약, 파싱 규칙, agent prompt skeleton, 백엔드 요구사항
+- [x] 3계층 문서 모델 반영:
+  - source: 유저가 직접 작성/스크랩한 원본 문서, 이미지, 음성, PDF
+  - rewritten source: 외부 LLM agent가 청킹/검색에 유리하게 재작성한 문서
+  - final artifact: template와 retrieval 결과로 생성된 일일 보고서/todo/wiki 등 유저 표시 결과물
+- [x] vault-local template 경로 확정: `<vault_root>/.kn/template.md`
+- [x] bundled fallback template 경로 확정: `docs/template.md`
+- [~] template frontmatter 스키마 정의:
+  - `id`, `name`, `version`, `kind`, `locale`, `requiredSections`, `variables`
+- [x] template validation 1차 구현:
+  - readable, non-empty, markdown heading, frontmatter parse/object 검증
+  - missing closing frontmatter delimiter 검출
+- [ ] template validation 확장:
+  - 필수 변수 누락, 중복 section, 미지원 kind 검출
+
+### 15.2 Metadata 확장
+- [x] `notes.doc_date` 컬럼 추가: frontmatter `date` / 파일명 날짜 기준으로 결정
+- [x] `notes.layer` 컬럼 추가: `source`, `rewritten`, `artifact`
+- [x] `notes.kind` 컬럼 추가:
+  - 자동 추론/통합 enum 금지
+  - 명시 frontmatter 또는 외부 LLM agent가 제공한 raw string만 저장
+- [x] source lineage 필드 추가:
+  - `source_note_id`, `source_path`, `rewrite_agent`, `rewrite_prompt_hash`, `artifact_template_id`
+- [x] 별도 `note_signals` 테이블 추가:
+  - task marker, workout metric, daily-note marker, area marker를 구조화 저장
+- [x] PageIndex metadata 테이블 추가:
+  - `pageindex_documents`, `pageindex_nodes`
+- [ ] 기존 `created_at` 기반 날짜 필터를 `doc_date` 우선으로 전환
+- [ ] `kn vault status`에 language 분포와 kind 분포 표시
+
+### 15.3 Parser/Extractor
+- [ ] source ingest 파이프라인 정의:
+  - Markdown/text는 직접 저장
+  - 이미지/음성/PDF는 우선 source asset으로 저장하고 OCR/STT/텍스트 추출은 별도 rewrite 단계에서 처리
+- [ ] rewritten source 생성 계약 정의:
+  - 외부 LLM agent가 원본 evidence id를 보존하며 Markdown으로 재작성
+  - heading, timestamp, task marker, workout metric, source reference를 정규화
+- [x] `parseNote`에서 `docDate`, `layer` 기본 추론
+- [x] `parseNote`에서 `kind` 자동 추론 제거:
+  - `kind`/`type` frontmatter가 명시된 경우만 저장
+- [ ] Markdown task marker 추출: `- [ ]`, `- [x]`, `TODO:`, `할 일:`
+- [ ] 운동 기록 추출:
+  - 운동 종류, 세트, 횟수, 시간, 거리, 무게, 강도
+- [ ] task/workout/metric 추출 프롬프트 제공:
+  - 외부 LLM agent가 rewritten source 생성 시 자율 판단
+  - 유저가 명시한 kind 후보가 있으면 후보 중 선택하거나 새 kind 생성 가능
+- [ ] 관심 단위(area) 추출:
+  - `llm-wiki`, `tasks`, `todo`, `daily-workout-graph`, `knoter`, 기타
+- [ ] 추출 결과는 임베딩 텍스트에 직접 섞지 말고 metadata/signal로 저장
+  - 이유: 임베딩 품질 오염 없이 필터링/집계/그래프화 가능
+
+### 15.4 Report Context Command
+- [x] `src/commands/template.ts` 추가:
+  - `kn template list`
+  - `kn template get`
+  - `kn template validate <path|id>`
+- [ ] `src/commands/rewrite.ts` 또는 `kn source rewrite-context` 검토:
+  - 외부 LLM agent가 source를 rewritten source로 바꾸기 위한 context bundle 제공
+- [ ] `src/commands/report.ts` 추가:
+  - `kn report context --date <YYYY-MM-DD> --layer rewritten --template daily-report`
+  - 결과는 JSON envelope로만 충분히 상세하게 반환
+- [ ] context bundle 구성:
+  - source inventory for target date
+  - target date daily notes
+  - rewritten source candidates
+  - open/done/deferred tasks
+  - area-grouped retrieval results
+  - workout metrics
+  - previous 7 days continuity candidates
+  - source paths/chunk ids/scores
+- [ ] LLM 호출은 하지 않는다.
+  - 외부 LLM agent가 `template.md`와 context bundle을 받아 최종 Markdown 보고서를 작성
+
+### 15.5 MCP 확장
+- [ ] `kn_template_get`: template text + metadata 반환
+- [ ] `kn_report_context`: date/template 기반 context bundle 반환
+- [ ] `kn_rewrite_context`: source → rewritten source 변환용 evidence bundle 반환
+- [x] `kn_get_batch`: `kn get batch <targets...>` 대응 batch retrieval
+- [ ] `kn_add_note`: rewritten source 또는 final artifact 저장을 위해 구현
+- [ ] MCP 도구 응답은 JSON-only를 유지하고 stdout 오염 금지
+
+### 15.6 Search 품질 보완
+- [ ] semantic score 방향 수정: zvec distance를 `score = 1 - distance`로 변환
+- [ ] `--threshold` deprecated alias 구현 또는 문서에서 완전 제거
+- [ ] `search.alpha` 설정값이 실제 hybrid search에 반영되도록 연결
+- [x] `--expand` 옵션 제거:
+  - LLM 호출/확장 계열은 향후 `kn llm` namespace로 분리
+- [ ] CJK keyword 검색은 단기적으로 `trigram`, 중기적으로 index-time preprocessor 적용
+- [x] artifact 검색 정책:
+  - artifact는 청킹/임베딩/FTS 인덱싱 대상
+  - 검색 기본값에서는 제외
+  - `--include-artifacts` 옵션으로만 포함
+- [x] source 인덱싱 정책:
+  - source는 metadata/lineage만 저장
+  - 청킹/임베딩/FTS/vector 인덱싱 제외
+
+### 15.6.1 CJK Indexing Direction
+- [x] 단기 기본값: SQLite FTS5 `trigram`
+  - 장점: Bun/SQLite 내부 기능만으로 한글 substring 검색 가능
+  - 단점: 3자 미만 CJK 쿼리 recall 한계
+- [ ] 중기 구현: vault-local CJK preprocessor
+  - 후보: Lindera/MeCab 계열 형태소 분석기
+  - 방식: external process stdin/stdout protocol 유지
+  - index-time: rewritten/artifact content → preprocessor → FTS5
+  - query-time: query → 같은 preprocessor → FTS5
+- [ ] fallback: `Intl.Segmenter('ko'|'ja'|'zh', { granularity: 'word' })`
+  - 외부 바이너리 없이 동작하는 보조안
+  - 형태소 분석 대체가 아니라 fallback tokenizer로만 사용
+
+### 15.7 Vectorless Retrieval / PageIndex 검토
+- [ ] PageIndex adapter 조사 및 PoC:
+  - 공식 저장소: https://github.com/VectifyAI/PageIndex
+  - 성격: vector DB와 인공 chunking 없이 계층형 tree index + LLM reasoning으로 retrieval
+- [ ] `retrieval.backend` 설정 추가 검토:
+  - `hybrid`: SQLite FTS5 + zvec dense vector, 기본값
+  - `pageindex`: long document/tree reasoning용 optional backend
+- [ ] 적용 범위:
+  - source: 긴 PDF, 스크랩 문서, OCR/STT 산출물
+  - rewritten: heading hierarchy가 명확한 장문 재작성 문서
+  - artifact: 기본적으로 검색 대상이지만 PageIndex 우선 대상은 아님
+- [ ] trade-off 평가:
+  - 장점: 섹션 traceability, 긴 문서 reasoning, embedding 불필요
+  - 단점: LLM 호출 비용/지연, Python stack, 일일 짧은 노트에는 과한 구조일 수 있음
+- [ ] PoC 완료 전까지 zvec/FTS hybrid를 기본 retrieval backend로 유지
+
+### 15.9 `kn llm` Namespace Plan
+
+> 원칙: 일반 `kn` 명령은 임베딩을 제외하고 LLM을 호출하지 않는다.
+> LLM이 필요한 동작은 `kn llm` 아래로 격리해, 비용/네트워크/프라이버시 경계를 명확하게 만든다.
+> 다만 rewritten 생성은 항상 외부 LLM agent가 수행하므로, 현재 P0에서는 `kn llm`이 실제 rewriting을 대신 수행하지 않는다.
+
+#### 15.9.1 명령 경계
+- [ ] `kn llm`은 기본 설치에서 비활성 또는 experimental로 둔다
+- [ ] OpenAI-compatible chat/completions API만 가정한다
+- [ ] 일반 `kn add/search/sync/get/template/report/mcp`는 LLM 호출 금지
+- [ ] LLM 호출이 필요한 경우에도 입력/출력은 JSON envelope로 고정한다
+
+#### 15.9.2 우선 명령 후보
+- [ ] `kn llm prompt rewrite --date <YYYY-MM-DD>`:
+  - source inventory, 명시 kind 후보, template 규칙을 바탕으로 외부 agent용 rewrite prompt/context를 생성
+  - 직접 LLM 호출은 하지 않고 JSON만 반환하는 형태를 우선 구현
+- [ ] `kn llm prompt artifact --template <id> --date <YYYY-MM-DD>`:
+  - artifact 작성용 prompt/context bundle 생성
+  - `kn report context`와 중복되지 않도록 report context는 데이터, llm prompt는 지시문 조립에 집중
+- [ ] `kn llm validate rewritten <path|note-id>`:
+  - rewritten 문서가 source reference, heading, task/workout signal contract를 지키는지 검증
+  - 가능하면 LLM 없이 rule-based validation 우선
+- [ ] `kn llm validate artifact <path|note-id>`:
+  - template required sections, source citation, artifact metadata 검증
+
+#### 15.9.3 후순위 명령 후보
+- [ ] `kn llm run rewrite`:
+  - 사용자가 명시적으로 허용한 경우에만 OpenAI-compatible API로 rewrite 실행
+  - 기본 정책과 충돌하므로 P0 제외
+- [ ] `kn llm run artifact`:
+  - report/todo/wiki artifact 생성 자동 실행
+  - 외부 agent 품질과 책임 경계가 안정화된 뒤 검토
+
+#### 15.9.4 구현 시 주의점
+- [ ] `kind` 자동 추론 금지:
+  - 유저가 명시한 kind 후보를 prompt에 제공할 수는 있음
+  - agent는 후보 중 선택하거나 새 raw string을 만들 수 있음
+  - `knoter`는 raw string 저장/검증만 수행
+- [ ] source는 path reference만 사용:
+  - source file을 vault `sources/YYYY-MM-DD/`로 이동/복사 후 경로만 저장
+  - chunking/indexing 대상 아님
+- [ ] rewritten/artifact만 chunking/indexing 대상
+- [ ] artifact는 기본 검색에서 제외하고 `--include-artifacts`로만 포함
+
+### 15.10 Verification
+- [ ] fixture daily note 작성:
+  - tasks/todo, 분야별 일일노트, 오늘 한 것, 운동 횟수 및 종류 포함
+- [ ] source fixture + rewritten fixture + artifact fixture를 분리 작성
+- [ ] `kn add fixture` 후 `kn report context --date ... --layer rewritten`가 expected JSON을 반환
+- [ ] MCP `kn_report_context`가 같은 payload를 반환
+- [ ] 외부 LLM agent prompt dry-run으로 hallucination 방지 확인
+- [ ] PageIndex PoC가 hybrid 대비 유리한 문서 유형과 불리한 문서 유형을 명확히 기록
+
+---
+
+## Phase 16: Frontend Preparation (`../knoter-web`) — Out of Current Backend Context
+
+> 백엔드가 대략 완성된 뒤 다른 컨텍스트에서 새로 계획한다.
+> 현재 세션/마일스톤에서는 구현하지 않는다.
+> 프론트는 React + Electron 기반 CLI wrapper 및 부가기능으로 작성한다는 방향만 기록한다.
+
+### 16.1 User Interview Before Implementation
+- [ ] 노트 저장 위치와 파일명 규칙:
+  - daily note 파일명, vault 분리 방식, Obsidian/VSCode/Neovim 사용 여부
+- [ ] 보고서 UX:
+  - 자동 생성 시간, 수동 생성 버튼, 저장 경로, 수정 가능 여부
+- [ ] task/todo 모델:
+  - Markdown checkbox만 쓸지, 별도 상태/마감일/우선순위 UI가 필요한지
+- [ ] 운동 그래프:
+  - 추적할 운동 종류, 단위, 그래프 기간, 목표/스트릭 표시 여부
+- [ ] LLM agent 연동:
+  - Claude Desktop/Codex/커스텀 agent/MCP HTTP 중 우선순위
+- [ ] 로컬 모델/컨테이너:
+  - Podman/Docker 설치 전제 가능 여부, OpenAI 호환 API fallback 필요 여부
+- [ ] 개인정보:
+  - 외부 API 전송 금지 데이터, 로컬-only vault, 민감 태그 규칙
+
+### 16.2 Frontend Scope
+- [ ] `../knoter-web`에 Electron + React + Vite scaffold
+- [ ] CLI wrapper: `kn` 실행, JSON envelope 파싱, 에러 힌트 표시
+- [ ] Vault selector/status panel
+- [ ] Daily report screen:
+  - date picker
+  - template selector
+  - context preview
+  - external agent invocation hook
+  - generated Markdown viewer/editor
+- [ ] Tasks/Todo panel:
+  - open/done/deferred 목록
+  - source note jump
+- [ ] Workout graph panel:
+  - report context의 workout metric JSON 기반 시각화
+- [ ] Settings:
+  - embedding endpoint, container, template path, privacy policy
+
+---
+
 ## Phase 간 의존성 맵
 
 ```
@@ -441,18 +688,20 @@ Phase 1 (백본)
         └─▶ Phase 3 (add) ──────────────────────┤
               ├─▶ Phase 4 (search)               │
               ├─▶ Phase 5 (sync)                 │
-              │     └─▶ Phase 12 (schedule)      │
+              │     └─▶ Phase 12 (install timer milestone)
               └─▶ Phase 6 (tag)                  │
-                    └─▶ Phase 11 (cluster)       │
-        └─▶ Phase 7 (get/context) ──────────────┤
-              └─▶ Phase 8 (ask) ◀── Phase 4     │
+                    └─▶ Phase 11 (cluster legacy/deferred)
+        └─▶ Phase 7 (get) ──────────────────────┤
+        └─▶ Phase 8 (ask) 철거                  │
         └─▶ Phase 9 (preprocessor) ◀── Phase 4  │
-        └─▶ Phase 10 (serve) ◀── All commands ──┤
-        └─▶ Phase 13 (AI 백엔드) ◀── Phase 3,8 ┘
+        └─▶ Phase 10 (mcp stdio) ◀── All JSON commands
+        └─▶ Phase 13 (AI 백엔드) ◀── Phase 3,4 ┘
               embedder placeholder → 실제 프로바이더 교체
-              ask placeholder → 실제 LLM 연결
         └─▶ Phase 14 (CJK 최적화) ◀── Phase 3,9,13
               chunker CJK awareness + language detection + FTS5 tokenizer
+        └─▶ Phase 15 (Template Daily Report) ◀── Phase 3,4,7,10,14
+              template + report context bundle + MCP tools + kn llm boundary
+              └─▶ Phase 16 (Frontend, separate future context)
 ```
 
 ---
@@ -499,81 +748,83 @@ Phase 1 (백본)
 | 2026-04-23 | 13 | 프로바이더 단일화: Ollama/Anthropic/리랭커 철거, OpenAI 호환만 유지, `src/core/container.ts` 추가 (podman/docker lazy-start, ECONNREFUSED 시 1회 재시도), `--rerank`/`--routing` 제거 | 완료 |
 | 2026-04-23 | 10 | `kn serve` → `kn mcp` rename (파일/함수/커맨드명/PID 파일) | 완료 |
 | 2026-04-24 | 7/8/9 | 커맨드 축소: `kn ask`/`kn context`/`kn preprocessor` 철거, `kn_ask`/`kn_context` MCP 도구 제거, LLMProvider/llm_cache/contexts/modelProfiles 전부 삭제, preprocessor는 `src/pipeline/preprocessor.ts` 내부 모듈로만 유지 | 완료 |
+| 2026-05-08 | 15 | template 중심 재설계: source/rewritten/artifact 3계층, source metadata-only, artifact 기본 검색 제외, raw kind만 저장, PageIndex future milestone | 진행중 |
+| 2026-05-08 | 7/10/12/15 | `kn get batch` 명령 표면 확정 및 MCP `kn_get_batch` 구현, schedule은 설치 시 launchctl/systemd timer service 제공 마일스톤으로 정리, `kn llm` namespace 계획 작성 | 진행중 |
+| 2026-05-08 | 15 | 하네스 구조로 `kn template get/list/validate` 구현, vault `.kn/template.md` 우선 + `docs/template.md` fallback, malformed frontmatter 검증, Worker/Fast Analyzer/Final Analyzer PASS | 완료 |
 
 ---
 
 ## 다음 세션 시작 가이드
 
-### 현재 상태 (2026-04-23 기준)
+### 현재 상태 (2026-05-08 기준)
 
-**완료된 Phase**: 1~14 (전체 파이프라인 동작, 후순위 항목만 잔여)
+**완료된 Phase**: 1~14의 핵심 검색/인덱싱 파이프라인. Phase 15 template/report는 설계와 일부 DB 기반 작업 진행 중.
 **브랜치**: `dev/cli`
-**테스트**: 38 pass / 0 fail (tests/meta-store, vec-store, korean)
+**테스트**: 마지막 실행 기준 57 pass / 0 fail
 **프로젝트 구조**: `src/` 소스, `tests/` 테스트, `docs/` 설계문서, `dist/` 바이너리 산출물
 
-### 구현 완료 파일 (31개+ .ts)
+### 이번 컨텍스트에서 반영된 핵심 결정
 
-```
-src/
-  cli.ts                    # 엔트리포인트 (commander, 12개 서브커맨드)
-  core/
-    config.ts               # 글로벌/볼트 2계층 설정
-    errors.ts               # KnError + ErrorCode enum
-    lock.ts                 # 볼트 파일 락 (PID+timestamp)
-    logger.ts               # consola 래퍼 + verbose 토글
-    output.ts               # success/error envelope + text/json/jsonl
-  stores/
-    meta-store.ts           # SQLite 메타데이터 (루트에서 복사)
-    vec-store.ts            # zvec 벡터 저장소 (루트에서 복사)
-    index.ts                # barrel 재익스포트
-  pipeline/
-    parser.ts               # gray-matter 프론트매터 추출
-    chunker.ts              # break-point scoring 스마트 청킹
-    hasher.ts               # Bun.CryptoHasher SHA-256
-    embedder.ts             # provider 추상화 + retry/fallback
-  search/
-    query-builder.ts        # tagFilter/dateFilter/combineFilters
-    fusion.ts               # linearFusion, strong-signal, 인접청크병합
-    hybrid.ts               # semantic/keyword/hybrid 오케스트레이터
-  providers/
-    types.ts                # ✅ LLMProvider + ContainerSpec 타입
-    openai.ts               # ✅ OpenAI 호환 embedding + LLM (container retry 훅)
-    factory.ts              # ✅ vault config → OpenAI 호환 프로바이더
-    health.ts               # ✅ 프로바이더 연결 상태 점검
-  cluster/
-    dbscan.ts               # ✅ DBSCAN 인라인 구현
-  core/
-    scheduler.ts            # ✅ systemd timer / launchd plist
-    container.ts            # ✅ podman/docker lazy-start + fetch retry
-  serve/                    # ✅ MCP stdio/http 서버 구현
-  commands/
-    vault.ts                # ✅ create/list/switch/delete/status (+ --check-providers)
-    add.ts                  # ✅ 전체 인제스천 파이프라인
-    search.ts               # ✅ 3모드 하이브리드 + --lang
-    sync.ts                 # ✅ recovery/prune/reconciliation
-    tag.ts                  # ✅ list/add/remove/auto
-    get.ts                  # ✅ 4단계 경로해석
-    context.ts              # ✅ add/list/remove/set-global
-    ask.ts                  # ✅ RAG + LLM 캐시
-    mcp.ts                  # ✅ MCP stdio/http, --daemon, mcp stop
-    cluster.ts              # ✅ DBSCAN (--suggest-merge/--apply)
-    schedule.ts             # ✅ enable/disable/status/run-now
-    preprocessor.ts         # ✅ add/bind/list/remove (install 스켈레톤)
-```
+- 문서는 3계층으로 관리:
+  - `source`: 유저 원본/스크랩/이미지/음성/PDF. vault 내부 `sources/YYYY-MM-DD/`로 복사/이동 후 path만 참조. 청킹/FTS/vector indexing 제외.
+  - `rewritten`: 외부 LLM agent가 source를 청킹/검색에 유리하게 재작성한 문서. `knoter`는 저장/검증만 수행. 청킹/FTS/vector indexing 대상.
+  - `artifact`: 일일 보고서/todo/wiki 등 최종 결과물. 청킹/FTS/vector indexing 대상이지만 기본 검색에서는 제외하고 `--include-artifacts`일 때만 포함.
+- `kind`는 자동 추론하지 않음:
+  - frontmatter 또는 외부 agent가 명시한 raw string만 저장.
+  - 통합 enum/일반 분류기는 만들지 않음.
+- embedding은 OpenAI-compatible API 전제.
+- 일반 `kn` 명령은 임베딩 외 LLM 호출 금지.
+- LLM 호출 또는 LLM prompt 조립 기능은 향후 `kn llm` namespace로 격리.
+- MCP는 `stdio` 안정화를 우선한다.
+- `batch get`이 아니라 `kn get batch <targets...>`로 명령 표면을 정리한다.
+- `tag auto`는 제거. 자동 태그/타입 분류 없음.
+- cluster는 legacy/deferred. active CLI/typecheck/MCP 표면에서 분리.
+- schedule은 active CLI 방향이 아니라 설치 시 launchctl/systemd timer service를 제공하는 마일스톤으로 둔다.
+- PageIndex는 후속 PoC 마일스톤. 기본 retrieval backend는 zvec + SQLite FTS5 hybrid.
+- frontend는 현재 컨텍스트에서 다루지 않음. backend가 대략 완성된 뒤 `../knoter-web`에서 별도 계획.
 
-### 잔여 작업 (후순위)
+### Legacy / Deferred Code
 
-- **Phase 1.2 패키지 메타**: `package.json` `name` → `knoter`, `bin.kn` 등록, tsconfig rootDir/outDir 조정.
-- **Phase 3 검증**: `--dry-run` / 벡터 쓰기 실패 시뮬레이션 미검증.
-- **Phase 4 검증**: filter (`--tag`/`--after`) / 인접 청크 병합 E2E 미검증.
-- **Phase 9 preprocessor 프리셋**: `install <language>` 실제 번들 (한국어 mecab 등).
-- **Phase 9 인덱스측 preprocessor**: 청크 insert 시 FTS5 전처리 적용 + 체이닝.
-- **Phase 10 MCP 도구 확장**: `kn_add_note`, `kn_multi_get`, `kn_tag_auto`, `kn_cluster`, `kn_update` — 현재 "not implemented" 반환.
-- **Phase 10 SSE 트랜스포트 + idle dispose**: warm 유지 후 5분 idle 해제.
-- **Phase 11 HDBSCAN 업그레이드**: 현재 DBSCAN.
-- **Phase 13 리랭커 재도입**: TEI / Cohere / Jina 중 택1 (현재 철거 상태).
-- **Phase 13 컨테이너 `run` 지원**: 현재 `podman start` (기존 컨테이너 전제). `container.image` 설정 시 `run --name ... -p ...` 자동 생성까지 확장 여지.
-- **Phase 14 vault status language 분포** + `kn vault create` CJK 모델 자동 제안.
+- `src/commands/cluster.ts`, `src/cluster/*`: cluster 기능은 현재 목표에서 제외. active CLI 등록에서 제거하고 TypeScript active check 대상에서도 제외.
+- `src/commands/schedule.ts`, `src/core/scheduler.ts`: 기존 schedule CLI/OS 연동 구현은 남아 있으나 신규 방향은 설치 산출물 기반 timer service 제공.
+- `src/cluster/dbscan.ts`: 현재 worktree에 기존 dirty 변경이 있으며 이번 작업에서는 수정하지 않았음.
+- `docs/specification.md`, `docs/캡디llm.md`, `docs/issue.md`: 일부 구형 명세가 `tag auto`, `kn_multi_get`, `kn cluster`, `kn serve` 등을 참조한다. 다음 정리 작업에서 최신 Phase 15 설계와 맞춰 legacy 문서로 분리하거나 갱신해야 한다.
+
+### 잔여 작업 (우선순위 재정렬)
+
+- **P0 `kn report context`**: date/template 기반 JSON context bundle 생성. LLM 호출 없음.
+- **P0 `kn template` 확장**: required variables/sections 등 template contract validation 강화.
+- **P0 MCP 도구 확장**: `kn_add_note`, `kn_report_context`, `kn_template_get`, `kn_rewrite_context`.
+- **P0 source/rewrite/artifact 저장 검증**: source는 metadata-only, rewritten/artifact만 chunk/index/embed.
+- **P0 signals 저장**: task/workout/daily/area/metric을 rewritten 단계의 agent 출력으로 받아 `note_signals`에 저장.
+- **P0 `kn llm` 계획 구체화**: prompt/validate 중심으로 시작하고, 실제 LLM run은 후순위.
+- **P1 검색 점수 정규화**: zvec distance → similarity score 변환, hybrid fusion 재튜닝.
+- **P1 CJK FTS5 보완**: 단기 `trigram`, 중기 CJK 형태소 preprocessor, fallback `Intl.Segmenter` 정책 구현.
+- **P1 PageIndex PoC**: embedding 없는 vectorless/tree retrieval backend가 긴 문서와 rewritten source에 유효한지 검증.
+- **P1 패키지 메타**: `package.json` `name` → `knoter`, `bin.kn` 등록, tsconfig rootDir/outDir 조정.
+- **P1 검증 보강**: `--dry-run`, 벡터 실패 rollback, `--tag`/`--after`, 인접 청크 병합 E2E.
+- **P2 schedule install milestone**: launchctl/systemd timer service template와 install/uninstall dry-run.
+- **P2 컨테이너 `run` 지원**: 현재 `podman start` 전제. `container.image` 설정 시 자동 생성까지 확장.
+- **P3 SSE 트랜스포트 + idle dispose**: HTTP/stdio가 우선이므로 후순위.
+
+### 주요 변경 파일
+
+- `docs/template.md`: 일일 보고서 template 초안, 3계층 문서 모델, agent contract 기록.
+- `docs/plan.md`: Phase 15/`kn llm`/schedule milestone/current handoff 갱신.
+- `src/commands/template.ts`: vault-local single template 조회/list/validation, fallback template 지원.
+- `src/stores/meta-store.ts`: `doc_date`, `layer`, raw `kind`, lineage, `note_signals`, PageIndex metadata, artifact 검색 제외 정책.
+- `src/pipeline/parser.ts`: `docDate`, `layer`, 명시 `kind`만 파싱.
+- `src/commands/add.ts`: source metadata-only 저장, rewritten/artifact만 chunk/index/embed.
+- `src/commands/sync.ts`: source metadata-only sync, rewritten/artifact만 chunk/index/embed.
+- `src/commands/search.ts`: `--include-artifacts` 추가, LLM expand 제거.
+- `src/commands/tag.ts`: `auto` 제거.
+- `src/commands/get.ts`: `kn get <target>` + `kn get batch <targets...>` 구조.
+- `src/search/hybrid.ts`: artifact 기본 제외.
+- `src/stores/vec-store.ts`: vector metadata에 `layer` 저장.
+- `tsconfig.json`: cluster legacy 코드 active check 제외.
+- `tests/meta-store.test.ts`, `tests/parser.test.ts`: 3계층/kind/artifact/source 정책 검증.
+- `tests/command-help.test.ts`: CLI command surface harness (`kn get batch`, legacy schedule, removed cluster/tag auto) 검증.
+- `tests/template-command-behavior.test.ts`: `kn template` fallback/vault precedence/metadata/validation behavior harness 검증.
 
 ### 알아야 할 핵심 패턴
 
@@ -583,6 +834,9 @@ src/
 - **async/finally 주의**: `try { return await fn(); } finally { db.close(); }` — `await` 필수
 - **zvec open**: `openVaultCollection(path, {})` — 빈 객체 `{}` 필수 (undefined 불가)
 - **searchFts**: 내부에서 `buildFtsQuery` 호출함 — 외부에서 중복 호출 금지
-- **프로바이더 팩토리**: `createEmbeddingProvider(vaultConfig)`, `createLLMProvider(vaultConfig)` — vault config의 baseUrl로 Ollama/OpenAI 자동 감지
-- **LLMProvider 인터페이스**: `src/providers/ollama.ts`에 정의, `generate(systemPrompt, userPrompt): Promise<string>`
-- **프로바이더 타입**: `src/providers/types.ts`에 `LLMProvider`/`EmbeddingProvider`/`RerankerProvider` 정의, factory는 explicit `provider` 필드로 분기
+- **프로바이더 팩토리**: `createEmbeddingProvider(vaultConfig)` — OpenAI 호환 embedding endpoint 사용
+- **LLM 내장 호출 지양**: `kn ask`는 철거됨. 보고서 생성은 MCP를 쓰는 외부 LLM agent가 담당하고, CLI는 template/context만 제공
+- **template/report 방향**: template는 Markdown, context는 JSON, 결과 보고서는 외부 agent가 Markdown으로 생성
+- **source 정책**: 원본 파일 content는 검색 인덱스에 넣지 않고 path/lineage만 저장
+- **artifact 검색 정책**: 기본 제외, 명시 옵션으로만 포함
+- **kind 정책**: 자동 추론 없음, raw string 저장

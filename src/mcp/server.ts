@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MetaDB } from "../stores/meta-store";
+import { MetaDB, type NoteRow } from "../stores/meta-store";
 import { search } from "../search/hybrid";
 import { logger } from "../core/logger";
 import { join } from "node:path";
@@ -93,24 +93,12 @@ export async function createMcpServer(
       try {
         logger.debug(`[MCP] kn_get: "${path}"`);
 
-        // Resolve note by path
-        let note = metaDb.getNoteByPath(vaultName, path);
+        const payload = await buildGetPayload(metaDb, vaultRoot, vaultName, path, {
+          section,
+          maxChars,
+        });
 
-        if (!note) {
-          const suffix = metaDb.db
-            .query("SELECT * FROM notes WHERE vault_id = ? AND file_path LIKE ? LIMIT 1")
-            .get(vaultName, `%/${path}`) as any;
-          note = suffix;
-        }
-
-        if (!note) {
-          const sub = metaDb.db
-            .query("SELECT * FROM notes WHERE vault_id = ? AND file_path LIKE ? LIMIT 1")
-            .get(vaultName, `%${path}%`) as any;
-          note = sub;
-        }
-
-        if (!note) {
+        if (!payload) {
           return {
             content: [
               {
@@ -122,68 +110,11 @@ export async function createMcpServer(
           };
         }
 
-        // Read file
-        let content: string;
-        try {
-          const filePath = join(vaultRoot, note.file_path);
-          content = await Bun.file(filePath).text();
-        } catch {
-          content = "[File not found on disk]";
-        }
-
-        // Extract section if specified
-        if (section) {
-          const lines = content.split("\n");
-          let collecting = false;
-          let matchLevel = 0;
-          const result: string[] = [];
-
-          for (const line of lines) {
-            const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-            if (headingMatch) {
-              const level = headingMatch[1]!.length;
-              const text = headingMatch[2]!.trim();
-
-              if (collecting) {
-                if (level <= matchLevel) break;
-              }
-
-              if (text.toLowerCase() === section.toLowerCase()) {
-                collecting = true;
-                matchLevel = level;
-              }
-            }
-
-            if (collecting) {
-              result.push(line);
-            }
-          }
-
-          content = result.length > 0 ? result.join("\n") : `[Section "${section}" not found]`;
-        }
-
-        // Apply max chars
-        if (maxChars && maxChars > 0) {
-          content = content.substring(0, maxChars);
-        }
-
-        const tags = metaDb.getTagsByNote(note.id).map((t) => t.tag);
-        const chunks = metaDb.getChunksByNote(note.id);
-
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify({
-                id: note.id,
-                filePath: note.file_path,
-                title: note.title,
-                tags,
-                chunkCount: chunks.length,
-                content,
-                createdAt: note.created_at,
-                updatedAt: note.updated_at,
-              }),
+              text: JSON.stringify(payload),
             },
           ],
         };
@@ -263,109 +194,57 @@ export async function createMcpServer(
     }
   );
 
-  // ── Tool: kn_multi_get (stub) ──────────────────────────────────────────────
+  // ── Tool: kn_get_batch ─────────────────────────────────────────────────────
 
   server.registerTool(
-    "kn_multi_get",
+    "kn_get_batch",
     {
-      title: "Get multiple notes (not yet implemented)",
-      description: "Retrieve multiple notes by path",
+      title: "Get multiple notes",
+      description: "Retrieve multiple notes by path or note ID",
       inputSchema: z.object({
-        paths: z.array(z.string()).describe("Note paths"),
+        targets: z.array(z.string()).describe("Note paths or note IDs"),
+        section: z.string().optional().describe("Extract specific heading"),
+        maxChars: z.number().optional().describe("Truncate each output"),
       }),
     },
-    async () => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "kn_multi_get not yet implemented",
-            }),
-          },
-        ],
-        isError: true,
-      };
-    }
-  );
+    async ({ targets, section, maxChars }) => {
+      try {
+        logger.debug(`[MCP] kn_get_batch: ${targets.length} targets`);
 
-  // ── Tool: kn_tag_auto (stub) ───────────────────────────────────────────────
+        const found: any[] = [];
+        const notFound: { target: string; suggestions: string[] }[] = [];
 
-  server.registerTool(
-    "kn_tag_auto",
-    {
-      title: "Auto-tag note (not yet implemented)",
-      description: "Automatically generate tags for a note",
-      inputSchema: z.object({
-        noteId: z.string().describe("Note ID"),
-      }),
-    },
-    async () => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "kn_tag_auto not yet implemented",
-            }),
-          },
-        ],
-        isError: true,
-      };
-    }
-  );
+        for (const target of targets) {
+          const payload = await buildGetPayload(metaDb, vaultRoot, vaultName, target, {
+            section,
+            maxChars,
+          });
 
-  // ── Tool: kn_cluster (stub) ────────────────────────────────────────────────
+          if (payload) {
+            found.push(payload);
+          } else {
+            notFound.push({
+              target,
+              suggestions: getPathSuggestions(metaDb, vaultName, target),
+            });
+          }
+        }
 
-  server.registerTool(
-    "kn_cluster",
-    {
-      title: "Cluster notes (not yet implemented)",
-      description: "Find semantic clusters of similar notes",
-      inputSchema: z.object({
-        minSize: z.number().optional().describe("Minimum cluster size"),
-      }),
-    },
-    async () => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "kn_cluster not yet implemented in MCP server",
-            }),
-          },
-        ],
-        isError: true,
-      };
-    }
-  );
-
-  // ── Tool: kn_update (stub) ─────────────────────────────────────────────────
-
-  server.registerTool(
-    "kn_update",
-    {
-      title: "Update note (not yet implemented)",
-      description: "Update note metadata or content",
-      inputSchema: z.object({
-        noteId: z.string().describe("Note ID"),
-        title: z.string().optional().describe("New title"),
-        tags: z.array(z.string()).optional().describe("New tags"),
-      }),
-    },
-    async () => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "kn_update not yet implemented",
-            }),
-          },
-        ],
-        isError: true,
-      };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ found, notFound }),
+            },
+          ],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: msg }) }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -375,4 +254,111 @@ export async function createMcpServer(
   (server as any).__metaDb = metaDb;
 
   return server;
+}
+
+async function buildGetPayload(
+  metaDb: MetaDB,
+  vaultRoot: string,
+  vaultName: string,
+  target: string,
+  options: { section?: string; maxChars?: number }
+): Promise<any | null> {
+  const note = resolveNote(metaDb, vaultName, target);
+  if (!note) return null;
+
+  let content: string;
+  try {
+    const filePath = join(vaultRoot, note.file_path);
+    content = await Bun.file(filePath).text();
+  } catch {
+    content = "[File not found on disk]";
+  }
+
+  if (options.section) {
+    content = extractSection(content, options.section);
+  }
+
+  if (options.maxChars && options.maxChars > 0) {
+    content = content.substring(0, options.maxChars);
+  }
+
+  const tags = metaDb.getTagsByNote(note.id).map((t) => t.tag);
+  const chunks = metaDb.getChunksByNote(note.id);
+
+  return {
+    id: note.id,
+    filePath: note.file_path,
+    title: note.title,
+    tags,
+    chunkCount: chunks.length,
+    content,
+    createdAt: note.created_at,
+    updatedAt: note.updated_at,
+    frontmatter: note.frontmatter ? JSON.parse(note.frontmatter) : null,
+  };
+}
+
+function resolveNote(metaDb: MetaDB, vaultName: string, target: string): NoteRow | null {
+  let note = metaDb.getNoteByPath(vaultName, target);
+
+  if (!note) {
+    note = metaDb.db
+      .query("SELECT * FROM notes WHERE vault_id = ? AND file_path LIKE ? LIMIT 1")
+      .get(vaultName, `%/${target}`) as NoteRow | null;
+  }
+
+  if (!note) {
+    note = metaDb.db
+      .query("SELECT * FROM notes WHERE vault_id = ? AND file_path LIKE ? LIMIT 1")
+      .get(vaultName, `%${target}%`) as NoteRow | null;
+  }
+
+  if (!note) {
+    note = metaDb.getNote(target);
+  }
+
+  return note;
+}
+
+function getPathSuggestions(metaDb: MetaDB, vaultName: string, target: string): string[] {
+  const targetLower = target.toLowerCase();
+
+  return metaDb
+    .listNotes(vaultName, 1000, 0)
+    .map((note) => note.file_path)
+    .filter((path) => {
+      const lower = path.toLowerCase();
+      return lower.includes(targetLower) || targetLower.split("/").some((part) => lower.includes(part));
+    })
+    .slice(0, 5);
+}
+
+function extractSection(content: string, headingName: string): string {
+  const lines = content.split("\n");
+  let collecting = false;
+  let matchLevel = 0;
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1]!.length;
+      const text = headingMatch[2]!.trim();
+
+      if (collecting && level <= matchLevel) {
+        break;
+      }
+
+      if (text.toLowerCase() === headingName.toLowerCase()) {
+        collecting = true;
+        matchLevel = level;
+      }
+    }
+
+    if (collecting) {
+      result.push(line);
+    }
+  }
+
+  return result.length > 0 ? result.join("\n") : `[Section "${headingName}" not found]`;
 }

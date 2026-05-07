@@ -11,7 +11,7 @@ import { setVerbose, logger } from "../core/logger";
 export function registerTagCommand(program: Command): void {
   const tagCmd = program
     .command("tag")
-    .description("Manage tags (list, add, remove, auto)");
+    .description("Manage explicit tags (list, add, remove)");
 
   // kn tag list
   tagCmd
@@ -143,82 +143,6 @@ export function registerTagCommand(program: Command): void {
         const msg = err instanceof Error ? err.message : String(err);
         const code = err instanceof KnError ? err.code : ErrorCode.UNKNOWN;
         render(error("tag remove", code, msg), fmt);
-        process.exit(err instanceof KnError ? err.exitCode : 1);
-      }
-    });
-
-  // kn tag auto [--dry-run]
-  tagCmd
-    .command("auto")
-    .option("--dry-run", "Preview without applying")
-    .action(async (options, cmd) => {
-      try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
-
-        const vaultOpt = globalOpts.vault;
-        const vaultRoot = await resolveVaultRoot(vaultOpt);
-        let vaultName = vaultOpt;
-        if (!vaultName) {
-          const config = await loadGlobalConfig();
-          vaultName = config.activeVault || "default";
-        }
-
-        // For now, auto-tagging is a placeholder that extracts common words
-        // Real implementation would use LLM (Phase 13)
-        const metaDb = new MetaDB(vaultRoot);
-        try {
-          const notes = metaDb.listNotes(vaultName, 100000, 0);
-          const suggestions: { noteId: string; filePath: string; suggestedTags: string[] }[] = [];
-
-          for (const note of notes) {
-            // Simple heuristic: extract heading words as potential tags
-            const chunks = metaDb.getChunksByNote(note.id);
-            const headings = chunks
-              .map(c => c.heading)
-              .filter((h): h is string => h !== null);
-            const words = headings
-              .flatMap(h => h.toLowerCase().split(/\s+/))
-              .filter(w => w.length > 3);
-            const unique = [...new Set(words)];
-
-            if (unique.length > 0) {
-              suggestions.push({
-                noteId: note.id,
-                filePath: note.file_path,
-                suggestedTags: unique.slice(0, 5), // max 5 suggestions
-              });
-            }
-          }
-
-          if (!options.dryRun && suggestions.length > 0) {
-            // Apply tags
-            await withLock(vaultRoot, async () => {
-              for (const s of suggestions) {
-                for (const tag of s.suggestedTags) {
-                  try {
-                    metaDb.addTag(s.noteId, tag, "auto");
-                  } catch {} // ignore duplicates
-                }
-                await syncVectorTags(metaDb, vaultRoot, s.noteId);
-              }
-            });
-          }
-
-          render(success("tag auto", {
-            dryRun: !!options.dryRun,
-            suggestions,
-            applied: !options.dryRun,
-          }, vaultName), format);
-        } finally {
-          metaDb.close();
-        }
-      } catch (err) {
-        const fmt = (cmd.optsWithGlobals?.()?.format || "text") as OutputFormat;
-        const msg = err instanceof Error ? err.message : String(err);
-        const code = err instanceof KnError ? err.code : ErrorCode.UNKNOWN;
-        render(error("tag auto", code, msg), fmt);
         process.exit(err instanceof KnError ? err.exitCode : 1);
       }
     });
