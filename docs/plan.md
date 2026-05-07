@@ -514,9 +514,9 @@
   - `kn template list`
   - `kn template get`
   - `kn template validate <path|id>`
-- [ ] `src/commands/rewrite.ts` 또는 `kn source rewrite-context` 검토:
+- [x] `src/commands/rewrite.ts` 또는 `kn source rewrite-context` 검토:
   - 외부 LLM agent가 source를 rewritten source로 바꾸기 위한 context bundle 제공
-- [ ] `src/commands/report.ts` 추가:
+- [x] `src/commands/report.ts` 추가:
   - `kn report context --date <YYYY-MM-DD> --layer rewritten --template daily-report`
   - 결과는 JSON envelope로만 충분히 상세하게 반환
 - [ ] context bundle 구성:
@@ -528,16 +528,16 @@
   - workout metrics
   - previous 7 days continuity candidates
   - source paths/chunk ids/scores
-- [ ] LLM 호출은 하지 않는다.
+- [x] LLM 호출은 하지 않는다.
   - 외부 LLM agent가 `template.md`와 context bundle을 받아 최종 Markdown 보고서를 작성
 
 ### 15.5 MCP 확장
-- [ ] `kn_template_get`: template text + metadata 반환
-- [ ] `kn_report_context`: date/template 기반 context bundle 반환
-- [ ] `kn_rewrite_context`: source → rewritten source 변환용 evidence bundle 반환
+- [x] `kn_template_get`: template text + metadata 반환
+- [x] `kn_report_context`: date/template 기반 context bundle 반환
+- [x] `kn_rewrite_context`: source → rewritten source 변환용 evidence bundle 반환
 - [x] `kn_get_batch`: `kn get batch <targets...>` 대응 batch retrieval
-- [ ] `kn_add_note`: rewritten source 또는 final artifact 저장을 위해 구현
-- [ ] MCP 도구 응답은 JSON-only를 유지하고 stdout 오염 금지
+- [x] `kn_add_note`: rewritten source 또는 final artifact 저장을 위해 구현
+- [x] MCP 도구 응답은 JSON-only를 유지하고 stdout 오염 금지
 
 ### 15.6 Search 품질 보완
 - [ ] semantic score 방향 수정: zvec distance를 `score = 1 - distance`로 변환
