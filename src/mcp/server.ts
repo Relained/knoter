@@ -12,6 +12,7 @@ import {
   parseLayerOption,
   parseTopOption,
 } from "../core/report-context";
+import { buildRewriteContextBundle } from "../core/rewrite-context";
 
 // ─── MCP Server Factory ──────────────────────────────────────────────────────
 
@@ -309,6 +310,45 @@ export async function createMcpServer(
           layer: parseLayerOption(layer || "rewritten"),
           top: parseTopOption(String(top ?? 20)),
           includeArtifacts: !!includeArtifacts,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: msg }) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── Tool: kn_rewrite_context ───────────────────────────────────────────────
+
+  server.registerTool(
+    "kn_rewrite_context",
+    {
+      title: "Build rewrite context",
+      description: "Return source-layer evidence bundle for external rewrite agents",
+      inputSchema: z.object({
+        date: z.string().optional().describe("Target logical date (YYYY-MM-DD)"),
+        source: z.string().optional().describe("Source note id or file path"),
+        maxChars: z.number().optional().describe("Per-source content truncation (default: 20000)"),
+        includeContent: z.boolean().optional().describe("Include source file content (default: true)"),
+      }),
+    },
+    async ({ date, source, maxChars, includeContent }) => {
+      try {
+        logger.debug(`[MCP] kn_rewrite_context: date=${date ?? "-"} source=${source ?? "-"}`);
+        const payload = await buildRewriteContextBundle({
+          metaDb,
+          vaultRoot,
+          vaultName,
+          date,
+          source,
+          maxChars,
+          includeContent,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],

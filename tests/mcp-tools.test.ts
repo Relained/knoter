@@ -4,6 +4,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { MetaDB } from "../src/stores/meta-store";
 import { buildReportContextBundle } from "../src/core/report-context";
+import { buildRewriteContextBundle } from "../src/core/rewrite-context";
 import { buildTemplateGetPayload, createMcpServer } from "../src/mcp/server";
 
 const TARGET_DATE = "2026-05-08";
@@ -18,9 +19,15 @@ async function createFixture(): Promise<{
   const vaultName = "work";
   const vaultKnDir = join(vaultRoot, ".kn");
   const templatePath = join(vaultKnDir, "template.md");
+  const sourcePath = join(vaultRoot, "sources", "2026-05-08", "raw-note.md");
+  const rewrittenPath = join(vaultRoot, "rewritten", "2026-05-08", "daily.md");
+  const artifactPath = join(vaultRoot, "artifacts", "2026-05-08", "daily-report.md");
 
   mkdirSync(knHome, { recursive: true });
   mkdirSync(vaultKnDir, { recursive: true });
+  mkdirSync(join(vaultRoot, "sources", "2026-05-08"), { recursive: true });
+  mkdirSync(join(vaultRoot, "rewritten", "2026-05-08"), { recursive: true });
+  mkdirSync(join(vaultRoot, "artifacts", "2026-05-08"), { recursive: true });
 
   await Bun.write(
     join(knHome, "config.json"),
@@ -43,9 +50,23 @@ async function createFixture(): Promise<{
     templatePath,
     ["---", "id: mcp-template", "---", "", "# MCP Template", ""].join("\n"),
   );
+  await Bun.write(sourcePath, "# Source\n\n- task: one\n- workout: pushup 10");
+  await Bun.write(rewrittenPath, "# Rewritten");
+  await Bun.write(artifactPath, "# Artifact");
 
   const metaDb = new MetaDB(vaultRoot);
   try {
+    metaDb.upsertNote({
+      id: "note_source_1",
+      vaultId: vaultName,
+      filePath: "sources/2026-05-08/raw-note.md",
+      title: "Raw source note",
+      fileHash: "hash-source-1",
+      docDate: TARGET_DATE,
+      layer: "source",
+      kind: "daily-source",
+      language: "mixed",
+    });
     metaDb.upsertNote({
       id: "note_rewritten_1",
       vaultId: vaultName,
@@ -81,6 +102,16 @@ async function createFixture(): Promise<{
         seqIndex: 0,
       },
       {
+        id: "chunk_source_1",
+        noteId: "note_source_1",
+        heading: "source",
+        content: "raw source fixture content",
+        offsetStart: 0,
+        offsetEnd: 26,
+        tokenCount: 4,
+        seqIndex: 0,
+      },
+      {
         id: "chunk_artifact_1",
         noteId: "note_artifact_1",
         heading: "artifact",
@@ -91,6 +122,7 @@ async function createFixture(): Promise<{
         seqIndex: 0,
       },
     ]);
+    metaDb.markSynced("note_source_1");
     metaDb.markSynced("note_rewritten_1");
     metaDb.markSynced("note_artifact_1");
   } finally {
@@ -116,6 +148,7 @@ describe("mcp payload helpers", () => {
         const tools = (server as any)._registeredTools as Record<string, unknown>;
         expect(Object.keys(tools)).toContain("kn_template_get");
         expect(Object.keys(tools)).toContain("kn_report_context");
+        expect(Object.keys(tools)).toContain("kn_rewrite_context");
       } finally {
         ((server as any).__metaDb as MetaDB | undefined)?.close();
       }
@@ -190,6 +223,71 @@ describe("mcp payload helpers", () => {
       expect(rows.every((row) => row.note?.layer === "artifact")).toBe(true);
     } finally {
       metaDb.close();
+      fixture.cleanup();
+    }
+  });
+
+  test("rewrite-context bundle returns source-only notes with truncated content by date", async () => {
+    const fixture = await createFixture();
+    const metaDb = new MetaDB(fixture.vaultRoot);
+    try {
+      const payload = await buildRewriteContextBundle({
+        metaDb,
+        vaultRoot: fixture.vaultRoot,
+        vaultName: "work",
+        date: TARGET_DATE,
+        maxChars: 12,
+      });
+      const sources = payload.sources as Array<any>;
+      expect(payload.date).toBe(TARGET_DATE);
+      expect(payload.targetLayer).toBe("rewritten");
+      expect(sources).toHaveLength(1);
+      expect(sources[0].filePath).toBe("sources/2026-05-08/raw-note.md");
+      expect(sources[0].content).toBe("# Source\n\n- ");
+      expect(sources[0].contentTruncated).toBe(true);
+    } finally {
+      metaDb.close();
+      fixture.cleanup();
+    }
+  });
+
+  test("rewrite-context source selector wins over date and includeContent=false omits content", async () => {
+    const fixture = await createFixture();
+    const metaDb = new MetaDB(fixture.vaultRoot);
+    try {
+      const payload = await buildRewriteContextBundle({
+        metaDb,
+        vaultRoot: fixture.vaultRoot,
+        vaultName: "work",
+        date: "2026-05-07",
+        source: "sources/2026-05-08/raw-note.md",
+        includeContent: false,
+      });
+      const sources = payload.sources as Array<any>;
+      expect(payload.date).toBe("2026-05-07");
+      expect(sources).toHaveLength(1);
+      expect(sources[0].id).toBe("note_source_1");
+      expect("content" in sources[0]).toBe(false);
+    } finally {
+      metaDb.close();
+      fixture.cleanup();
+    }
+  });
+
+  test("kn_rewrite_context returns MCP error for invalid maxChars", async () => {
+    const fixture = await createFixture();
+    try {
+      const server = await createMcpServer(fixture.vaultRoot, "work");
+      try {
+        const tools = (server as any)._registeredTools as Record<string, any>;
+        const result = await tools.kn_rewrite_context.handler({ maxChars: 0 });
+        expect(result.isError).toBe(true);
+        const payload = JSON.parse(result.content[0].text);
+        expect(payload.error).toContain("Invalid maxChars");
+      } finally {
+        ((server as any).__metaDb as MetaDB | undefined)?.close();
+      }
+    } finally {
       fixture.cleanup();
     }
   });
