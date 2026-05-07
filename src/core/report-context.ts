@@ -1,27 +1,16 @@
 import { KnError, ErrorCode } from "./errors";
-import { getEffectiveTemplate, type EffectiveTemplate } from "./template";
+import { getEffectiveTemplate } from "./template";
+import { buildContinuityContext } from "./report-continuity";
 import {
-  buildFtsQuery,
-  MetaDB,
-  type DocumentLayer,
-  type FtsResult,
-  type NoteRow,
-  type NoteSignalRow,
-  normalizeBM25,
-} from "../stores/meta-store";
+  type ReportContextInput,
+  type ReportLayer,
+} from "./report-context-types";
+import { buildRetrievalGroups } from "./report-retrieval";
+import { groupSignals, serializeNoteRow } from "./report-serialization";
 
-export type ReportLayer = DocumentLayer | "all";
-type RetrievalGroup = "date" | "tasks" | "workouts" | "areas";
-
-const RETRIEVAL_QUERIES: Record<RetrievalGroup, string> = {
-  date: "",
-  tasks: "task todo 할 일 해야 할 것 완료 미완료",
-  workouts: "운동 헬스 러닝 걷기 스쿼트 푸시업 횟수 세트 km kg",
-  areas: "llm-wiki tasks todo daily-workout-graph knoter",
-};
+export type { ReportLayer } from "./report-context-types";
 
 const MAX_NOTE_ROWS = 5000;
-const CONTINUITY_WINDOW_DAYS = 7;
 
 export function parseDateOption(raw: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
@@ -61,18 +50,7 @@ export function parseTopOption(raw: string): number {
   return top;
 }
 
-export async function buildReportContextBundle(input: {
-  metaDb: MetaDB;
-  vaultName: string;
-  date: string;
-  templateArg?: string;
-  templateVaultOpt?: string;
-  templateOverride?: EffectiveTemplate;
-  layer: ReportLayer;
-  top: number;
-  includeArtifacts: boolean;
-  timezone?: string;
-}): Promise<Record<string, unknown>> {
+export async function buildReportContextBundle(input: ReportContextInput): Promise<Record<string, unknown>> {
   const timezone =
     input.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -111,29 +89,12 @@ export async function buildReportContextBundle(input: {
     notesById,
   });
 
-  const continuityWindow = getContinuityWindow(input.date, CONTINUITY_WINDOW_DAYS);
-  const continuityNotes = listContinuityNotes(
-    input.metaDb,
-    input.vaultName,
-    continuityWindow.fromDate,
-    continuityWindow.toDate,
-    input.includeArtifacts,
-  );
-  const continuitySignals = listContinuitySignals(
-    input.metaDb,
-    input.vaultName,
-    continuityWindow.fromDate,
-    continuityWindow.toDate,
-    input.includeArtifacts,
-  );
-  const continuityNotesById = new Map(continuityNotes.map((note) => [note.id, note]));
-  const continuity = {
-    windowDays: CONTINUITY_WINDOW_DAYS,
-    fromDate: continuityWindow.fromDate,
-    toDate: continuityWindow.toDate,
-    notes: continuityNotes.map(serializeNoteRow),
-    signals: groupSignals(continuitySignals, continuityNotesById, input.includeArtifacts),
-  };
+  const continuity = buildContinuityContext({
+    metaDb: input.metaDb,
+    vaultId: input.vaultName,
+    targetDate: input.date,
+    includeArtifacts: input.includeArtifacts,
+  });
 
   return {
     date: input.date,
@@ -152,66 +113,6 @@ export async function buildReportContextBundle(input: {
   };
 }
 
-function getContinuityWindow(
-  targetDate: string,
-  windowDays: number,
-): { fromDate: string; toDate: string } {
-  const target = new Date(`${targetDate}T00:00:00.000Z`);
-  const to = new Date(target);
-  to.setUTCDate(to.getUTCDate() - 1);
-  const from = new Date(target);
-  from.setUTCDate(from.getUTCDate() - windowDays);
-  return {
-    fromDate: from.toISOString().slice(0, 10),
-    toDate: to.toISOString().slice(0, 10),
-  };
-}
-
-function listContinuityNotes(
-  metaDb: MetaDB,
-  vaultId: string,
-  fromDate: string,
-  toDate: string,
-  includeArtifacts: boolean,
-): NoteRow[] {
-  const layerClause = includeArtifacts
-    ? "AND n.layer IN ('rewritten', 'artifact')"
-    : "AND n.layer = 'rewritten'";
-  return metaDb.db
-    .query(
-      `SELECT n.* FROM notes n
-       WHERE n.vault_id = ?
-         AND n.doc_date >= ?
-         AND n.doc_date <= ?
-         ${layerClause}
-       ORDER BY n.doc_date DESC, n.layer, n.file_path, n.id`,
-    )
-    .all(vaultId, fromDate, toDate) as NoteRow[];
-}
-
-function listContinuitySignals(
-  metaDb: MetaDB,
-  vaultId: string,
-  fromDate: string,
-  toDate: string,
-  includeArtifacts: boolean,
-): NoteSignalRow[] {
-  const layerClause = includeArtifacts
-    ? "AND n.layer IN ('rewritten', 'artifact')"
-    : "AND n.layer = 'rewritten'";
-  return metaDb.db
-    .query(
-      `SELECT s.* FROM note_signals s
-       JOIN notes n ON s.note_id = n.id
-       WHERE n.vault_id = ?
-         AND n.doc_date >= ?
-         AND n.doc_date <= ?
-         ${layerClause}
-       ORDER BY n.doc_date DESC, n.layer, n.file_path, s.id`,
-    )
-    .all(vaultId, fromDate, toDate) as NoteSignalRow[];
-}
-
 function resolveTemplateId(
   explicitId: string | undefined,
   metadata?: Record<string, unknown>,
@@ -227,254 +128,4 @@ function resolveTemplateId(
     }
   }
   return "daily-report";
-}
-
-function serializeNoteRow(note: NoteRow): Record<string, unknown> {
-  return {
-    id: note.id,
-    filePath: note.file_path,
-    title: note.title,
-    docDate: note.doc_date,
-    layer: note.layer,
-    kind: note.kind,
-    language: note.language,
-    vectorSyncStatus: note.vector_sync_status,
-    sourceNoteId: note.source_note_id,
-    sourcePath: note.source_path,
-    rewriteAgent: note.rewrite_agent,
-    rewritePromptHash: note.rewrite_prompt_hash,
-    artifactTemplateId: note.artifact_template_id,
-    frontmatter: parseFrontmatter(note.frontmatter),
-    createdAt: note.created_at,
-    updatedAt: note.updated_at,
-    indexedAt: note.indexed_at,
-  };
-}
-
-function parseFrontmatter(frontmatterRaw: string | null): unknown {
-  if (!frontmatterRaw) return null;
-  try {
-    return JSON.parse(frontmatterRaw);
-  } catch {
-    return frontmatterRaw;
-  }
-}
-
-function parseSignalValue(valueJson: string): unknown {
-  try {
-    return JSON.parse(valueJson);
-  } catch {
-    return valueJson;
-  }
-}
-
-function groupSignals(
-  rows: NoteSignalRow[],
-  notesById: Map<string, NoteRow>,
-  includeArtifacts: boolean,
-): {
-  tasks: unknown[];
-  workouts: unknown[];
-  daily: unknown[];
-  areas: unknown[];
-  metrics: unknown[];
-  all: unknown[];
-} {
-  const grouped: {
-    tasks: unknown[];
-    workouts: unknown[];
-    daily: unknown[];
-    areas: unknown[];
-    metrics: unknown[];
-    all: unknown[];
-  } = {
-    tasks: [],
-    workouts: [],
-    daily: [],
-    areas: [],
-    metrics: [],
-    all: [],
-  };
-
-  for (const row of rows) {
-    const note = notesById.get(row.note_id);
-    if (!note) continue;
-    if (!includeArtifacts && note.layer === "artifact") continue;
-
-    const parsed = {
-      id: row.id,
-      noteId: row.note_id,
-      chunkId: row.chunk_id,
-      kind: row.kind,
-      key: row.key,
-      value: parseSignalValue(row.value_json),
-      confidence: row.confidence,
-      source: row.source,
-      createdAt: row.created_at,
-      note: {
-        filePath: note.file_path,
-        title: note.title,
-        docDate: note.doc_date,
-        layer: note.layer,
-        kind: note.kind,
-        language: note.language,
-      },
-    };
-
-    grouped.all.push(parsed);
-    if (row.kind === "task") grouped.tasks.push(parsed);
-    if (row.kind === "workout") grouped.workouts.push(parsed);
-    if (row.kind === "daily") grouped.daily.push(parsed);
-    if (row.kind === "area") grouped.areas.push(parsed);
-    if (row.kind === "metric") grouped.metrics.push(parsed);
-  }
-
-  return grouped;
-}
-
-function buildRetrievalGroups(input: {
-  metaDb: MetaDB;
-  vaultId: string;
-  date: string;
-  top: number;
-  layer: ReportLayer;
-  includeArtifacts: boolean;
-  notesById: Map<string, NoteRow>;
-}): Record<string, unknown> {
-  const candidateLimit = Math.max(input.top * 10, input.top);
-  const groups: Record<string, unknown> = {};
-
-  for (const groupName of Object.keys(RETRIEVAL_QUERIES) as RetrievalGroup[]) {
-    const query = groupName === "date" ? input.date : RETRIEVAL_QUERIES[groupName];
-    const ftsRows = searchFtsWithTokenFallback(
-      input.metaDb,
-      query,
-      candidateLimit,
-      input.vaultId,
-      input.date,
-      input.layer,
-      input.includeArtifacts,
-    );
-
-    const filtered = ftsRows
-      .map((row) => {
-        const note = input.notesById.get(row.noteId);
-        if (!note) return null;
-        return {
-          chunkId: row.chunkId,
-          noteId: row.noteId,
-          content: row.content,
-          score: row.score,
-          note: {
-            filePath: note.file_path,
-            title: note.title,
-            docDate: note.doc_date,
-            layer: note.layer,
-            kind: note.kind,
-            language: note.language,
-          },
-        };
-      })
-      .filter((row): row is NonNullable<typeof row> => row !== null)
-      .slice(0, input.top);
-
-    groups[groupName] = {
-      query,
-      top: input.top,
-      results: filtered,
-    };
-  }
-
-  return {
-    backend: "fts",
-    groups,
-  };
-}
-
-function searchFtsWithTokenFallback(
-  metaDb: MetaDB,
-  query: string,
-  limit: number,
-  vaultId: string,
-  docDate: string,
-  layer: ReportLayer,
-  includeArtifacts: boolean,
-): FtsResult[] {
-  const primary = searchReportScopedFts(metaDb, query, limit, vaultId, docDate, layer, includeArtifacts);
-  if (primary.length > 0) {
-    return primary;
-  }
-
-  const tokens = query.split(/\s+/).map((token) => token.trim()).filter(Boolean);
-  if (tokens.length <= 1) {
-    return primary;
-  }
-
-  const merged = new Map<string, FtsResult>();
-  for (const token of tokens) {
-    const rows = searchReportScopedFts(metaDb, token, limit, vaultId, docDate, layer, includeArtifacts);
-    for (const row of rows) {
-      const prev = merged.get(row.chunkId);
-      if (!prev || row.score > prev.score) {
-        merged.set(row.chunkId, row);
-      }
-    }
-  }
-
-  return Array.from(merged.values())
-    .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
-    .slice(0, limit);
-}
-
-function searchReportScopedFts(
-  metaDb: MetaDB,
-  query: string,
-  limit: number,
-  vaultId: string,
-  docDate: string,
-  layer: ReportLayer,
-  includeArtifacts: boolean,
-): FtsResult[] {
-  const ftsQuery = buildFtsQuery(query);
-  if (!ftsQuery) return [];
-
-  const layerClause = buildReportLayerClause(layer, includeArtifacts);
-  const rows = metaDb.db
-    .query(
-      `SELECT c.id AS chunkId, c.note_id AS noteId, c.content, f.rank
-       FROM chunks_fts f
-       JOIN chunks c ON c.rowid = f.rowid
-       JOIN notes n ON c.note_id = n.id
-       WHERE chunks_fts MATCH ?
-         AND n.vault_id = ?
-         AND n.doc_date = ?
-         AND n.vector_sync_status = 'synced'
-         ${layerClause}
-       ORDER BY f.rank
-       LIMIT ?`,
-    )
-    .all(ftsQuery, vaultId, docDate, limit) as Array<{
-    chunkId: string;
-    noteId: string;
-    content: string;
-    rank: number;
-  }>;
-
-  return rows.map((row) => ({
-    ...row,
-    score: normalizeBM25(row.rank),
-  }));
-}
-
-function buildReportLayerClause(layer: ReportLayer, includeArtifacts: boolean): string {
-  if (layer === "artifact") {
-    return includeArtifacts ? "AND n.layer = 'artifact'" : "AND 1 = 0";
-  }
-  if (layer === "all") {
-    return includeArtifacts ? "" : "AND n.layer != 'artifact'";
-  }
-  if (includeArtifacts) {
-    return `AND (n.layer = '${layer}' OR n.layer = 'artifact')`;
-  }
-  return `AND n.layer = '${layer}'`;
 }
