@@ -18,6 +18,7 @@ Implemented backbone:
 - CJK chunking/search fallback improvements
 - MCP stdio tools for template/report/rewrite/add-note
 - `kn report context` JSON bundle with previous 7-day continuity
+- optional TEI integration test harness for OpenAI-compatible local embeddings
 
 ## Active Decisions
 
@@ -74,6 +75,17 @@ Use these before code-affecting commits:
 bun test
 git diff --check
 ```
+
+Local TEI integration test:
+
+```bash
+KN_TEI_BASE_URL=http://127.0.0.1:8080 \
+KN_TEI_MODEL=<model-id> \
+KN_TEI_DIM=<embedding-dimension> \
+bun test tests/tei-integration.test.ts
+```
+
+`KN_TEI_API_KEY` can be set if the OpenAI-compatible endpoint requires a bearer token.
 
 Known caveat:
 

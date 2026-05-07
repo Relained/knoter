@@ -12,6 +12,15 @@ bun run src/cli.ts --help
 bun test
 ```
 
+Optional local TEI smoke test:
+
+```bash
+KN_TEI_BASE_URL=http://127.0.0.1:8080 \
+KN_TEI_MODEL=<model-id> \
+KN_TEI_DIM=<embedding-dimension> \
+bun test tests/tei-integration.test.ts
+```
+
 ## Current Scope
 
 - Backend CLI only.
