@@ -333,10 +333,10 @@
 ### 10.3 도구 매핑
 - [x] 구현: `kn_search`, `kn_get`, `kn_vault_status`
 - [x] `kn_get_batch` (`kn get batch` 대응)
-- [ ] P0: `kn_add_note` (rewritten/artifact 저장)
-- [ ] P0: `kn_template_get`
-- [ ] P0: `kn_report_context`
-- [ ] P0: `kn_rewrite_context`
+- [x] P0: `kn_add_note` (rewritten/artifact 저장)
+- [x] P0: `kn_template_get`
+- [x] P0: `kn_report_context`
+- [x] P0: `kn_rewrite_context`
 - [ ] legacy/deferred 도구는 active MCP 표면에서 제외:
   - `kn_tag_auto`, `kn_cluster`, `kn_update`
 
