@@ -4,6 +4,14 @@ import { MetaDB, type NoteRow } from "../stores/meta-store";
 import { search } from "../search/hybrid";
 import { logger } from "../core/logger";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readTemplateFile, type EffectiveTemplate } from "../core/template";
+import {
+  buildReportContextBundle,
+  parseDateOption,
+  parseLayerOption,
+  parseTopOption,
+} from "../core/report-context";
 
 // ─── MCP Server Factory ──────────────────────────────────────────────────────
 
@@ -248,12 +256,131 @@ export async function createMcpServer(
     }
   );
 
+  // ── Tool: kn_template_get ──────────────────────────────────────────────────
+
+  server.registerTool(
+    "kn_template_get",
+    {
+      title: "Get effective template",
+      description: "Return effective template data used by template get JSON output",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        logger.debug("[MCP] kn_template_get");
+        const payload = await buildTemplateGetPayload(vaultRoot);
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: msg }) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── Tool: kn_report_context ────────────────────────────────────────────────
+
+  server.registerTool(
+    "kn_report_context",
+    {
+      title: "Build report context",
+      description: "Return report context bundle without CLI invocation",
+      inputSchema: z.object({
+        date: z.string().describe("Target logical date (YYYY-MM-DD)"),
+        template: z.string().optional().describe("Template label to echo in output"),
+        layer: z.enum(["source", "rewritten", "artifact", "all"]).optional().describe("Document layer filter"),
+        top: z.number().optional().describe("FTS results per retrieval query (default: 20)"),
+        includeArtifacts: z.boolean().optional().describe("Include artifact notes in dailyNotes and retrieval"),
+      }),
+    },
+    async ({ date, template, layer, top, includeArtifacts }) => {
+      try {
+        logger.debug(`[MCP] kn_report_context: ${date}`);
+        const payload = await buildReportContextBundle({
+          metaDb,
+          vaultName,
+          date: parseDateOption(date),
+          templateArg: template,
+          templateOverride: await resolveEffectiveTemplateForVaultRoot(vaultRoot),
+          layer: parseLayerOption(layer || "rewritten"),
+          top: parseTopOption(String(top ?? 20)),
+          includeArtifacts: !!includeArtifacts,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: msg }) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
   // ── Cleanup hook (close MetaDB on shutdown) ────────────────────────────────
 
   // Store reference to close on server shutdown
   (server as any).__metaDb = metaDb;
 
   return server;
+}
+
+export async function buildTemplateGetPayload(vaultRoot: string): Promise<Record<string, unknown>> {
+  const template = await resolveEffectiveTemplateForVaultRoot(vaultRoot);
+  const parsed = await readTemplateFile(template.path);
+  const validationErrors: string[] = [];
+  if (!parsed.content.trim()) {
+    validationErrors.push("Template content is empty");
+  }
+  if (!/^#{1,6}\s+.+$/m.test(parsed.content)) {
+    validationErrors.push("Template contains no markdown heading");
+  }
+  if (parsed.hasFrontmatter && parsed.frontmatterError) {
+    validationErrors.push(`Invalid frontmatter: ${parsed.frontmatterError}`);
+  }
+
+  return {
+    ...template,
+    body: template.content,
+    text: template.content,
+    validation: {
+      valid: validationErrors.length === 0,
+      errors: validationErrors,
+      warnings: [],
+      hasFrontmatter: parsed.hasFrontmatter,
+      frontmatterError: parsed.frontmatterError,
+    },
+  };
+}
+
+async function resolveEffectiveTemplateForVaultRoot(vaultRoot: string): Promise<EffectiveTemplate> {
+  const vaultTemplatePath = join(vaultRoot, ".kn", "template.md");
+  if (await Bun.file(vaultTemplatePath).exists()) {
+    const parsed = await readTemplateFile(vaultTemplatePath);
+    return {
+      source: "vault",
+      path: vaultTemplatePath,
+      content: parsed.content,
+      ...(parsed.metadata ? { metadata: parsed.metadata } : {}),
+    };
+  }
+
+  const fallbackTemplatePath = fileURLToPath(
+    new URL("../../docs/template.md", import.meta.url),
+  );
+  const parsed = await readTemplateFile(fallbackTemplatePath);
+  return {
+    source: "fallback",
+    path: fallbackTemplatePath,
+    content: parsed.content,
+    ...(parsed.metadata ? { metadata: parsed.metadata } : {}),
+  };
 }
 
 async function buildGetPayload(
