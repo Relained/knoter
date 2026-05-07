@@ -167,7 +167,27 @@ describe("template command behavior", () => {
     mkdirSync(templateDir, { recursive: true });
     await Bun.write(
       templatePath,
-      `---\ntitle: "Custom Template"\nlevel: 1\n---\n\n# Custom Template\n\nThis is a valid template.`
+      [
+        "---",
+        'id: "custom-template"',
+        'name: "Custom Template"',
+        "version: 1",
+        'kind: "daily-report"',
+        'locale: "ko-KR"',
+        "requiredSections:",
+        '  - "Summary"',
+        "requiredVariables:",
+        '  - "date"',
+        "variables:",
+        "  date:",
+        '    description: "Target date"',
+        "---",
+        "",
+        "# Custom Template",
+        "",
+        "## Summary",
+        "Report for {{date}}.",
+      ].join("\n")
     );
 
     const result = await runCli(["--format", "json", "template", "validate", templatePath], {
@@ -188,6 +208,11 @@ describe("template command behavior", () => {
       expect.objectContaining({
         source: "path",
         valid: true,
+        checks: expect.arrayContaining([
+          expect.objectContaining({ name: "frontmatter.id", status: "pass" }),
+          expect.objectContaining({ name: "content.requiredSections", status: "pass" }),
+          expect.objectContaining({ name: "content.requiredVariables", status: "pass" }),
+        ]),
       })
     );
     expect(templatePath).toBe(envelope.data.path);
@@ -261,6 +286,125 @@ describe("template command behavior", () => {
     const errorsText = (envelope.data.errors || []).join("\n");
     expect(errorsText.toLowerCase()).toContain("unable to validate template");
     expect(errorsText.toLowerCase()).toContain("not readable");
+  });
+
+  test("template validate enforces required frontmatter fields when frontmatter exists", async () => {
+    const knHome = randomHome();
+    const templateDir = join("/tmp", `kn-template-missing-contract-${randomUUID()}`);
+    const templatePath = join(templateDir, "template.md");
+    mkdirSync(templateDir, { recursive: true });
+
+    await Bun.write(
+      templatePath,
+      [
+        "---",
+        'id: "missing-name-version"',
+        "---",
+        "",
+        "# Missing Contract",
+      ].join("\n")
+    );
+
+    const result = await runCli(["--format", "json", "template", "validate", templatePath], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.data.valid).toBe(false);
+    const errorsText = (envelope.data.errors || []).join("\n");
+    expect(errorsText).toContain("Template frontmatter requires non-empty name");
+    expect(errorsText).toContain("Template frontmatter requires non-empty version");
+    expect(envelope.data.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "frontmatter.name", status: "fail" }),
+        expect.objectContaining({ name: "frontmatter.version", status: "fail" }),
+      ])
+    );
+
+    rmSync(templateDir, { recursive: true, force: true });
+  });
+
+  test("template validate reports missing required sections and variables", async () => {
+    const knHome = randomHome();
+    const templateDir = join("/tmp", `kn-template-missing-required-${randomUUID()}`);
+    const templatePath = join(templateDir, "template.md");
+    mkdirSync(templateDir, { recursive: true });
+
+    await Bun.write(
+      templatePath,
+      [
+        "---",
+        'id: "missing-required"',
+        'name: "Missing Required"',
+        "version: 1",
+        "requiredSections:",
+        '  - "Summary"',
+        '  - "Workout"',
+        "requiredVariables:",
+        '  - "date"',
+        '  - "open_task"',
+        "---",
+        "",
+        "# Missing Required",
+        "",
+        "## Summary",
+        "Report for {{date}}.",
+      ].join("\n")
+    );
+
+    const result = await runCli(["--format", "json", "template", "validate", templatePath], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.data.valid).toBe(false);
+    const errorsText = (envelope.data.errors || []).join("\n");
+    expect(errorsText).toContain("Template is missing required section(s): Workout");
+    expect(errorsText).toContain("Template is missing required variable placeholder(s): open_task");
+
+    rmSync(templateDir, { recursive: true, force: true });
+  });
+
+  test("template validate rejects duplicate sections and invalid variable declarations", async () => {
+    const knHome = randomHome();
+    const templateDir = join("/tmp", `kn-template-duplicate-${randomUUID()}`);
+    const templatePath = join(templateDir, "template.md");
+    mkdirSync(templateDir, { recursive: true });
+
+    await Bun.write(
+      templatePath,
+      [
+        "---",
+        'id: "duplicate-template"',
+        'name: "Duplicate Template"',
+        "version: 1",
+        "variables: not-a-map-or-list",
+        "---",
+        "",
+        "# Duplicate Template",
+        "",
+        "## Summary",
+        "First.",
+        "",
+        "## Summary",
+        "Second.",
+      ].join("\n")
+    );
+
+    const result = await runCli(["--format", "json", "template", "validate", templatePath], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.data.valid).toBe(false);
+    const errorsText = (envelope.data.errors || []).join("\n");
+    expect(errorsText).toContain("Template contains duplicate section heading(s): summary");
+    expect(errorsText).toContain("Template frontmatter variables must be an array of strings or object map");
+
+    rmSync(templateDir, { recursive: true, force: true });
   });
 
   test("template get prefers vault template over fallback when active vault has .kn/template.md", async () => {

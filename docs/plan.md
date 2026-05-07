@@ -39,10 +39,10 @@ Implemented backbone:
    - Report context internals split into small modules.
 
 2. Template contract validation
-   - Validate required frontmatter fields when present.
-   - Validate required sections/variables contract.
-   - Return machine-readable `errors` and `warnings`.
-   - Keep validation local; no LLM call.
+   - [x] Validate required frontmatter fields when present.
+   - [x] Validate required sections/variables contract.
+   - [x] Return machine-readable `errors`, `warnings`, and `checks`.
+   - [x] Keep validation local; no LLM call.
 
 3. Signal storage contract
    - Define accepted external-agent JSON shape for task/workout/daily/area/metric.

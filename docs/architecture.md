@@ -75,6 +75,23 @@ continuity 정책:
 - `source`는 제외
 - `artifact`는 `--include-artifacts`에서만 포함
 
+## Template Contract
+
+`kn template validate` is local-only and never calls an LLM.
+
+If template frontmatter exists, validation enforces:
+
+- `id`: non-empty string
+- `name`: non-empty string
+- `version`: non-empty string or number
+- `kind`: optional non-empty string
+- `locale`: optional non-empty string
+- `requiredSections`: optional array of section headings that must exist in the body
+- `requiredVariables`: optional array of `{{variable}}` placeholders that must exist in the body
+- `variables`: optional array or object map; unused declarations are warnings
+
+Validation returns machine-readable `errors`, `warnings`, and `checks`.
+
 ## Code Map
 
 | Path | 역할 |
