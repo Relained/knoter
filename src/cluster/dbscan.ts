@@ -4,8 +4,8 @@
  */
 
 export interface Point {
-  id: string;           // chunk id
-  vector: number[];     // dense embedding
+  id: string; // chunk id
+  vector: number[]; // dense embedding
 }
 
 export interface ClusterResult {
@@ -14,12 +14,12 @@ export interface ClusterResult {
     memberIds: string[];
     centroid: number[];
   }>;
-  noise: string[];      // ids not assigned to any cluster
+  noise: string[]; // ids not assigned to any cluster
 }
 
 export interface DbscanOptions {
-  epsilon?: number;     // cosine distance threshold (default 0.25)
-  minPoints?: number;   // default 3
+  epsilon?: number; // cosine distance threshold (default 0.25)
+  minPoints?: number; // default 3
 }
 
 /**
@@ -64,7 +64,7 @@ function cosineDistance(v1: number[], v2: number[]): number {
 function regionQuery(
   points: Point[],
   centerIdx: number,
-  epsilon: number
+  epsilon: number,
 ): number[] {
   const neighbors: number[] = [];
   const center = points[centerIdx];
@@ -132,10 +132,7 @@ function computeCentroid(vectors: number[][]): number[] {
  *
  * Returns clusters with IDs starting at 0, and separate noise array.
  */
-export function dbscan(
-  points: Point[],
-  opts?: DbscanOptions
-): ClusterResult {
+export function dbscan(points: Point[], opts?: DbscanOptions): ClusterResult {
   const epsilon = opts?.epsilon ?? 0.25;
   const minPoints = opts?.minPoints ?? 3;
 
