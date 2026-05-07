@@ -21,6 +21,11 @@ KN_TEI_DIM=<embedding-dimension> \
 bun test tests/tei-integration.test.ts
 ```
 
+The TEI integration test uses `testdata/2026-04-16.md`, builds a Codex rewrite
+prompt for source -> rewritten -> artifact output, indexes rewritten/artifact
+documents with the TEI embedding model, and verifies Korean keyword plus semantic
+search. Set `KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
+
 ## Current Scope
 
 - Backend CLI only.

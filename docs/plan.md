@@ -87,6 +87,12 @@ bun test tests/tei-integration.test.ts
 
 `KN_TEI_API_KEY` can be set if the OpenAI-compatible endpoint requires a bearer token.
 
+This integration test reads `testdata/2026-04-16.md`, builds a Codex rewrite
+prompt for source -> rewritten -> artifact output, stores rewritten/artifact
+Markdown under date-scoped layer directories, inserts real TEI embeddings into
+zvec, and checks Korean keyword plus semantic search. Set `KN_CODEX_CLI_E2E=1`
+to call the real Codex CLI agent during the test.
+
 Known caveat:
 
 - Avoid running `bun test tests/korean.test.ts` concurrently with full `bun test`; they share fixture paths and can false-fail under concurrent zvec/SQLite access.

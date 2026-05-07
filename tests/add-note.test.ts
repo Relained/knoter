@@ -65,6 +65,71 @@ describe("addMarkdownNoteToVault", () => {
     expect(upsertCalls.length).toBe(1);
   });
 
+  test("persists rewritten source lineage from frontmatter", async () => {
+    const vaultRoot = join("/tmp", `kn-add-note-lineage-${randomUUID()}`);
+    mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
+
+    const seedDb = new MetaDB(vaultRoot);
+    try {
+      seedDb.upsertNote({
+        id: "source-1",
+        vaultId: "work",
+        filePath: "sources/2026-05-08/raw.md",
+        title: "Raw source",
+        fileHash: "source-hash",
+        docDate: "2026-05-08",
+        layer: "source",
+        kind: "source",
+      });
+    } finally {
+      seedDb.close();
+    }
+
+    await addMarkdownNoteToVault({
+      vaultRoot,
+      vaultName: "work",
+      relPath: "rewritten/2026-05-08/lineage-note.md",
+      content: [
+        "---",
+        "title: Lineage Rewritten",
+        "layer: rewritten",
+        "kind: daily",
+        "doc_date: 2026-05-08",
+        "source_note_id: source-1",
+        "source_path: sources/2026-05-08/raw.md",
+        "rewrite_agent: codex",
+        "rewrite_prompt_hash: prompt-hash-1",
+        "---",
+        "",
+        "# Lineage Rewritten",
+        "",
+        "한국어 하이브리드 검색과 임베딩 테스트.",
+      ].join("\n"),
+      embedProvider: {
+        name: "fake",
+        isLocal: true,
+        async embed(texts: string[]): Promise<number[][]> {
+          return texts.map(() => [0.1, 0.2, 0.3]);
+        },
+      },
+      vectorCollection: {
+        upsertSync(): void {},
+      },
+    });
+
+    const metaDb = new MetaDB(vaultRoot);
+    try {
+      const note = metaDb.getNoteByPath("work", "rewritten/2026-05-08/lineage-note.md");
+      expect(note?.source_note_id).toBe("source-1");
+      expect(note?.source_path).toBe("sources/2026-05-08/raw.md");
+      expect(note?.rewrite_agent).toBe("codex");
+      expect(note?.rewrite_prompt_hash).toBe("prompt-hash-1");
+    } finally {
+      metaDb.close();
+      rmSync(vaultRoot, { recursive: true, force: true });
+    }
+  });
+
   test("rolls back metadata when embedding fails", async () => {
     const vaultRoot = join("/tmp", `kn-add-note-fail-${randomUUID()}`);
     mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
