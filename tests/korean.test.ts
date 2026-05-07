@@ -166,12 +166,57 @@ test("Korean keyword search matches a 3+ char CJK term", () => {
   expect(hits[0]!.chunkId).toBe("note-ko-2-c0");
 });
 
-test("trigram tokenizer returns no hits for sub-3-char CJK terms", () => {
-  // "검색" is only 2 hangul syllables; FTS5 trigram requires >= 3 chars.
-  // Document this limitation — users should bind a morphological preprocessor
-  // (Phase 9) to support shorter queries.
+test("short CJK query falls back when trigram cannot match", () => {
+  // "검색" is only 2 hangul syllables. FTS5 trigram cannot match this, so
+  // search should now fall back to a scoped LIKE query.
   const hits = db.searchFts("검색", 10, VAULT_ID);
+  expect(hits.map((h) => h.chunkId)).toEqual(["note-ko-2-c0"]);
+  expect(hits[0]!.score).toBeGreaterThan(0);
+});
+
+test("short CJK fallback treats SQL LIKE wildcards as literals", () => {
+  const hits = db.searchFts("검%", 10, VAULT_ID);
   expect(hits).toEqual([]);
+});
+
+test("short CJK fallback does not drop other query terms", () => {
+  const hits = db.searchFts("존재하지않는단어 검색", 10, VAULT_ID);
+  expect(hits).toEqual([]);
+});
+
+test("short CJK fallback does not split longer CJK queries into partial OR terms", () => {
+  const hits = db.searchFts("검색엔진", 10, VAULT_ID);
+  expect(hits).toEqual([]);
+});
+
+test("short CJK fallback still excludes artifact notes by default", () => {
+  const artifactNote: NoteInput = {
+    id: "note-artifact-ko",
+    vaultId: VAULT_ID,
+    filePath: "artifact-ko.md",
+    title: "artifact",
+    fileHash: "hash-note-artifact-ko",
+    layer: "artifact",
+  };
+  db.upsertNote(artifactNote);
+  db.insertChunks([
+    {
+      id: "note-artifact-ko-c0",
+      noteId: "note-artifact-ko",
+      content: "검색 아티팩트 결과",
+      offsetStart: 0,
+      offsetEnd: 10,
+      tokenCount: 3,
+      seqIndex: 0,
+    },
+  ]);
+  db.markSynced(artifactNote.id);
+
+  const defaultHits = db.searchFts("검색", 10, VAULT_ID);
+  expect(defaultHits.map((h) => h.chunkId)).toEqual(["note-ko-2-c0"]);
+
+  const artifactHits = db.searchFts("검색", 10, VAULT_ID, 0, true);
+  expect(artifactHits.map((h) => h.chunkId)).toContain("note-artifact-ko-c0");
 });
 
 test("Korean keyword search yields no hits for an absent term", () => {

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { getShortCjkFallbackTerms } from "../pipeline/preprocessor";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -252,6 +253,10 @@ function readTerm(input: string, start: number): string {
     end++;
   }
   return input.slice(start, end);
+}
+
+function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
 // ─── BM25 Score Normalization ───────────────────────────────────────────────
@@ -1014,10 +1019,10 @@ export class MetaDB {
   ): FtsResult[] {
     const ftsQuery = buildFtsQuery(query);
     if (!ftsQuery) return [];
+    const artifactClause = includeArtifacts ? "" : "AND n.layer != 'artifact'";
 
-    if (vaultId) {
-      const artifactClause = includeArtifacts ? "" : "AND n.layer != 'artifact'";
-      return (
+    const ftsRows = vaultId
+      ? (
         this.db
           .query(
             `SELECT c.id AS chunkId, c.note_id AS noteId, c.content, f.rank
@@ -1031,24 +1036,71 @@ export class MetaDB {
              LIMIT ? OFFSET ?`,
           )
           .all(ftsQuery, vaultId, limit, offset) as Array<{ chunkId: string; noteId: string; content: string; rank: number }>
-      ).map((r) => ({ ...r, score: normalizeBM25(r.rank) }));
+      )
+      : (
+        this.db
+          .query(
+            `SELECT c.id AS chunkId, c.note_id AS noteId, c.content, f.rank
+             FROM chunks_fts f
+             JOIN chunks c ON c.rowid = f.rowid
+             JOIN notes n ON c.note_id = n.id
+             WHERE chunks_fts MATCH ?
+               AND n.vector_sync_status = 'synced'
+               ${artifactClause}
+             ORDER BY f.rank
+             LIMIT ? OFFSET ?`,
+          )
+          .all(ftsQuery, limit, offset) as Array<{ chunkId: string; noteId: string; content: string; rank: number }>
+      );
+
+    if (ftsRows.length > 0) {
+      return ftsRows.map((r) => ({ ...r, score: normalizeBM25(r.rank) }));
     }
-    const artifactClause = includeArtifacts ? "" : "AND n.layer != 'artifact'";
-    return (
-      this.db
-        .query(
-          `SELECT c.id AS chunkId, c.note_id AS noteId, c.content, f.rank
-           FROM chunks_fts f
-           JOIN chunks c ON c.rowid = f.rowid
-           JOIN notes n ON c.note_id = n.id
-           WHERE chunks_fts MATCH ?
-             AND n.vector_sync_status = 'synced'
-             ${artifactClause}
-           ORDER BY f.rank
-           LIMIT ? OFFSET ?`,
-        )
-        .all(ftsQuery, limit, offset) as Array<{ chunkId: string; noteId: string; content: string; rank: number }>
-    ).map((r) => ({ ...r, score: normalizeBM25(r.rank) }));
+
+    // FTS5 trigram cannot match sub-3-char CJK queries. When FTS returns no
+    // rows, run a scoped LIKE fallback for short CJK terms.
+    const shortCjkTerms = getShortCjkFallbackTerms(query);
+    if (shortCjkTerms.length === 0) return [];
+
+    const likeClauses = shortCjkTerms.map(() => "c.content LIKE ? ESCAPE char(92)").join(" OR ");
+    const likeParams = shortCjkTerms.map((term) => `%${escapeLikePattern(term)}%`);
+    const fallbackRank = -0.2; // conservative, deterministic, positive normalized score
+
+    const fallbackRows = vaultId
+      ? (
+        this.db
+          .query(
+            `SELECT c.id AS chunkId, c.note_id AS noteId, c.content
+             FROM chunks c
+             JOIN notes n ON c.note_id = n.id
+             WHERE (${likeClauses}) AND n.vault_id = ?
+               AND n.vector_sync_status = 'synced'
+               ${artifactClause}
+             ORDER BY c.id
+             LIMIT ? OFFSET ?`,
+          )
+          .all(...likeParams, vaultId, limit, offset) as Array<{ chunkId: string; noteId: string; content: string }>
+      )
+      : (
+        this.db
+          .query(
+            `SELECT c.id AS chunkId, c.note_id AS noteId, c.content
+             FROM chunks c
+             JOIN notes n ON c.note_id = n.id
+             WHERE (${likeClauses})
+               AND n.vector_sync_status = 'synced'
+               ${artifactClause}
+             ORDER BY c.id
+             LIMIT ? OFFSET ?`,
+          )
+          .all(...likeParams, limit, offset) as Array<{ chunkId: string; noteId: string; content: string }>
+      );
+
+    return fallbackRows.map((r) => ({
+      ...r,
+      rank: fallbackRank,
+      score: normalizeBM25(fallbackRank),
+    }));
   }
 
   // ── Preprocessor Registry ─────────────────────────────────────────────────

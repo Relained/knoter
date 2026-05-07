@@ -563,7 +563,7 @@
   - 방식: external process stdin/stdout protocol 유지
   - index-time: rewritten/artifact content → preprocessor → FTS5
   - query-time: query → 같은 preprocessor → FTS5
-- [ ] fallback: `Intl.Segmenter('ko'|'ja'|'zh', { granularity: 'word' })`
+- [x] fallback helper: `Intl.Segmenter('ko'|'ja'|'zh', { granularity: 'word' })`
   - 외부 바이너리 없이 동작하는 보조안
   - 형태소 분석 대체가 아니라 fallback tokenizer로만 사용
 

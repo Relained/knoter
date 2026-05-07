@@ -8,6 +8,58 @@ import type { Subprocess } from "bun";
 
 type PreprocessorProc = Subprocess<"pipe", "pipe", "pipe">;
 
+const CJK_CHAR_RE =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
+
+/**
+ * Detect whether text contains any CJK character (Han/Hangul/Kana ranges).
+ */
+export function containsCjk(text: string): boolean {
+  return CJK_CHAR_RE.test(text);
+}
+
+/**
+ * Segment text with Intl.Segmenter word granularity when available.
+ * Returns null when Segmenter is unavailable or fails.
+ */
+export function segmentCjkWords(
+  text: string,
+  locale = "ko",
+): string[] | null {
+  if (!text || !containsCjk(text) || typeof Intl.Segmenter !== "function") {
+    return null;
+  }
+  try {
+    const segmenter = new Intl.Segmenter(locale, { granularity: "word" });
+    const out: string[] = [];
+    for (const seg of segmenter.segment(text)) {
+      const token = seg.segment.trim();
+      if (!token) continue;
+      if (seg.isWordLike === false) continue;
+      out.push(token);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return short CJK terms (< 3 chars) from query as fallback candidates.
+ * Preserves raw query externally; this helper only extracts candidates.
+ */
+export function getShortCjkFallbackTerms(query: string): string[] {
+  const token = query.trim();
+  if (!token || /\s/.test(token) || !containsCjk(token)) {
+    return [];
+  }
+  const length = [...token].length;
+  if (length > 0 && length < 3) {
+    return [token];
+  }
+  return [];
+}
+
 /**
  * Manages a single long-lived preprocessor subprocess.
  * Spawns on first use, keeps alive across calls, handles serialization of concurrent requests.
