@@ -5,6 +5,8 @@ import { search } from "../search/hybrid";
 import { logger } from "../core/logger";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { addMarkdownNoteToVault } from "../core/add-note";
+import { loadVaultConfig } from "../core/config";
 import { readTemplateFile, type EffectiveTemplate } from "../core/template";
 import {
   buildReportContextBundle,
@@ -176,30 +178,43 @@ export async function createMcpServer(
     }
   );
 
-  // ── Tool: kn_add_note (stub) ───────────────────────────────────────────────
+  // ── Tool: kn_add_note ──────────────────────────────────────────────────────
 
   server.registerTool(
     "kn_add_note",
     {
-      title: "Add note (not yet implemented)",
-      description: "Add a new note to the vault",
+      title: "Add markdown note",
+      description: "Add or update rewritten/artifact markdown note in vault and index it",
       inputSchema: z.object({
-        path: z.string().describe("Note file path"),
+        path: z.string().describe("Vault-relative note path (rewritten/... or artifacts/...)"),
+        content: z.string().describe("Markdown content"),
         tag: z.array(z.string()).optional().describe("Tags to add"),
+        force: z.boolean().optional().describe("Force update even if hash unchanged"),
       }),
     },
-    async () => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "kn_add_note not yet implemented in MCP server",
-            }),
-          },
-        ],
-        isError: true,
-      };
+    async ({ path, content, tag, force }) => {
+      try {
+        logger.debug(`[MCP] kn_add_note: "${path}"`);
+        const vaultConfig = await loadVaultConfig(vaultRoot);
+        const payload = await addMarkdownNoteToVault({
+          vaultRoot,
+          vaultName,
+          relPath: path,
+          content,
+          tags: tag,
+          force: !!force,
+          vaultConfig,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: msg }) }],
+          isError: true,
+        };
+      }
     }
   );
 

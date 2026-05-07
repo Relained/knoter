@@ -291,4 +291,25 @@ describe("mcp payload helpers", () => {
       fixture.cleanup();
     }
   });
+
+  test("kn_add_note rejects source-layer notes", async () => {
+    const fixture = await createFixture();
+    try {
+      const server = await createMcpServer(fixture.vaultRoot, "work");
+      try {
+        const tools = (server as any)._registeredTools as Record<string, any>;
+        const result = await tools.kn_add_note.handler({
+          path: "sources/2026-05-08/from-mcp.md",
+          content: "# source content",
+        });
+        expect(result.isError).toBe(true);
+        const payload = JSON.parse(result.content[0].text);
+        expect(String(payload.error)).toContain("rewritten/artifact");
+      } finally {
+        ((server as any).__metaDb as MetaDB | undefined)?.close();
+      }
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });
