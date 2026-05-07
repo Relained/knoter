@@ -1,20 +1,16 @@
 import { Command } from "commander";
-import { resolve, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import matter from "gray-matter";
-import { resolveVaultRoot, loadGlobalConfig } from "../core/config";
+import { resolve } from "node:path";
+import {
+  getEffectiveTemplate,
+  readTemplateFile,
+  resolveTemplateSource,
+  resolveVaultName,
+  type ParsedTemplate,
+  type TemplateSource,
+} from "../core/template";
 import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose } from "../core/logger";
-
-type TemplateSource = "vault" | "fallback" | "path";
-
-interface ParsedTemplate {
-  content: string;
-  metadata: Record<string, unknown> | null;
-  hasFrontmatter: boolean;
-  frontmatterError: string | null;
-}
 
 interface ValidationResult {
   source: TemplateSource;
@@ -23,8 +19,6 @@ interface ValidationResult {
   errors: string[];
   warnings: string[];
 }
-
-const FALLBACK_TEMPLATE_PATH = fileURLToPath(new URL("../../docs/template.md", import.meta.url));
 
 export function registerTemplateCommand(program: Command): void {
   const templateCmd = program
@@ -42,15 +36,8 @@ export function registerTemplateCommand(program: Command): void {
 
       try {
         const vaultName = await resolveVaultName(vaultOpt);
-        const resolved = await resolveTemplateSource(vaultOpt);
-        const parsed = await readTemplateFile(resolved.path);
-
-        const response = success("template get", {
-          source: resolved.source,
-          path: resolved.path,
-          content: parsed.content,
-          ...(parsed.metadata ? { metadata: parsed.metadata } : {}),
-        }, vaultName);
+        const template = await getEffectiveTemplate(vaultOpt);
+        const response = success("template get", template, vaultName);
 
         render(response, format);
       } catch (err) {
@@ -73,15 +60,8 @@ export function registerTemplateCommand(program: Command): void {
 
       try {
         const vaultName = await resolveVaultName(vaultOpt);
-        const resolved = await resolveTemplateSource(vaultOpt);
-        const parsed = await readTemplateFile(resolved.path);
-
-        const response = success("template list", {
-          source: resolved.source,
-          path: resolved.path,
-          content: parsed.content,
-          ...(parsed.metadata ? { metadata: parsed.metadata } : {}),
-        }, vaultName);
+        const template = await getEffectiveTemplate(vaultOpt);
+        const response = success("template list", template, vaultName);
 
         render(response, format);
       } catch (err) {
@@ -155,124 +135,6 @@ export function registerTemplateCommand(program: Command): void {
         render(success("template validate", result), format);
       }
     });
-}
-
-async function resolveTemplateSource(vaultOpt?: string): Promise<{ source: Exclude<TemplateSource, "path">; path: string }> {
-  let vaultRoot: string | undefined;
-
-  if (vaultOpt) {
-    vaultRoot = await resolveVaultRoot(vaultOpt);
-  } else {
-    const config = await loadGlobalConfig();
-    if (config.activeVault) {
-      vaultRoot = await resolveVaultRoot();
-    }
-  }
-
-  if (vaultRoot) {
-    const vaultTemplatePath = join(vaultRoot, ".kn", "template.md");
-    if (await Bun.file(vaultTemplatePath).exists()) {
-      return { source: "vault", path: vaultTemplatePath };
-    }
-  }
-
-  const bundledExists = await Bun.file(FALLBACK_TEMPLATE_PATH).exists();
-  if (!bundledExists) {
-    throw new KnError(
-      ErrorCode.FILE_NOT_FOUND,
-      "No vault template was found and bundled fallback template.md is missing"
-    );
-  }
-  return { source: "fallback", path: FALLBACK_TEMPLATE_PATH };
-}
-
-async function resolveVaultName(vaultOpt?: string): Promise<string | undefined> {
-  if (vaultOpt) {
-    return vaultOpt;
-  }
-  const config = await loadGlobalConfig();
-  return config.activeVault ?? undefined;
-}
-
-async function readTemplateFile(path: string): Promise<ParsedTemplate> {
-  let raw: string;
-  try {
-    raw = await Bun.file(path).text();
-  } catch (err) {
-    throw new KnError(ErrorCode.FILE_NOT_FOUND, `Template file is not readable: ${path}`);
-  }
-
-  const hasFrontmatter = hasTopLevelFrontmatter(raw);
-  if (!hasFrontmatter) {
-    return {
-      content: raw,
-      metadata: null,
-      hasFrontmatter: false,
-      frontmatterError: null,
-    };
-  }
-
-  try {
-    const parsed = matter(raw);
-    const data = parsed.data;
-    const metadata = normalizeMetadataObject(data);
-
-    if (!hasClosingFrontmatter(raw)) {
-      return {
-        content: parsed.content,
-        metadata: null,
-        hasFrontmatter: true,
-        frontmatterError: "Frontmatter start marker found but closing delimiter is missing",
-      };
-    }
-
-    if (metadata === null) {
-      return {
-        content: parsed.content,
-        metadata: null,
-        hasFrontmatter: true,
-        frontmatterError: "Frontmatter exists but is not an object",
-      };
-    }
-
-    return {
-      content: parsed.content,
-      metadata,
-      hasFrontmatter: true,
-      frontmatterError: null,
-    };
-  } catch (err) {
-    return {
-      content: raw,
-      metadata: null,
-      hasFrontmatter: true,
-      frontmatterError: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-function hasTopLevelFrontmatter(raw: string): boolean {
-  return /^---(?:\r?\n|$)/.test(raw);
-}
-
-function hasClosingFrontmatter(raw: string): boolean {
-  const lines = raw.split(/\r?\n/);
-  if (lines.length < 2) return false;
-
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === "---" || lines[i] === "...") {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function normalizeMetadataObject(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
 }
 
 function hasMarkdownHeading(content: string): boolean {

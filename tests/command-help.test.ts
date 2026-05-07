@@ -45,6 +45,17 @@ describe("CLI help surface", () => {
     expect(validateHelp.stdout).toContain("Usage: kn template validate");
   });
 
+  test("report context help is exposed with required options", async () => {
+    const reportHelp = await runCli(["report", "context", "--help"]);
+
+    expect(reportHelp.code).toBe(0);
+    expect(reportHelp.stdout).toContain("Usage: kn report context");
+    expect(reportHelp.stdout).toContain("--date <YYYY-MM-DD>");
+    expect(reportHelp.stdout).toContain("--layer <source|rewritten|artifact|all>");
+    expect(reportHelp.stdout).toContain("--top <n>");
+    expect(reportHelp.stdout).toContain("--include-artifacts");
+  });
+
   test("template validate respects --format json", async () => {
     const result = await runCli(["--format", "json", "template", "validate"], {
       KN_HOME: "/tmp/knoter-template-home",

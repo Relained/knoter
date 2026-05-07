@@ -7,6 +7,7 @@ import { registerSyncCommand } from "./commands/sync";
 import { registerTagCommand } from "./commands/tag";
 import { registerGetCommand } from "./commands/get";
 import { registerTemplateCommand } from "./commands/template";
+import { registerReportCommand } from "./commands/report";
 import { registerMcpCommand } from "./commands/mcp";
 import { registerScheduleCommand } from "./commands/schedule";
 
@@ -30,6 +31,7 @@ registerSyncCommand(program);
 registerTagCommand(program);
 registerGetCommand(program);
 registerTemplateCommand(program);
+registerReportCommand(program);
 registerMcpCommand(program);
 registerScheduleCommand(program);
 
