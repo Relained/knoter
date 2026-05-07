@@ -84,4 +84,11 @@ describe("CLI help surface", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Legacy scheduler");
   });
+
+  test("search help exposes deprecated threshold alias", async () => {
+    const result = await runCli(["search", "--help"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("--threshold <f>");
+  });
 });

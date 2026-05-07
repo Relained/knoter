@@ -5,6 +5,15 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose, logger } from "../core/logger";
 
+export function resolveHybridMinOption(options: { hybridMin?: string; threshold?: string }): number | undefined {
+  const hybridMinRaw = options.hybridMin;
+  const thresholdRaw = options.threshold;
+  const raw = hybridMinRaw ?? thresholdRaw;
+  if (!raw) return undefined;
+  const parsed = parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function registerSearchCommand(program: Command): void {
   program
     .command("search <query>")
@@ -14,6 +23,7 @@ export function registerSearchCommand(program: Command): void {
     .option("--semantic-min <f>", "Minimum semantic score")
     .option("--keyword-min <f>", "Minimum keyword score")
     .option("--hybrid-min <f>", "Minimum hybrid score")
+    .option("--threshold <f>", "Deprecated alias for --hybrid-min")
     .option("--tag <tag...>", "Filter by tags")
     .option("--after <date>", "Results after date")
     .option("--before <date>", "Results before date")
@@ -46,7 +56,7 @@ export function registerSearchCommand(program: Command): void {
           top: parseInt(options.top) || 10,
           semanticMin: options.semanticMin ? parseFloat(options.semanticMin) : undefined,
           keywordMin: options.keywordMin ? parseFloat(options.keywordMin) : undefined,
-          hybridMin: options.hybridMin ? parseFloat(options.hybridMin) : undefined,
+          hybridMin: resolveHybridMinOption(options),
           tags: options.tag,
           after: options.after,
           before: options.before,

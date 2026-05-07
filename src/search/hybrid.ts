@@ -30,6 +30,20 @@ export interface SearchResult {
   strongSignal: boolean;
 }
 
+export function normalizeSemanticScore(distance: number): number {
+  return 1 - distance;
+}
+
+export function resolveHybridAlpha(optionsAlpha: number | undefined, configAlpha: number | undefined): number {
+  if (typeof optionsAlpha === "number" && Number.isFinite(optionsAlpha)) {
+    return optionsAlpha;
+  }
+  if (typeof configAlpha === "number" && Number.isFinite(configAlpha)) {
+    return configAlpha;
+  }
+  return DEFAULT_ALPHA;
+}
+
 /**
  * Main search function orchestrating three modes: semantic, keyword, and hybrid.
  */
@@ -40,7 +54,6 @@ export async function search(
   options: SearchOptions
 ): Promise<SearchResult> {
   const metaDb = new MetaDB(vaultRoot);
-  const alpha = options.alpha ?? DEFAULT_ALPHA;
 
   try {
     if (options.mode === "keyword") {
@@ -52,6 +65,8 @@ export async function search(
     }
 
     // Hybrid mode (default)
+    const vaultConfig = await loadVaultConfig(vaultRoot);
+    const alpha = resolveHybridAlpha(options.alpha, vaultConfig.search?.fusionAlpha);
     return await hybridSearch(metaDb, vaultRoot, vaultId, query, options, alpha);
   } finally {
     metaDb.close();
@@ -147,7 +162,10 @@ async function semanticSearch(
 
     const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
     const queryResult = collection.querySync(zvecQuery);
-    let results = queryResult || [];
+    let results = (queryResult || []).map((r: any) => ({
+      ...r,
+      score: normalizeSemanticScore(r.score),
+    }));
     if (!options.includeArtifacts) {
       results = results.filter((r: any) => {
         const noteId = r.fields?.note_id || r.data?.note_id;
@@ -257,7 +275,10 @@ async function hybridSearch(
 
   const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
   const queryResult = collection.querySync(zvecQuery);
-  let semanticResults = queryResult || [];
+  let semanticResults = (queryResult || []).map((r: any) => ({
+    ...r,
+    score: normalizeSemanticScore(r.score),
+  }));
   if (!options.includeArtifacts) {
     semanticResults = semanticResults.filter((r: any) => {
       const noteId = r.fields?.note_id || r.data?.note_id;

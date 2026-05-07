@@ -540,9 +540,9 @@
 - [x] MCP 도구 응답은 JSON-only를 유지하고 stdout 오염 금지
 
 ### 15.6 Search 품질 보완
-- [ ] semantic score 방향 수정: zvec distance를 `score = 1 - distance`로 변환
-- [ ] `--threshold` deprecated alias 구현 또는 문서에서 완전 제거
-- [ ] `search.alpha` 설정값이 실제 hybrid search에 반영되도록 연결
+- [x] semantic score 방향 수정: zvec distance를 `score = 1 - distance`로 변환
+- [x] `--threshold` deprecated alias 구현 또는 문서에서 완전 제거
+- [x] `search.alpha` 설정값이 실제 hybrid search에 반영되도록 연결
 - [x] `--expand` 옵션 제거:
   - LLM 호출/확장 계열은 향후 `kn llm` namespace로 분리
 - [ ] CJK keyword 검색은 단기적으로 `trigram`, 중기적으로 index-time preprocessor 적용
