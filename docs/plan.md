@@ -22,12 +22,17 @@ Implemented backbone:
 - MCP stdio tools for template/report/rewrite/add-note
 - `kn report context` JSON bundle with previous 7-day continuity
 - optional TEI integration test harness for OpenAI-compatible local embeddings
+- CLI document graph projection table and refresh path for lineage,
+  template/artifact, note/chunk containment, and chunk adjacency edges
 - TypeScript check passes for the active CLI codebase
 - React/Vite web renderer on dedicated local port `39281`
 - Electron-backed web development shell on `web/graph-backend`; `npm run dev`
   starts Vite and an Electron BrowserWindow through preload IPC.
 - typed web API, IPC, cache, and daemon boundary contracts for vault explorer,
   graph, search, and refresh operations
+- Electron IPC handlers call the CLI JSON surface for active vault/template/
+  search data and scan active vault source/rewritten directories for Explorer
+  projection data; this is an interim CLI-backed bridge, not a packaged daemon.
 - IDE-style web sidebar surface host with Explorer/Search/Graph/Tasks/Settings
   surfaces
 - Explorer surface source/rewritten/template space selection, defaulting to
@@ -83,8 +88,8 @@ Implemented backbone:
    - [x] Add preload IPC adapter shape and Electron main IPC skeleton.
    - [x] Add recoverable cache manifest/types for future web cache DB/snapshot files.
    - [x] Convert `npm run dev` to launch Vite plus Electron shell.
-   - [ ] Replace mock Electron IPC handlers with daemon-backed handlers.
-   - [ ] Load real active vault explorer data into the Explorer surface.
+   - [x] Replace mock Electron IPC handlers with CLI-backed active vault handlers.
+   - [x] Load real active vault explorer data into the Explorer surface.
    - [ ] Rebuild project-local web cache from CLI/vault source data.
 
 4. CLI document graph branch
@@ -95,7 +100,7 @@ Implemented backbone:
    - [x] Refresh graph projection after successful CLI add/sync/add-note flows.
    - [x] Keep stale `source_note_id` frontmatter FK-safe and recover lineage
      through `source_path`.
-   - [ ] Merge or rebase into the final integration branch after web IPC/daemon
+   - [x] Merge or rebase into the final integration branch after web IPC/daemon
      bridge is ready.
 
 5. Signal storage contract

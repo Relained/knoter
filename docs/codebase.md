@@ -87,6 +87,8 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 | `src/core/report-retrieval.ts` | date/tasks/workouts/areas retrieval group SQL. |
 | `src/core/report-continuity.ts` | 이전 7일 continuity context. |
 | `src/core/report-serialization.ts` | Note/signal row JSON serialization. |
+| `src/core/document-graph.ts` | document graph projection builder/persister for lineage, template, note/chunk, and chunk adjacency edges. |
+| `src/core/note-lineage.ts` | frontmatter lineage field normalization shared by add/sync/add-note paths. |
 | `src/core/template.ts` | effective template resolution: vault `.kn/template.md` then `docs/template.md`. |
 | `src/core/template-validation.ts` | template contract validation. LLM 호출 없음. |
 | `src/core/lock.ts` | vault operation lock. |
@@ -101,6 +103,8 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 - `chunks`: chunk text, heading path, offsets, token count, prev/next links.
 - `tags`: manual/frontmatter tags.
 - `note_signals`: explicit external-agent signals such as task/workout/metric.
+- `document_graph_edges`: recoverable graph projection over note lineage,
+  artifact template references, note/chunk containment, and chunk adjacency.
 - FTS virtual table/triggers for keyword search.
 - PageIndex metadata placeholders for future PoC.
 
@@ -116,6 +120,7 @@ Important invariant:
 - source notes have no chunks and no vectors
 - rewritten/artifact notes must have chunks and vectors when `vector_sync_status = synced`
 - artifact rows exist in indexes but are excluded by default retrieval/search policy
+- document graph rows are projections and can be rebuilt from notes/chunks
 
 ## Pipeline
 

@@ -91,8 +91,9 @@ runtime, JSONC global settings bridge다.
 Renderer는 SQLite를 직접 소유하지 않는다. Web은 typed API contract를 통해
 vault/explorer/graph/search payload를 요청하고, Electron main/preload/daemon
 layer가 CLI/vault metadata와 web cache projection을 담당하는 방향이다. 현재
-IPC handler는 mock payload를 반환하는 skeleton이며, daemon-backed 실제 vault
-연결은 다음 단계다.
+IPC handler는 mock payload 대신 CLI JSON surface를 호출하고 active vault의
+`sources/`와 `rewritten/` Markdown 파일을 읽어 Explorer projection을 만든다.
+이는 packaged daemon이 아니라 web cache 구축 전의 임시 CLI-backed bridge다.
 
 사이드바는 IDE-style surface host다. Rail에서 Explorer/Search/Graph/Tasks/
 Settings surface를 전환하고, Explorer surface는 source/rewritten/template
@@ -121,6 +122,14 @@ Current typed web API surfaces:
 - `graph.get`, `graph.refresh`
 - `search.query`
 
+Current Electron handler backing:
+
+- `vault` and template/search requests call `bun cli/src/cli.ts --format json ...`
+- `explorer.list` includes the effective template plus active vault
+  `sources/**/*.md` and `rewritten/**/*.md`
+- `graph.get` remains a lightweight projection over Explorer items until the CLI
+  document graph table is wired through the web bridge
+
 Cache direction:
 
 - web cache is a recoverable projection, not source of truth
@@ -137,6 +146,21 @@ Cache direction:
 - 짧은 CJK keyword는 FTS5 trigram 한계를 보완하기 위해 안전한 LIKE fallback을 사용한다.
 - zvec score는 distance가 아니라 similarity로 normalize한다.
 - artifact는 기본 검색에서 제외한다.
+
+## Document Graph Projection
+
+CLI metadata now includes a recoverable `document_graph_edges` projection table.
+It stores:
+
+- source -> rewritten lineage, with stale `source_note_id` ignored when the
+  referenced note no longer exists
+- template -> artifact lineage from explicit `artifact_template_id`
+- note -> chunk containment edges
+- chunk prev/next adjacency edges
+
+The projection refreshes after successful `kn add`, `kn sync`, and MCP/shared
+`kn_add_note` flows. It is still CLI-owned storage; the current web `graph.get`
+handler has not yet been switched from Explorer projection to this table.
 
 ## Report Context
 
