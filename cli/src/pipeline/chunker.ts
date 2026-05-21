@@ -143,13 +143,13 @@ function findBreakPoints(content: string): BreakPoint[] {
   let currentPosition = 0;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] ?? "";
     const lineLength = line.length + 1; // +1 for newline
 
     // Heading detection: /^(#{1,6})\s+(.+)$/
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
-      const level = headingMatch[1].length;
+      const level = headingMatch[1]!.length;
       const score = 100 - (level - 1) * 10; // 100, 90, 80, 70, 60, 50
       breakPoints.push({
         position: currentPosition,
@@ -242,11 +242,11 @@ function buildHeadingStack(
       break;
     }
 
-    const level = match[1].length;
-    const text = match[2];
+    const level = match[1]!.length;
+    const text = match[2]!;
 
     // Pop all headings with level >= current level
-    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+    while (stack.length > 0 && stack[stack.length - 1]!.level >= level) {
       stack.pop();
     }
 
@@ -328,7 +328,7 @@ export function chunkDocument(
         content: lastContent,
         offsetStart: position,
         offsetEnd: content.length,
-        heading: stack.length > 0 ? stack[stack.length - 1].text : null,
+        heading: stack.length > 0 ? stack[stack.length - 1]!.text : null,
         headingPath: currentHeadingPath,
       });
       break;
@@ -369,7 +369,7 @@ export function chunkDocument(
     let cutPosition = targetEnd;
     if (scored.length > 0) {
       const bestBreak = scored.sort((a, b) => b.adjustedScore - a.adjustedScore)[0];
-      cutPosition = bestBreak.position;
+      cutPosition = bestBreak!.position;
     }
 
     // Ensure we make progress (don't go backwards or stay in place)
@@ -386,7 +386,7 @@ export function chunkDocument(
       content: chunkContent,
       offsetStart: position,
       offsetEnd: cutPosition,
-      heading: stack.length > 0 ? stack[stack.length - 1].text : null,
+      heading: stack.length > 0 ? stack[stack.length - 1]!.text : null,
       headingPath: currentHeadingPath,
     });
 
@@ -407,13 +407,13 @@ export function chunkDocument(
   }> = [];
 
   for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+    const chunk = chunks[i]!;
     const tokenCount = estimateTokens(chunk.content);
 
     if (tokenCount < adjustedMinSize) {
       if (i === 0 && chunks.length > 1) {
         // First chunk is too small — merge with next
-        const nextChunk = chunks[i + 1];
+        const nextChunk = chunks[i + 1]!;
         mergedChunks.push({
           content: chunk.content + nextChunk.content,
           offsetStart: chunk.offsetStart,
@@ -425,8 +425,12 @@ export function chunkDocument(
       } else if (i > 0) {
         // Merge with predecessor
         const lastChunk = mergedChunks[mergedChunks.length - 1];
-        lastChunk.content += chunk.content;
-        lastChunk.offsetEnd = chunk.offsetEnd;
+        if (lastChunk) {
+          lastChunk.content += chunk.content;
+          lastChunk.offsetEnd = chunk.offsetEnd;
+        } else {
+          mergedChunks.push(chunk);
+        }
       } else {
         // Single small chunk — keep it as is
         mergedChunks.push(chunk);

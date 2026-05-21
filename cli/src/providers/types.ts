@@ -5,8 +5,3 @@ export interface HealthStatus {
   message?: string;
   latencyMs?: number;
 }
-
-export interface ContainerSpec {
-  name: string;
-  runtime?: "podman" | "docker";
-}

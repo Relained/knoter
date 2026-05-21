@@ -15,11 +15,17 @@ bun test
 Optional local TEI smoke test:
 
 ```bash
-KN_TEI_BASE_URL=http://127.0.0.1:8080 \
+scripts/test-env.sh tei-start
+
+KN_TEI_BASE_URL=http://127.0.0.1:39280 \
 KN_TEI_MODEL=<model-id> \
 KN_TEI_DIM=<embedding-dimension> \
 bun test tests/tei-integration.test.ts
 ```
+
+On macOS, local TEI via `text-embeddings-router` is the supported path for
+Metal acceleration. `kn vault create --embedding-base-url http://127.0.0.1:39280`
+stores that endpoint. Container lifecycle is handled outside the CLI.
 
 The TEI integration test reads fixtures from `KN_TESTDATA_ROOT` (default:
 `../testdata` from this package), builds a Codex rewrite prompt for source ->

@@ -40,7 +40,7 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 
 | File | Command | Notes |
 | --- | --- | --- |
-| `src/commands/vault.ts` | `kn vault` | vault 생성/상태/TEI container wiring. |
+| `src/commands/vault.ts` | `kn vault` | vault 생성/상태/embedding API endpoint 저장. |
 | `src/commands/add.ts` | `kn add` | 파일 ingest. source는 metadata-only, rewritten/artifact는 indexing. |
 | `src/commands/sync.ts` | `kn sync` | vault 파일과 metadata/vector store 동기화, pending recovery. |
 | `src/commands/search.ts` | `kn search` | keyword/semantic/hybrid search CLI wrapper. |
@@ -49,8 +49,7 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 | `src/commands/template.ts` | `kn template` | vault template/fallback 조회와 local validation. |
 | `src/commands/report.ts` | `kn report context` | 외부 agent용 JSON context bundle 생성. |
 | `src/commands/mcp.ts` | `kn mcp` | MCP stdio server 실행. |
-| `src/commands/schedule.ts` | legacy | active direction은 install-time service template. |
-| `src/commands/cluster.ts` | legacy/deferred | active CLI/typecheck 범위에서 제외된 방향. |
+| `src/commands/service.ts` | `kn service status` | 외부 embedding service endpoint 점검. |
 
 ## Core Modules
 
@@ -65,7 +64,6 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 | `src/core/report-serialization.ts` | Note/signal row JSON serialization. |
 | `src/core/template.ts` | effective template resolution: vault `.kn/template.md` then `docs/template.md`. |
 | `src/core/template-validation.ts` | template contract validation. LLM 호출 없음. |
-| `src/core/container.ts` | local TEI container lazy-start/retry support. |
 | `src/core/lock.ts` | vault operation lock. |
 | `src/core/output.ts` | JSON/text output envelope helpers. |
 | `src/core/errors.ts` | typed CLI errors and exit codes. |
@@ -205,6 +203,9 @@ Change template contract:
 
 - No general LLM call in normal `kn` commands except embedding provider calls.
 - `kn llm` is the future namespace for prompt assembly or explicit LLM calls.
-- `schedule` and `cluster` code exists but is legacy/deferred relative to active direction.
+- Container runtime and TEI process lifecycle are outside the CLI. The CLI only
+  depends on the embedding server HTTP API.
+- Cluster analysis is outside the CLI. Frontend/app code can access zvec
+  directly for that surface.
 - `KN_TESTDATA_ROOT` points live E2E and local bootstrap scripts at a gitignored
   fixture corpus, so private or large test data can stay outside tracked files.

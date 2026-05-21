@@ -4,7 +4,7 @@ import type { EmbeddingProvider } from "../pipeline/embedder";
 import { OpenAIEmbeddingProvider } from "./openai";
 
 export function createEmbeddingProvider(config: VaultConfig): EmbeddingProvider {
-  const { baseUrl, apiKey, model, container } = config.embedding;
+  const { baseUrl, apiKey, model } = config.embedding;
   logger.debug(`Creating OpenAI-compatible embedding provider (model: ${model})`);
-  return new OpenAIEmbeddingProvider({ baseUrl, apiKey, model, container });
+  return new OpenAIEmbeddingProvider({ baseUrl, apiKey, model });
 }

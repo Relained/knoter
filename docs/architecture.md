@@ -35,16 +35,19 @@
 - `kn template`
 - `kn report context`
 - `kn mcp`
+- `kn service status`
 
-일반 `kn` 명령은 임베딩 외 LLM 호출을 하지 않는다. LLM 호출 또는 prompt 조립 기능은 향후 `kn llm` namespace로 격리한다.
+일반 `kn` 명령은 임베딩 외 LLM 호출을 하지 않는다. CLI는 embedding server
+HTTP API만 의존하고, TEI 실행/중지 같은 service lifecycle은 frontend/app
+계층이 담당한다. LLM 호출 또는 prompt 조립 기능은 향후 `kn llm` namespace로
+격리한다.
 
 Deferred/legacy:
 
-- `cluster`: 자동 분류/군집화는 현재 목표에서 제외
-- `schedule`: CLI 타이머 관리 대신 설치 시 launchctl/systemd service template 제공
+- `cluster`: frontend/app 계층에서 zvec 직접 접근으로 처리
+- `schedule`: CLI 타이머 관리에서 제외
 - `tag auto`: 제거
 - PageIndex: 후속 PoC
-- frontend: backend 안정화 뒤 별도 컨텍스트
 
 ## Retrieval
 

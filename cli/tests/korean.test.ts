@@ -19,7 +19,7 @@ import { detectLanguage } from "../src/pipeline/chunker";
 // proxy for lexical overlap — sufficient to verify that a semantic query ranks
 // the matching Korean note above unrelated notes.
 
-const DIM = EMBEDDING_DIMENSIONS["nomic-embed-text"]; // 768
+const DIM = EMBEDDING_DIMENSIONS["nomic-embed-text"]!; // 768
 
 function embed(text: string): number[] {
   const v = new Array<number>(DIM).fill(0);

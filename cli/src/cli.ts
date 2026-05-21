@@ -9,7 +9,7 @@ import { registerGetCommand } from "./commands/get";
 import { registerTemplateCommand } from "./commands/template";
 import { registerReportCommand } from "./commands/report";
 import { registerMcpCommand } from "./commands/mcp";
-import { registerScheduleCommand } from "./commands/schedule";
+import { registerServiceCommand } from "./commands/service";
 
 const program = new Command();
 
@@ -33,6 +33,6 @@ registerGetCommand(program);
 registerTemplateCommand(program);
 registerReportCommand(program);
 registerMcpCommand(program);
-registerScheduleCommand(program);
+registerServiceCommand(program);
 
 program.parse(process.argv);

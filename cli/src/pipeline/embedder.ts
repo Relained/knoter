@@ -63,6 +63,9 @@ export class Embedder {
     const results: number[][] = [];
     for (const text of texts) {
       const [embedding] = await this.withRetry(() => provider.embed([text]));
+      if (!embedding) {
+        throw new Error("Embedding provider returned no embedding");
+      }
       results.push(embedding);
     }
     return results;

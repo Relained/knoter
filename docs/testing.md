@@ -10,8 +10,8 @@ Project-local environment is centralized in repo-root `.env`.
   starting Bun.
 - Override the env file for scripts with `KN_ENV_FILE=/path/to/env`.
 
-`.env` is intentionally gitignored. Keep machine-specific endpoint, runtime,
-and timeout values there.
+`.env` is intentionally gitignored. Keep machine-specific endpoint, model, and
+timeout values there.
 
 ## Env Catalog
 
@@ -27,22 +27,16 @@ Core:
 Embedding provider and test vault bootstrap:
 
 - `KN_EMBED_BASE_URL`: OpenAI-compatible embedding endpoint for script-created
-  vaults.
+  vaults. Defaults to `http://127.0.0.1:39280`.
 - `KN_EMBED_MODEL`: embedding model id.
 - `KN_EMBED_API_KEY`: bearer token if the endpoint requires one.
-- `KN_EMBED_CONTAINER`: TEI container name used for lazy start.
-- `KN_EMBED_RUNTIME`: `podman` or `docker`.
-
-TEI container setup:
-
-- `KN_TEI_IMAGE`: TEI image.
-- `KN_TEI_PORT`: host port mapped to TEI `:80`.
-- `KN_TEI_VOLUME`: named model cache volume.
-- `KN_TEI_GPU`: `1` for CUDA image/device settings, otherwise `0`.
+- `KN_TEI_PORT`: local `text-embeddings-router` port for
+  `scripts/test-env.sh tei-start`. Defaults to `39280`.
 
 Live TEI/Codex integration tests:
 
-- `KN_TEI_BASE_URL`: OpenAI-compatible TEI endpoint.
+- `KN_TEI_BASE_URL`: OpenAI-compatible TEI endpoint. Defaults to
+  `http://127.0.0.1:39280` in `scripts/tei-e2e-test.sh`.
 - `KN_TEI_MODEL`: model sent to `/v1/embeddings`.
 - `KN_TEI_API_KEY`: bearer token if needed.
 - `KN_TEI_DIM`: expected embedding dimension.
@@ -68,11 +62,27 @@ scripts/tei-e2e-test.sh
 Local test vault setup:
 
 ```bash
-scripts/test-env.sh tei-install
+scripts/test-env.sh tei-start
 scripts/test-env.sh setup
 scripts/test-env.sh demo
 scripts/test-env.sh teardown
 ```
+
+For macOS Metal acceleration, run local TEI in one terminal:
+
+```bash
+scripts/test-env.sh tei-start
+```
+
+Then run tests or create the test vault from another terminal:
+
+```bash
+scripts/tei-e2e-test.sh
+scripts/test-env.sh setup
+```
+
+The CLI stores and calls an embedding server API endpoint only. It does not
+create, start, or own TEI containers; frontend/app code owns service lifecycle.
 
 ## Template Delivery To Agents
 

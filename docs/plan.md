@@ -1,6 +1,6 @@
 # knoter current plan
 
-Last updated: 2026-05-08
+Last updated: 2026-05-21
 
 ## Current State
 
@@ -15,6 +15,8 @@ Implemented backbone:
 - artifact default search exclusion
 - explicit raw `kind` storage without auto type inference
 - OpenAI-compatible embedding provider path
+- CLI-owned embedding container/runtime code removed; the CLI stores and calls
+  an external embedding server API endpoint
 - CJK chunking/search fallback improvements
 - MCP stdio tools for template/report/rewrite/add-note
 - `kn report context` JSON bundle with previous 7-day continuity
@@ -29,7 +31,10 @@ Implemented backbone:
 - Task/workout/area/metric extraction belongs to the external agent at rewritten time.
 - One template file exists per vault at `.kn/template.md`; `docs/template.md` is bundled fallback.
 - `kn llm` is the only future namespace allowed to assemble prompts or call LLMs.
-- `schedule` is a packaging/install milestone, not an active timer-management command direction.
+- Service lifecycle belongs to frontend/app packaging. CLI only exposes service
+  endpoint status/probing.
+- Cluster analysis belongs to frontend/app code with direct zvec access, not the
+  CLI command surface.
 - PageIndex is a future PoC, not current retrieval backend.
 
 ## P0 Next Work
@@ -63,8 +68,7 @@ Implemented backbone:
 
 ## P2
 
-- launchctl/systemd service templates for scheduled maintenance.
-- Container `run` support when `container.image` is configured.
+- Frontend-owned local service execution UX, including macOS local TEI defaults.
 - SSE/HTTP MCP only if stdio is insufficient.
 
 ## Verification Baseline

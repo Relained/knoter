@@ -162,8 +162,9 @@ async function syncVectorTags(metaDb: MetaDB, vaultRoot: string, noteId: string)
     if (chunkIds.length === 0) return;
 
     // Fetch existing vector docs
-    const docs = collection.fetchSync(chunkIds);
-    if (!docs || docs.length === 0) return;
+    const fetched = collection.fetchSync(chunkIds);
+    const docs = Object.values(fetched || {});
+    if (docs.length === 0) return;
 
     // Update tags field and upsert
     const updatedDocs = docs.map((doc: any) => ({

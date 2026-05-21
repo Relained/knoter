@@ -149,54 +149,61 @@ async function semanticSearch(
     const embedder = createEmbeddingProvider(vaultConfig);
     const embeddings = await embedder.embed([query]);
     const queryEmbedding = embeddings[0];
+    if (!queryEmbedding) {
+      throw new Error("Embedding provider returned no query embedding");
+    }
 
     // Open zvec collection
     const vectorPath = join(vaultRoot, ".kn", "vectors");
     const collection = openVaultCollection(vectorPath, {});
 
-    // Build zvec filter from tags/dates
-    const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
+    try {
+      // Build zvec filter from tags/dates
+      const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
 
-    // Query semantic index using semanticQuery builder
-    logger.debug(`Querying zvec with filter: ${zvecFilter || "none"}`);
+      // Query semantic index using semanticQuery builder
+      logger.debug(`Querying zvec with filter: ${zvecFilter || "none"}`);
 
-    const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
-    const queryResult = collection.querySync(zvecQuery);
-    let results = (queryResult || []).map((r: any) => ({
-      ...r,
-      score: normalizeSemanticScore(r.score),
-    }));
-    if (!options.includeArtifacts) {
-      results = results.filter((r: any) => {
-        const noteId = r.fields?.note_id || r.data?.note_id;
-        const noteRow = metaDb.getNote(noteId);
-        return noteRow?.layer !== "artifact";
+      const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
+      const queryResult = collection.querySync(zvecQuery);
+      let results = (queryResult || []).map((r: any) => ({
+        ...r,
+        score: normalizeSemanticScore(r.score),
+      }));
+      if (!options.includeArtifacts) {
+        results = results.filter((r: any) => {
+          const noteId = r.fields?.note_id || r.data?.note_id;
+          const noteRow = metaDb.getNote(noteId);
+          return noteRow?.layer !== "artifact";
+        });
+      }
+
+      logger.debug(`Semantic search returned ${results.length} results`);
+
+      // Apply semantic score filter
+      if (options.semanticMin !== undefined) {
+        results = results.filter(r => r.score >= options.semanticMin!);
+        logger.debug(`After semanticMin filter: ${results.length} results`);
+      }
+
+      // Convert to FusedResult
+      const fusedResults = results.slice(0, options.top).map((zvecResult: any) => {
+        const noteRow = metaDb.getNote(zvecResult.fields?.note_id || zvecResult.data?.note_id);
+        return zvecResultToFused(zvecResult, noteRow);
       });
+
+      const strongSignal = results.length > 0 && isStrongSignal(results.map((r: any) => r.score));
+      logger.debug(`Strong semantic signal: ${strongSignal}`);
+
+      return {
+        results: fusedResults,
+        mode: "semantic",
+        totalFound: results.length,
+        strongSignal,
+      };
+    } finally {
+      collection.closeSync();
     }
-
-    logger.debug(`Semantic search returned ${results.length} results`);
-
-    // Apply semantic score filter
-    if (options.semanticMin !== undefined) {
-      results = results.filter(r => r.score >= options.semanticMin!);
-      logger.debug(`After semanticMin filter: ${results.length} results`);
-    }
-
-    // Convert to FusedResult
-    const fusedResults = results.slice(0, options.top).map((zvecResult: any) => {
-      const noteRow = metaDb.getNote(zvecResult.fields?.note_id || zvecResult.data?.note_id);
-      return zvecResultToFused(zvecResult, noteRow);
-    });
-
-    const strongSignal = results.length > 0 && isStrongSignal(results.map((r: any) => r.score));
-    logger.debug(`Strong semantic signal: ${strongSignal}`);
-
-    return {
-      results: fusedResults,
-      mode: "semantic",
-      totalFound: results.length,
-      strongSignal,
-    };
   } finally {
     metaDb.close();
   }
@@ -265,73 +272,80 @@ async function hybridSearch(
   const embedder = createEmbeddingProvider(vaultConfig);
   const embeddings = await embedder.embed([query]);
   const queryEmbedding = embeddings[0];
+  if (!queryEmbedding) {
+    throw new Error("Embedding provider returned no query embedding");
+  }
 
   const vectorPath = join(vaultRoot, ".kn", "vectors");
   const collection = openVaultCollection(vectorPath, {});
 
-  const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
+  try {
+    const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
 
-  logger.debug(`Semantic search with filter: ${zvecFilter || "none"}`);
+    logger.debug(`Semantic search with filter: ${zvecFilter || "none"}`);
 
-  const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
-  const queryResult = collection.querySync(zvecQuery);
-  let semanticResults = (queryResult || []).map((r: any) => ({
-    ...r,
-    score: normalizeSemanticScore(r.score),
-  }));
-  if (!options.includeArtifacts) {
-    semanticResults = semanticResults.filter((r: any) => {
-      const noteId = r.fields?.note_id || r.data?.note_id;
-      const noteRow = metaDb.getNote(noteId);
-      return noteRow?.layer !== "artifact";
-    });
+    const zvecQuery = semanticQuery(queryEmbedding, options.top * 2, zvecFilter);
+    const queryResult = collection.querySync(zvecQuery);
+    let semanticResults = (queryResult || []).map((r: any) => ({
+      ...r,
+      score: normalizeSemanticScore(r.score),
+    }));
+    if (!options.includeArtifacts) {
+      semanticResults = semanticResults.filter((r: any) => {
+        const noteId = r.fields?.note_id || r.data?.note_id;
+        const noteRow = metaDb.getNote(noteId);
+        return noteRow?.layer !== "artifact";
+      });
+    }
+
+    logger.debug(`Semantic search returned ${semanticResults.length} results`);
+
+    // Apply semantic score filter if provided
+    if (options.semanticMin !== undefined) {
+      semanticResults = semanticResults.filter(r => r.score >= options.semanticMin!);
+      logger.debug(`After semanticMin filter: ${semanticResults.length} results`);
+    }
+
+    // Step 4: Merge results by chunk ID with linear fusion
+    const merged = mergeResultsByChunkId(
+      metaDb,
+      semanticResults,
+      keywordResults,
+      alpha
+    );
+
+    logger.debug(`Merged ${merged.length} unique chunks`);
+
+    // Step 5: Apply hybridMin filter
+    let filtered = merged;
+    if (options.hybridMin !== undefined) {
+      filtered = merged.filter(r => r.score >= options.hybridMin!);
+      logger.debug(`After hybridMin filter: ${filtered.length} results`);
+    }
+
+    // Check fused strong signal
+    const fusedScores = filtered.map(r => r.score);
+    const strongSignal = isStrongSignal(fusedScores);
+    logger.debug(`Strong fused signal: ${strongSignal}`);
+
+    // Merge adjacent chunks and sort
+    let finalResults = mergeAdjacentChunks(filtered).slice(0, options.top ?? 10);
+
+    // Apply language filter if specified
+    if (options.lang) {
+      finalResults = filterByLanguage(metaDb, finalResults, options.lang);
+      logger.debug(`After language filter (${options.lang}): ${finalResults.length} results`);
+    }
+
+    return {
+      results: finalResults,
+      mode: "hybrid",
+      totalFound: merged.length,
+      strongSignal,
+    };
+  } finally {
+    collection.closeSync();
   }
-
-  logger.debug(`Semantic search returned ${semanticResults.length} results`);
-
-  // Apply semantic score filter if provided
-  if (options.semanticMin !== undefined) {
-    semanticResults = semanticResults.filter(r => r.score >= options.semanticMin!);
-    logger.debug(`After semanticMin filter: ${semanticResults.length} results`);
-  }
-
-  // Step 4: Merge results by chunk ID with linear fusion
-  const merged = mergeResultsByChunkId(
-    metaDb,
-    semanticResults,
-    keywordResults,
-    alpha
-  );
-
-  logger.debug(`Merged ${merged.length} unique chunks`);
-
-  // Step 5: Apply hybridMin filter
-  let filtered = merged;
-  if (options.hybridMin !== undefined) {
-    filtered = merged.filter(r => r.score >= options.hybridMin!);
-    logger.debug(`After hybridMin filter: ${filtered.length} results`);
-  }
-
-  // Check fused strong signal
-  const fusedScores = filtered.map(r => r.score);
-  const strongSignal = isStrongSignal(fusedScores);
-  logger.debug(`Strong fused signal: ${strongSignal}`);
-
-  // Merge adjacent chunks and sort
-  let finalResults = mergeAdjacentChunks(filtered).slice(0, options.top ?? 10);
-
-  // Apply language filter if specified
-  if (options.lang) {
-    finalResults = filterByLanguage(metaDb, finalResults, options.lang);
-    logger.debug(`After language filter (${options.lang}): ${finalResults.length} results`);
-  }
-
-  return {
-    results: finalResults,
-    mode: "hybrid",
-    totalFound: merged.length,
-    strongSignal,
-  };
 }
 
 // ─── Helper Functions ────────────────────────────────────────────────────────

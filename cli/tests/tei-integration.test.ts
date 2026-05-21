@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { Embedder } from "../src/pipeline/embedder";
@@ -12,6 +12,7 @@ import { MetaDB } from "../src/stores/meta-store";
 import {
   createVaultCollection,
   EMBEDDING_DIMENSIONS,
+  openVaultCollection,
   semanticQuery,
   toSearchResult,
   toZVecDoc,
@@ -39,10 +40,34 @@ const E2E_REWRITTEN_REL_PATH = `rewritten/${E2E_DATE}/daily-rewritten.md`;
 const E2E_ARTIFACT_REL_PATH = `artifacts/${E2E_DATE}/daily-report.md`;
 const E2E_SOURCE_NOTE_ID = "source-2026-04-16";
 
+interface SharedTeiVaultFixture {
+  provider: OpenAIEmbeddingProvider;
+  embeddingDim: number;
+  vaultRoot: string;
+  vectorPath: string;
+  vaultConfig: VaultConfig;
+  sourceRelPath: string;
+  rewrittenRelPath: string;
+  artifactRelPath: string;
+  sourceNoteId: string;
+  rewrittenNoteId: string;
+  artifactNoteId: string;
+  rewrittenChunkIds: string[];
+  artifactChunkIds: string[];
+  originalRewrittenContent: string;
+}
+
 function requireTei(): string | null {
   if (!TEI_BASE_URL) return "Set KN_TEI_BASE_URL to run TEI integration tests.";
   if (TEI_DIM !== undefined && (!Number.isFinite(TEI_DIM) || TEI_DIM <= 0)) {
     return "KN_TEI_DIM must be a positive integer when set.";
+  }
+  return null;
+}
+
+function requireTestdata(): string | null {
+  if (!existsSync(TESTDATA_ROOT)) {
+    return `Set KN_TESTDATA_ROOT to an existing fixture directory to run corpus TEI tests. Missing: ${TESTDATA_ROOT}`;
   }
   return null;
 }
@@ -370,8 +395,155 @@ function printE2EDocument(label: string, path: string, content: string): void {
   console.log(`===== END ${label}: ${path} =====\n`);
 }
 
+async function createSharedTeiVaultFixture(): Promise<SharedTeiVaultFixture> {
+  const provider = buildTeiProvider();
+  const embeddingDim = await resolveEmbeddingDimension(provider);
+  const vaultRoot = join("/tmp", `kn-tei-e2e-shared-${randomUUID()}`);
+  const vectorPath = join(vaultRoot, ".kn", "vectors");
+  const vaultConfig = buildTeiVaultConfig();
+  const sourceRelPath = "sources/2026-05-08/raw.md";
+  const rewrittenRelPath = "rewritten/2026-05-08/embedding-note.md";
+  const artifactRelPath = "artifacts/2026-05-08/daily-report.md";
+  const sourceNoteId = "source-live-embedding";
+  let collection: ReturnType<typeof createVaultCollection> | null = null;
+
+  try {
+    mkdirSync(join(vaultRoot, "sources", "2026-05-08"), { recursive: true });
+    await saveVaultConfig(vaultRoot, vaultConfig);
+    collection = createVaultCollection(vectorPath, "vault", TEI_MODEL);
+
+    const sourceContent = [
+      "---",
+      "title: Raw capture",
+      "date: 2026-05-08",
+      "layer: source",
+      "kind: source",
+      "---",
+      "",
+      "# Raw capture",
+      "",
+      "한국어 임베딩 모델과 하이브리드 검색 테스트를 위한 원본 메모.",
+    ].join("\n");
+    await Bun.write(join(vaultRoot, sourceRelPath), sourceContent);
+
+    const sourceDb = new MetaDB(vaultRoot);
+    try {
+      sourceDb.upsertNote({
+        id: sourceNoteId,
+        vaultId: VAULT_NAME,
+        filePath: sourceRelPath,
+        title: "Raw capture",
+        fileHash: hashContent(sourceContent),
+        docDate: "2026-05-08",
+        layer: "source",
+        kind: "source",
+        language: "cjk",
+      });
+      sourceDb.markSynced(sourceNoteId);
+    } finally {
+      sourceDb.close();
+    }
+
+    const rewrittenContent = [
+      "---",
+      "title: Live Embedding Note",
+      "date: 2026-05-08",
+      "layer: rewritten",
+      "kind: daily",
+      `source_note_id: ${sourceNoteId}`,
+      `source_path: ${sourceRelPath}`,
+      "rewrite_agent: codex-test",
+      "tags:",
+      "  - embedding",
+      "  - korean",
+      "---",
+      "",
+      "# Live Embedding Note",
+      "",
+      "## 한국어 임베딩",
+      "",
+      "한국어 자연어 처리 문장을 실제 TEI 임베딩 모델로 벡터화하고 zvec에 저장한다.",
+      "",
+      "## 하이브리드 검색",
+      "",
+      "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.",
+    ].join("\n");
+
+    const rewrittenAdd = await addMarkdownNoteToVault({
+      vaultRoot,
+      vaultName: VAULT_NAME,
+      relPath: rewrittenRelPath,
+      content: rewrittenContent,
+      vaultConfig,
+      embedProvider: provider,
+      vectorCollection: asAddNoteVectorCollection(collection),
+    });
+
+    const artifactContent = [
+      "---",
+      "title: Live Artifact",
+      "date: 2026-05-08",
+      "layer: artifact",
+      "kind: daily-report",
+      `source_path: ${rewrittenRelPath}`,
+      "artifact_template_id: daily-report",
+      "---",
+      "",
+      "# Live Artifact",
+      "",
+      "## Summary",
+      "",
+      "Workout 검증용 artifact 문장. 기본 검색에서는 제외되어야 한다.",
+    ].join("\n");
+    const artifactAdd = await addMarkdownNoteToVault({
+      vaultRoot,
+      vaultName: VAULT_NAME,
+      relPath: artifactRelPath,
+      content: artifactContent,
+      vaultConfig,
+      embedProvider: provider,
+      vectorCollection: asAddNoteVectorCollection(collection),
+    });
+
+    const indexedDb = new MetaDB(vaultRoot);
+    try {
+      const rewrittenNote = indexedDb.getNoteByPath(VAULT_NAME, rewrittenRelPath);
+      const artifactNote = indexedDb.getNoteByPath(VAULT_NAME, artifactRelPath);
+      if (!rewrittenNote || !artifactNote) {
+        throw new Error("Shared TEI fixture failed to create rewritten/artifact notes");
+      }
+      return {
+        provider,
+        embeddingDim,
+        vaultRoot,
+        vectorPath,
+        vaultConfig,
+        sourceRelPath,
+        rewrittenRelPath,
+        artifactRelPath,
+        sourceNoteId,
+        rewrittenNoteId: rewrittenAdd.noteId,
+        artifactNoteId: artifactAdd.noteId,
+        rewrittenChunkIds: indexedDb.getChunksByNote(rewrittenNote.id).map((chunk) => chunk.id),
+        artifactChunkIds: indexedDb.getChunksByNote(artifactNote.id).map((chunk) => chunk.id),
+        originalRewrittenContent: rewrittenContent,
+      };
+    } finally {
+      indexedDb.close();
+      collection.closeSync();
+      collection = null;
+    }
+  } catch (err) {
+    destroyCollection(collection);
+    rmSync(vaultRoot, { recursive: true, force: true });
+    throw err;
+  }
+}
+
 describe("TEI OpenAI-compatible embedding integration", () => {
   const skipReason = requireTei();
+  let fixture: SharedTeiVaultFixture | null = null;
+  let previousDimension: number | undefined;
 
   if (skipReason) {
     test("skips unless KN_TEI_BASE_URL is configured", () => {
@@ -380,12 +552,31 @@ describe("TEI OpenAI-compatible embedding integration", () => {
     return;
   }
 
+  beforeAll(async () => {
+    previousDimension = EMBEDDING_DIMENSIONS[TEI_MODEL];
+    fixture = await createSharedTeiVaultFixture();
+    EMBEDDING_DIMENSIONS[TEI_MODEL] = fixture.embeddingDim;
+  }, 120_000);
+
+  afterAll(() => {
+    if (fixture) {
+      rmSync(fixture.vaultRoot, { recursive: true, force: true });
+      fixture = null;
+    }
+    if (previousDimension === undefined) {
+      delete EMBEDDING_DIMENSIONS[TEI_MODEL];
+    } else {
+      EMBEDDING_DIMENSIONS[TEI_MODEL] = previousDimension;
+    }
+  });
+
+  function getFixture(): SharedTeiVaultFixture {
+    if (!fixture) throw new Error("Shared TEI fixture was not initialized");
+    return fixture;
+  }
+
   test("embeds Korean and mixed-language inputs through TEI", async () => {
-    const provider = new OpenAIEmbeddingProvider({
-      baseUrl: TEI_BASE_URL,
-      apiKey: TEI_API_KEY,
-      model: TEI_MODEL,
-    });
+    const { provider } = getFixture();
 
     expect(provider.isLocal).toBe(true);
 
@@ -401,7 +592,7 @@ describe("TEI OpenAI-compatible embedding integration", () => {
   });
 
   test("Embedder preserves one embedding per input with local TEI provider", async () => {
-    const provider = buildTeiProvider();
+    const { provider } = getFixture();
     const embedder = new Embedder({
       provider,
       maxRetries: 0,
@@ -423,14 +614,11 @@ describe("TEI OpenAI-compatible embedding integration", () => {
   });
 
   test("writes live TEI embeddings to zvec, reads them back, queries, and deletes rows", async () => {
-    const provider = buildTeiProvider();
-    await withResolvedTeiDimension(provider, async (embeddingDim) => {
-      const indexDir = join("/tmp", `kn-tei-zvec-${randomUUID()}`);
-      let collection: ReturnType<typeof createVaultCollection> | null = null;
+    const { provider, embeddingDim, vectorPath } = getFixture();
+    let collection: ReturnType<typeof createVaultCollection> | null = null;
 
-      try {
-        collection = createVaultCollection(indexDir, "tei-vector-io", TEI_MODEL);
-
+    try {
+        collection = openVaultCollection(vectorPath, {});
         const indexedTexts = [
           "한국어 자연어 처리와 문장 임베딩 검색은 의미 기반 검색 품질을 좌우한다.",
           "Rust ownership and borrowing prevent memory safety bugs at compile time.",
@@ -513,235 +701,138 @@ describe("TEI OpenAI-compatible embedding integration", () => {
         expect(deleted.ok).toBe(true);
         const afterDelete = collection.fetchSync("chunk-en-rust");
         expect(afterDelete["chunk-en-rust"]).toBeUndefined();
-      } finally {
-        destroyCollection(collection);
-        rmSync(indexDir, { recursive: true, force: true });
-      }
-    });
+    } finally {
+      collection?.closeSync();
+    }
   });
 
   test("indexes, searches, updates, and preserves metadata using real TEI embeddings", async () => {
-    const provider = buildTeiProvider();
-    await withResolvedTeiDimension(provider, async (embeddingDim) => {
-      const vaultRoot = join("/tmp", `kn-tei-db-${randomUUID()}`);
-      const vectorPath = join(vaultRoot, ".kn", "vectors");
-      const vaultConfig = buildTeiVaultConfig();
-      let collection: ReturnType<typeof createVaultCollection> | null = null;
+    const fixture = getFixture();
+    let collection: ReturnType<typeof createVaultCollection> | null = null;
 
-      const sourceRelPath = "sources/2026-05-08/raw.md";
-      const rewrittenRelPath = "rewritten/2026-05-08/embedding-note.md";
-      const artifactRelPath = "artifacts/2026-05-08/daily-report.md";
+    const indexedDb = new MetaDB(fixture.vaultRoot);
+    try {
+      const sourceNote = indexedDb.getNoteByPath(VAULT_NAME, fixture.sourceRelPath);
+      const rewrittenNote = indexedDb.getNoteByPath(VAULT_NAME, fixture.rewrittenRelPath);
+      const artifactNote = indexedDb.getNoteByPath(VAULT_NAME, fixture.artifactRelPath);
+      expect(sourceNote?.layer).toBe("source");
+      expect(indexedDb.getChunksByNote(fixture.sourceNoteId)).toEqual([]);
+      expect(rewrittenNote?.id).toBe(fixture.rewrittenNoteId);
+      expect(rewrittenNote?.layer).toBe("rewritten");
+      expect(rewrittenNote?.vector_sync_status).toBe("synced");
+      expect(rewrittenNote?.source_note_id).toBe(fixture.sourceNoteId);
+      expect(rewrittenNote?.source_path).toBe(fixture.sourceRelPath);
+      expect(artifactNote?.id).toBe(fixture.artifactNoteId);
+      expect(artifactNote?.layer).toBe("artifact");
+      expect(artifactNote?.artifact_template_id).toBe("daily-report");
+      expect(indexedDb.getChunksByNote(fixture.rewrittenNoteId).map((chunk) => chunk.id)).toEqual(
+        fixture.rewrittenChunkIds,
+      );
+      expect(indexedDb.getChunksByNote(fixture.artifactNoteId).map((chunk) => chunk.id)).toEqual(
+        fixture.artifactChunkIds,
+      );
 
-      try {
-        mkdirSync(join(vaultRoot, "sources", "2026-05-08"), { recursive: true });
-        await saveVaultConfig(vaultRoot, vaultConfig);
-        collection = createVaultCollection(vectorPath, "vault", TEI_MODEL);
+      const ftsHits = indexedDb.searchFts("하이브리드", 10, VAULT_NAME);
+      expect(ftsHits.some((hit) => hit.noteId === fixture.rewrittenNoteId)).toBe(true);
+    } finally {
+      indexedDb.close();
+    }
 
-        const sourceContent = [
-          "---",
-          "title: Raw capture",
-          "date: 2026-05-08",
-          "layer: source",
-          "kind: source",
-          "---",
-          "",
-          "# Raw capture",
-          "",
-          "한국어 임베딩 모델과 하이브리드 검색 테스트를 위한 원본 메모.",
-        ].join("\n");
-        await Bun.write(join(vaultRoot, sourceRelPath), sourceContent);
-
-        const sourceDb = new MetaDB(vaultRoot);
-        try {
-          sourceDb.upsertNote({
-            id: "source-live-embedding",
-            vaultId: VAULT_NAME,
-            filePath: sourceRelPath,
-            title: "Raw capture",
-            fileHash: hashContent(sourceContent),
-            docDate: "2026-05-08",
-            layer: "source",
-            kind: "source",
-            language: "cjk",
-          });
-          sourceDb.markSynced("source-live-embedding");
-          expect(sourceDb.getChunksByNote("source-live-embedding")).toEqual([]);
-        } finally {
-          sourceDb.close();
-        }
-
-        const rewrittenContent = [
-          "---",
-          "title: Live Embedding Note",
-          "date: 2026-05-08",
-          "layer: rewritten",
-          "kind: daily",
-          "source_note_id: source-live-embedding",
-          `source_path: ${sourceRelPath}`,
-          "rewrite_agent: codex-test",
-          "tags:",
-          "  - embedding",
-          "  - korean",
-          "---",
-          "",
-          "# Live Embedding Note",
-          "",
-          "## 한국어 임베딩",
-          "",
-          "한국어 자연어 처리 문장을 실제 TEI 임베딩 모델로 벡터화하고 zvec에 저장한다.",
-          "",
-          "## 하이브리드 검색",
-          "",
-          "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.",
-        ].join("\n");
-
-        const firstAdd = await addMarkdownNoteToVault({
-          vaultRoot,
-          vaultName: VAULT_NAME,
-          relPath: rewrittenRelPath,
-          content: rewrittenContent,
-          vaultConfig,
-          embedProvider: provider,
-          vectorCollection: asAddNoteVectorCollection(collection),
-        });
-        expect(firstAdd.status).toBe("added");
-        expect(firstAdd.chunkCount).toBeGreaterThan(0);
-
-        const artifactContent = [
-          "---",
-          "title: Live Artifact",
-          "date: 2026-05-08",
-          "layer: artifact",
-          "kind: daily-report",
-          `source_path: ${rewrittenRelPath}`,
-          "artifact_template_id: daily-report",
-          "---",
-          "",
-          "# Live Artifact",
-          "",
-          "## Summary",
-          "",
-          "Workout 검증용 artifact 문장. 기본 검색에서는 제외되어야 한다.",
-        ].join("\n");
-        const artifactAdd = await addMarkdownNoteToVault({
-          vaultRoot,
-          vaultName: VAULT_NAME,
-          relPath: artifactRelPath,
-          content: artifactContent,
-          vaultConfig,
-          embedProvider: provider,
-          vectorCollection: asAddNoteVectorCollection(collection),
-        });
-        expect(artifactAdd.status).toBe("added");
-
-        let originalChunkIds: string[] = [];
-        const indexedDb = new MetaDB(vaultRoot);
-        try {
-          const sourceNote = indexedDb.getNoteByPath(VAULT_NAME, sourceRelPath);
-          const rewrittenNote = indexedDb.getNoteByPath(VAULT_NAME, rewrittenRelPath);
-          const artifactNote = indexedDb.getNoteByPath(VAULT_NAME, artifactRelPath);
-          expect(sourceNote?.layer).toBe("source");
-          expect(rewrittenNote?.layer).toBe("rewritten");
-          expect(rewrittenNote?.vector_sync_status).toBe("synced");
-          expect(rewrittenNote?.source_note_id).toBe("source-live-embedding");
-          expect(rewrittenNote?.source_path).toBe(sourceRelPath);
-          expect(artifactNote?.layer).toBe("artifact");
-          expect(artifactNote?.artifact_template_id).toBe("daily-report");
-
-          const rewrittenChunks = rewrittenNote ? indexedDb.getChunksByNote(rewrittenNote.id) : [];
-          const artifactChunks = artifactNote ? indexedDb.getChunksByNote(artifactNote.id) : [];
-          expect(rewrittenChunks.length).toBe(firstAdd.chunkCount);
-          expect(artifactChunks.length).toBe(artifactAdd.chunkCount);
-          originalChunkIds = rewrittenChunks.map((chunk) => chunk.id);
-
-          const ftsHits = indexedDb.searchFts("하이브리드 검색", 10, VAULT_NAME);
-          expect(ftsHits.some((hit) => hit.noteId === rewrittenNote?.id)).toBe(true);
-        } finally {
-          indexedDb.close();
-        }
-
-        const fetchedVectors = collection.fetchSync(originalChunkIds);
-        expect(Object.keys(fetchedVectors).length).toBe(originalChunkIds.length);
-        for (const chunkId of originalChunkIds) {
-          expect(fetchedVectors[chunkId]?.vectors?.embedding).toHaveLength(embeddingDim);
-          expect(fetchedVectors[chunkId]?.fields?.file_path).toBe(rewrittenRelPath);
-        }
-
-        const semanticResult = await search(vaultRoot, VAULT_NAME, "한국어 임베딩 벡터 검색", {
-          mode: "semantic",
-          top: 5,
-        });
-        expect(semanticResult.results.some((result) => result.filePath === rewrittenRelPath)).toBe(true);
-
-        const hybridResult = await search(vaultRoot, VAULT_NAME, "하이브리드 검색", {
-          mode: "hybrid",
-          top: 5,
-        });
-        expect(hybridResult.results[0]?.filePath).toBe(rewrittenRelPath);
-        expect(hybridResult.results[0]?.scoreDetail?.fused).toBeGreaterThan(0);
-
-        const artifactExcluded = await search(vaultRoot, VAULT_NAME, "Workout", {
-          mode: "keyword",
-          top: 5,
-        });
-        expect(artifactExcluded.results.some((result) => result.filePath === artifactRelPath)).toBe(false);
-
-        const artifactIncluded = await search(vaultRoot, VAULT_NAME, "Workout", {
-          mode: "keyword",
-          top: 5,
-          includeArtifacts: true,
-        });
-        expect(artifactIncluded.results.some((result) => result.filePath === artifactRelPath)).toBe(true);
-
-        const updatedContent = rewrittenContent.replace(
-          "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.",
-          "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.\n\n## 업데이트 검증\n\n벡터 교체 작업이 기존 chunk id를 제거하고 새 chunk id를 저장하는지 확인한다.",
-        );
-        const updatedAdd = await addMarkdownNoteToVault({
-          vaultRoot,
-          vaultName: VAULT_NAME,
-          relPath: rewrittenRelPath,
-          content: updatedContent,
-          vaultConfig,
-          embedProvider: provider,
-          vectorCollection: asAddNoteVectorCollection(collection),
-        });
-        expect(updatedAdd.status).toBe("updated");
-
-        const afterUpdateDb = new MetaDB(vaultRoot);
-        try {
-          const updatedNote = afterUpdateDb.getNoteByPath(VAULT_NAME, rewrittenRelPath);
-          expect(updatedNote?.vector_sync_status).toBe("synced");
-          const updatedChunks = updatedNote ? afterUpdateDb.getChunksByNote(updatedNote.id) : [];
-          expect(updatedChunks.length).toBe(updatedAdd.chunkCount);
-          expect(updatedChunks.map((chunk) => chunk.content).join("\n")).toContain("업데이트 검증");
-          const updatedChunkIds = updatedChunks.map((chunk) => chunk.id);
-          expect(updatedChunkIds.some((chunkId) => originalChunkIds.includes(chunkId))).toBe(false);
-
-          const staleVectors = collection.fetchSync(originalChunkIds);
-          expect(Object.keys(staleVectors)).toHaveLength(0);
-          const currentVectors = collection.fetchSync(updatedChunkIds);
-          expect(Object.keys(currentVectors)).toHaveLength(updatedChunkIds.length);
-        } finally {
-          afterUpdateDb.close();
-        }
-      } finally {
-        destroyCollection(collection);
-        rmSync(vaultRoot, { recursive: true, force: true });
+    try {
+      collection = openVaultCollection(fixture.vectorPath, {});
+      const fetchedVectors = collection.fetchSync(fixture.rewrittenChunkIds);
+      expect(Object.keys(fetchedVectors).length).toBe(fixture.rewrittenChunkIds.length);
+      for (const chunkId of fixture.rewrittenChunkIds) {
+        expect(fetchedVectors[chunkId]?.vectors?.embedding).toHaveLength(fixture.embeddingDim);
+        expect(fetchedVectors[chunkId]?.fields?.file_path).toBe(fixture.rewrittenRelPath);
       }
+    } finally {
+      collection?.closeSync();
+      collection = null;
+    }
+
+    const semanticResult = await search(fixture.vaultRoot, VAULT_NAME, "한국어 임베딩 벡터 검색", {
+      mode: "semantic",
+      top: 5,
     });
+    expect(semanticResult.results.some((result) => result.filePath === fixture.rewrittenRelPath)).toBe(true);
+
+    const hybridResult = await search(fixture.vaultRoot, VAULT_NAME, "하이브리드 검색", {
+      mode: "hybrid",
+      top: 5,
+    });
+    expect(hybridResult.results[0]?.filePath).toBe(fixture.rewrittenRelPath);
+    expect(hybridResult.results[0]?.scoreDetail?.fused).toBeGreaterThan(0);
+
+    const artifactExcluded = await search(fixture.vaultRoot, VAULT_NAME, "Workout", {
+      mode: "keyword",
+      top: 5,
+    });
+    expect(artifactExcluded.results.some((result) => result.filePath === fixture.artifactRelPath)).toBe(false);
+
+    const artifactIncluded = await search(fixture.vaultRoot, VAULT_NAME, "Workout", {
+      mode: "keyword",
+      top: 5,
+      includeArtifacts: true,
+    });
+    expect(artifactIncluded.results.some((result) => result.filePath === fixture.artifactRelPath)).toBe(true);
+
+    try {
+      collection = openVaultCollection(fixture.vectorPath, {});
+      const updatedContent = fixture.originalRewrittenContent.replace(
+        "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.",
+        "SQLite FTS와 semantic vector search를 함께 사용해 하이브리드 검색 결과를 검증한다.\n\n## 업데이트 검증\n\n벡터 교체 작업이 기존 chunk id를 제거하고 새 chunk id를 저장하는지 확인한다.",
+      );
+      const updatedAdd = await addMarkdownNoteToVault({
+        vaultRoot: fixture.vaultRoot,
+        vaultName: VAULT_NAME,
+        relPath: fixture.rewrittenRelPath,
+        content: updatedContent,
+        vaultConfig: fixture.vaultConfig,
+        embedProvider: fixture.provider,
+        vectorCollection: asAddNoteVectorCollection(collection),
+      });
+      expect(updatedAdd.status).toBe("updated");
+
+      const afterUpdateDb = new MetaDB(fixture.vaultRoot);
+      try {
+        const updatedNote = afterUpdateDb.getNoteByPath(VAULT_NAME, fixture.rewrittenRelPath);
+        expect(updatedNote?.vector_sync_status).toBe("synced");
+        const updatedChunks = updatedNote ? afterUpdateDb.getChunksByNote(updatedNote.id) : [];
+        expect(updatedChunks.length).toBe(updatedAdd.chunkCount);
+        expect(updatedChunks.map((chunk) => chunk.content).join("\n")).toContain("업데이트 검증");
+        const updatedChunkIds = updatedChunks.map((chunk) => chunk.id);
+        expect(updatedChunkIds.some((chunkId) => fixture.rewrittenChunkIds.includes(chunkId))).toBe(false);
+
+        const staleVectors = collection.fetchSync(fixture.rewrittenChunkIds);
+        expect(Object.keys(staleVectors)).toHaveLength(0);
+        const currentVectors = collection.fetchSync(updatedChunkIds);
+        expect(Object.keys(currentVectors)).toHaveLength(updatedChunkIds.length);
+        fixture.rewrittenChunkIds = updatedChunkIds;
+      } finally {
+        afterUpdateDb.close();
+      }
+    } finally {
+      collection?.closeSync();
+    }
   });
 
   test("rewrites every testdata markdown file, chunks the corpus, and embeds all chunks with TEI", async () => {
+    const testdataSkipReason = requireTestdata();
+    if (testdataSkipReason) {
+      console.warn(testdataSkipReason);
+      return;
+    }
+
     if (!Number.isFinite(ALL_TESTDATA_TIMEOUT_MS) || ALL_TESTDATA_TIMEOUT_MS <= 0) {
       throw new Error("KN_TEI_ALL_TESTDATA_TIMEOUT_MS must be a positive integer when set.");
     }
 
-    const provider = buildTeiProvider();
-    await withResolvedTeiDimension(provider, async (embeddingDim) => {
-      const vaultRoot = join("/tmp", `kn-tei-corpus-${randomUUID()}`);
-      const vectorPath = join(vaultRoot, ".kn", "vectors");
-      const vaultConfig = buildTeiVaultConfig();
+    const fixture = getFixture();
+    const embeddingDim = fixture.embeddingDim;
+    {
+      const vaultRoot = fixture.vaultRoot;
+      const vaultConfig = fixture.vaultConfig;
       const testdataRoot = TESTDATA_ROOT;
       const testdataFiles = [...new Bun.Glob("**/*.md").scanSync({ cwd: testdataRoot })].sort();
       let collection: ReturnType<typeof createVaultCollection> | null = null;
@@ -749,8 +840,7 @@ describe("TEI OpenAI-compatible embedding integration", () => {
       expect(testdataFiles.length).toBeGreaterThan(0);
 
       try {
-        await saveVaultConfig(vaultRoot, vaultConfig);
-        collection = createVaultCollection(vectorPath, "vault", TEI_MODEL);
+        collection = openVaultCollection(fixture.vectorPath, {});
 
         const sourceDb = new MetaDB(vaultRoot);
         try {
@@ -808,7 +898,7 @@ describe("TEI OpenAI-compatible embedding integration", () => {
             relPath: rewrittenRelPath,
             content: rewrittenContent,
             vaultConfig,
-            embedProvider: provider,
+            embedProvider: fixture.provider,
             vectorCollection: asAddNoteVectorCollection(collection),
           });
 
@@ -830,10 +920,10 @@ describe("TEI OpenAI-compatible embedding integration", () => {
         try {
           const sourceNotes = indexedDb
             .listNotes(VAULT_NAME, 100_000, 0)
-            .filter((note) => note.layer === "source");
+            .filter((note) => note.layer === "source" && note.file_path.startsWith("sources/testdata/"));
           const rewrittenNotes = indexedDb
             .listNotes(VAULT_NAME, 100_000, 0)
-            .filter((note) => note.layer === "rewritten");
+            .filter((note) => note.layer === "rewritten" && note.file_path.startsWith("rewritten/testdata/"));
           expect(sourceNotes.length).toBe(testdataFiles.length);
           expect(rewrittenNotes.length).toBe(testdataFiles.length);
 
@@ -870,6 +960,9 @@ describe("TEI OpenAI-compatible embedding integration", () => {
           indexedDb.close();
         }
 
+        collection.closeSync();
+        collection = null;
+
         const semanticCorpusSearch = await search(vaultRoot, VAULT_NAME, "한국어 임베딩 하이브리드 검색", {
           mode: "semantic",
           top: 10,
@@ -892,35 +985,37 @@ describe("TEI OpenAI-compatible embedding integration", () => {
           ),
         ).toBe(true);
       } finally {
-        destroyCollection(collection);
-        rmSync(vaultRoot, { recursive: true, force: true });
+        collection?.closeSync();
       }
-    });
+    }
   }, ALL_TESTDATA_TIMEOUT_MS);
 
   test("rewrites testdata through Codex agent contract, embeds with TEI, and searches in Korean", async () => {
-    const provider = buildTeiProvider();
+    const testdataSkipReason = requireTestdata();
+    if (testdataSkipReason) {
+      console.warn(testdataSkipReason);
+      return;
+    }
 
-    const vaultRoot = join("/tmp", `kn-tei-e2e-vault-${randomUUID()}`);
-    const vectorPath = join(vaultRoot, ".kn", "vectors");
+    const fixture = getFixture();
+    const provider = fixture.provider;
+    const vaultRoot = fixture.vaultRoot;
     const sourceRelPath = E2E_SOURCE_REL_PATH;
     const rewrittenRelPath = E2E_REWRITTEN_REL_PATH;
     const artifactRelPath = E2E_ARTIFACT_REL_PATH;
     const sourceNoteId = E2E_SOURCE_NOTE_ID;
     const sourceContent = await Bun.file(join(TESTDATA_ROOT, E2E_SOURCE_BASENAME)).text();
     const templateContent = await Bun.file(join(process.cwd(), "..", "docs", "template.md")).text();
-    const vaultConfig = buildTeiVaultConfig();
+    const vaultConfig = fixture.vaultConfig;
 
     let collection: ReturnType<typeof createVaultCollection> | null = null;
 
     try {
-      await withResolvedTeiDimension(provider, async () => {
         mkdirSync(join(vaultRoot, "sources", E2E_DATE), { recursive: true });
         mkdirSync(join(vaultRoot, "codex-agent"), { recursive: true });
         await Bun.write(join(vaultRoot, sourceRelPath), sourceContent);
         printE2EDocument("SOURCE", sourceRelPath, sourceContent);
-        await saveVaultConfig(vaultRoot, vaultConfig);
-        collection = createVaultCollection(vectorPath, "vault", TEI_MODEL);
+        collection = openVaultCollection(fixture.vectorPath, {});
 
         const metaDb = new MetaDB(vaultRoot);
         try {
@@ -1077,10 +1172,8 @@ describe("TEI OpenAI-compatible embedding integration", () => {
             row.fields?.file_path === rewrittenRelPath || row.data?.file_path === rewrittenRelPath
           ),
         ).toBe(true);
-      });
     } finally {
-      destroyCollection(collection);
-      rmSync(vaultRoot, { recursive: true, force: true });
+      collection?.closeSync();
     }
   }, CODEX_TIMEOUT_MS + 60_000);
 });

@@ -74,15 +74,18 @@ describe("CLI help surface", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("tag");
+    expect(result.stdout).toContain("service");
     expect(result.stdout).not.toContain("cluster");
+    expect(result.stdout).not.toContain("schedule");
     expect(result.stdout).not.toContain("tag auto");
   });
 
-  test("schedule is marked legacy while code remains present", async () => {
-    const result = await runCli(["schedule", "--help"]);
+  test("service status help is exposed", async () => {
+    const result = await runCli(["service", "status", "--help"]);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain("Legacy scheduler");
+    expect(result.stdout).toContain("Usage: kn service status");
+    expect(result.stdout).toContain("--check");
   });
 
   test("search help exposes deprecated threshold alias", async () => {
@@ -90,5 +93,14 @@ describe("CLI help surface", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("--threshold <f>");
+  });
+
+  test("vault create help exposes external embedding API options", async () => {
+    const result = await runCli(["vault", "create", "--help"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("--embedding-base-url <url>");
+    expect(result.stdout).toContain("--tei-base-url <url>");
+    expect(result.stdout).not.toContain("--tei-local");
   });
 });

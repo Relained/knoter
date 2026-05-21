@@ -8,17 +8,11 @@ export interface GlobalConfig {
   vaults: Record<string, { name: string; path: string }>;
 }
 
-export interface ContainerConfig {
-  name: string;
-  runtime?: "podman" | "docker";
-}
-
 export interface VaultConfig {
   embedding: {
     baseUrl?: string;
     apiKey?: string;
     model: string;
-    container?: ContainerConfig;
   };
   search: {
     fusionAlpha: number;

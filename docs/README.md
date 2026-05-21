@@ -20,4 +20,5 @@
 - `tag auto`
 - active `cluster`
 - active `schedule` timer management
+- CLI-owned podman/docker TEI lifecycle
 - 구형 `km` 명령 표기

@@ -57,6 +57,7 @@ export async function addMarkdownNoteToVault(input: AddMarkdownNoteInput): Promi
   if (parsed.layer === "artifact" && !relPath.startsWith("artifacts/")) {
     throw new KnError(ErrorCode.CONFIG_INVALID, "artifact notes must be stored under artifacts/");
   }
+  const indexedLayer: "rewritten" | "artifact" = parsed.layer;
 
   const metaDb = new MetaDB(input.vaultRoot);
   try {
@@ -194,7 +195,7 @@ export async function addMarkdownNoteToVault(input: AddMarkdownNoteInput): Promi
           noteId: chunk.noteId,
           filePath: relPath,
           title: parsed.title,
-          layer: parsed.layer,
+          layer: indexedLayer,
           heading: chunk.heading,
           headingPath: chunk.headingPath,
           content: chunk.content,
@@ -235,7 +236,7 @@ export async function addMarkdownNoteToVault(input: AddMarkdownNoteInput): Promi
       status: isUpdate ? "updated" : "added",
       noteId,
       chunkCount: chunkInserts.length,
-      layer: parsed.layer,
+          layer: indexedLayer,
       kind: parsed.kind,
       docDate: parsed.docDate,
     };

@@ -17,10 +17,13 @@ import { KnError, ErrorCode } from "../core/errors";
 import { setVerbose, logger } from "../core/logger";
 import { MetaDB } from "../stores/meta-store";
 import { createVaultCollection, EMBEDDING_DIMENSIONS, type EmbeddingModel } from "../stores/vec-store";
-import { ensureTEIContainerCreated } from "../core/container";
 import { createEmbeddingProvider } from "../providers/factory";
 import { checkEmbeddingHealth } from "../providers/health";
 import type { OutputFormat } from "../core/output";
+
+function defaultEmbeddingBaseUrl(): string {
+  return "http://127.0.0.1:39280";
+}
 
 export function registerVaultCommand(program: Command): void {
   const vaultCmd = program
@@ -32,13 +35,9 @@ export function registerVaultCommand(program: Command): void {
     .option("--path <dir>", "Vault directory path")
     .option("--model <model>", "Embedding model id (HuggingFace id for TEI, or preset)")
     .option("--dim <n>", "Embedding dimension (required for unknown models)")
-    .option("--no-tei", "Skip TEI container creation (bring your own baseUrl/apiKey)")
-    .option("--tei-image <image>", "TEI container image (defaults by --tei-gpu)")
-    .option("--tei-port <port>", "Host port mapped to TEI :80", "8080")
-    .option("--tei-gpu", "Use CUDA TEI image + pass nvidia.com/gpu=all via CDI")
-    .option("--gpu-device <spec>", "Override CDI device spec", "nvidia.com/gpu=all")
-    .option("--container-name <name>", "Podman/Docker container name", "kn-tei")
-    .option("--runtime <runtime>", "Container runtime (podman|docker)", "podman")
+    .option("--embedding-base-url <url>", "OpenAI-compatible embedding endpoint")
+    .option("--tei-base-url <url>", "Alias for --embedding-base-url")
+    .option("--embedding-api-key <key>", "Embedding endpoint API key")
     .action(async (name, options, cmd) => {
       try {
         const globalOpts = cmd.optsWithGlobals?.() || {};
@@ -94,41 +93,18 @@ export function registerVaultCommand(program: Command): void {
         await registerVault(name, vaultPath);
         logger.info(`Registered vault in global config`);
 
-        // Resolve runtime + TEI settings.
-        const useTei = options.tei !== false;
-        const runtime = (options.runtime as "podman" | "docker") || "podman";
-        const teiPort = parseInt(options.teiPort || "8080", 10);
-        const containerName = options.containerName || "kn-tei";
-
-        // If TEI path is chosen, create the container up-front so the image is
-        // pulled at vault-create time rather than on the first kn add.
-        if (useTei) {
-          const useGpu = !!options.teiGpu;
-          const teiImage =
-            options.teiImage ||
-            (useGpu
-              ? "ghcr.io/huggingface/text-embeddings-inference:latest"
-              : "ghcr.io/huggingface/text-embeddings-inference:cpu-latest");
-          await ensureTEIContainerCreated({
-            name: containerName,
-            runtime,
-            image: teiImage,
-            hostPort: teiPort,
-            modelId: modelStr,
-            gpuDevice: useGpu ? options.gpuDevice : undefined,
-          });
-        }
+        // CLI only stores the embedding server API endpoint. Lifecycle is owned
+        // by the app/service layer.
+        const embeddingBaseUrl =
+          options.embeddingBaseUrl || options.teiBaseUrl || defaultEmbeddingBaseUrl();
+        const embeddingApiKey = options.embeddingApiKey;
 
         // Save vault config with chosen model (+ TEI wiring if applicable)
         const defaultVaultConfig = {
           embedding: {
             model: modelStr,
-            ...(useTei
-              ? {
-                  baseUrl: `http://127.0.0.1:${teiPort}`,
-                  container: { name: containerName, runtime },
-                }
-              : {}),
+            baseUrl: embeddingBaseUrl,
+            ...(embeddingApiKey ? { apiKey: embeddingApiKey } : {}),
           },
           search: {
             fusionAlpha: 0.8,
@@ -148,13 +124,10 @@ export function registerVaultCommand(program: Command): void {
             path: vaultPath,
             model: modelStr,
             dim,
-            tei: useTei
-              ? {
-                  container: containerName,
-                  port: teiPort,
-                  gpu: !!options.teiGpu,
-                }
-              : null,
+            embedding: {
+              baseUrl: embeddingBaseUrl,
+              localDefault: process.platform === "darwin" && embeddingBaseUrl === defaultEmbeddingBaseUrl(),
+            },
           },
           name
         );

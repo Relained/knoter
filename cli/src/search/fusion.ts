@@ -45,10 +45,10 @@ export interface FusedResult {
 export function isStrongSignal(scores: number[]): boolean {
   if (scores.length === 0) return false;
   const sorted = [...scores].sort((a, b) => b - a);
-  const top = sorted[0];
+  const top = sorted[0]!;
   if (top < 0.40) return false;
   if (sorted.length === 1) return true;
-  const second = sorted[1];
+  const second = sorted[1]!;
   const gap = top - second;
   return top * gap >= 0.06;
 }
@@ -60,10 +60,10 @@ export function isStrongSignal(scores: number[]): boolean {
 export function isBm25StrongSignal(scores: number[]): boolean {
   if (scores.length === 0) return false;
   const sorted = [...scores].sort((a, b) => b - a);
-  const top = sorted[0];
+  const top = sorted[0]!;
   if (top < 0.75) return false;
   if (sorted.length === 1) return true;
-  return top - sorted[1] >= 0.10;
+  return top - sorted[1]! >= 0.10;
 }
 
 /**
@@ -82,19 +82,21 @@ export function mergeAdjacentChunks(results: FusedResult[]): FusedResult[] {
 
   const merged: FusedResult[] = [];
   for (const [noteId, chunks] of groups) {
+    if (chunks.length === 0) continue;
     // Sort by seqIndex
     chunks.sort((a, b) => a.seqIndex - b.seqIndex);
 
-    let current = { ...chunks[0] };
+    let current: FusedResult = { ...chunks[0]! };
     for (let i = 1; i < chunks.length; i++) {
-      if (chunks[i].seqIndex === current.seqIndex + 1) {
+      const chunk = chunks[i]!;
+      if (chunk.seqIndex === current.seqIndex + 1) {
         // Adjacent — merge
-        current.content += "\n" + chunks[i].content;
-        current.score = Math.max(current.score, chunks[i].score);
-        current.seqIndex = chunks[i].seqIndex; // track last merged index for next comparison
+        current.content += "\n" + chunk.content;
+        current.score = Math.max(current.score, chunk.score);
+        current.seqIndex = chunk.seqIndex; // track last merged index for next comparison
       } else {
         merged.push(current);
-        current = { ...chunks[i] };
+        current = { ...chunk };
       }
     }
     merged.push(current);
