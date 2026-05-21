@@ -9,6 +9,8 @@
 | `docs/plan.md` | 다음 작업 순서와 완료 기준 |
 | `docs/template.md` | vault fallback artifact workflow 템플릿 |
 | `docs/testing.md` | 테스트 실행과 `.env` 환경 변수 정리 |
+| `cli/README.md` | CLI command surface와 현재 packaging boundary |
+| `web/README.md` | 웹 프론트엔드 실행, 검증, Electron dev URL |
 
 ## Archive
 
@@ -21,4 +23,5 @@
 - active `cluster`
 - active `schedule` timer management
 - CLI-owned podman/docker TEI lifecycle
+- Vite 기본 포트 `5173`/이전 임시 포트 `5175`
 - 구형 `km` 명령 표기

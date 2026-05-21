@@ -9,6 +9,7 @@ CLI and web frontend are now split inside one monorepo: `cli/`, `web/`, and shar
 Implemented backbone:
 
 - vault/add/sync/search/get/tag/template/report/mcp command surfaces
+- `kn get batch` and MCP batch retrieval for agent workflows
 - source/rewritten/artifact DB metadata
 - source metadata-only ingest
 - rewritten/artifact chunking, FTS, vector indexing
@@ -21,6 +22,12 @@ Implemented backbone:
 - MCP stdio tools for template/report/rewrite/add-note
 - `kn report context` JSON bundle with previous 7-day continuity
 - optional TEI integration test harness for OpenAI-compatible local embeddings
+- TypeScript check passes for the active CLI codebase
+- React/Vite web renderer on dedicated local port `39281`
+- Playwright smoke E2E for web workspace shell, command palette, split pane, and
+  floating windows
+- web Graph 3D exists as a template preview/state placeholder, not a real graph
+  engine yet
 
 ## Active Decisions
 
@@ -43,6 +50,8 @@ Implemented backbone:
    - Active docs: `docs/README.md`, `docs/architecture.md`, `docs/codebase.md`, `docs/plan.md`, `docs/template.md`, `docs/testing.md`.
    - Legacy docs move under `docs/archive/`.
    - Report context internals split into small modules.
+   - [x] Active docs updated for monorepo split, ports, web verification, MCP
+     surface, and current CLI/web boundaries.
 
 2. Template contract validation
    - [x] Validate required frontmatter fields when present.
@@ -63,7 +72,10 @@ Implemented backbone:
 
 - Package metadata: rename package to `knoter`, add `bin.kn`, confirm build layout.
 - CJK indexing: evaluate trigram setup and preprocessor direction.
-- Verification: E2E for `--dry-run`, `--tag`, `--after`, adjacent chunk merge, vector rollback.
+- Verification: broaden CLI E2E for `--dry-run`, `--tag`, `--after`, adjacent
+  chunk merge, vector rollback.
+- Frontend/app integration design for local TEI start/stop/status using the
+  CLI's external service boundary.
 - PageIndex PoC milestone design.
 
 ## P2
@@ -76,8 +88,18 @@ Implemented backbone:
 Use these before code-affecting commits:
 
 ```bash
+cd cli
+bunx tsc --noEmit
 bun test
 git diff --check
+```
+
+For web-affecting changes:
+
+```bash
+cd web
+npm test
+npm run test:e2e
 ```
 
 Detailed test and environment instructions live in `docs/testing.md`.

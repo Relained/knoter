@@ -19,6 +19,7 @@ React + TypeScript renderer frontend template for a dense Electron workspace app
 - Notes are editable Markdown objects with editor, preview, and split modes
 - Todo, Tasks, and Calendar workspace objects keep editable per-object state
 - Workspace objects can appear inside Markdown via object blocks such as `[[object:Todo]]`
+- Graph 3D is currently a template preview object; the real graph engine is deferred
 - Search is integrated into the sidebar and command palette rather than modeled as a pane object
 
 ## State Persistence
@@ -65,12 +66,20 @@ npm install
 npm run dev
 ```
 
+The dev and preview servers are pinned to `http://127.0.0.1:39281` with
+`strictPort`, so port conflicts fail loudly instead of moving to another port.
+
 ## Verify
 
 ```sh
 npm run check
 npm test
+npm run test:e2e
 ```
+
+`npm run test:e2e` uses Playwright to start the Vite dev server on `39281` and
+drive Chromium through a smoke path covering the workspace shell, command
+palette, Settings, split pane, floating windows, and console/page error checks.
 
 In Electron development, point your `BrowserWindow` at the Vite dev URL:
 

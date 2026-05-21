@@ -614,11 +614,12 @@ describe("TEI OpenAI-compatible embedding integration", () => {
   });
 
   test("writes live TEI embeddings to zvec, reads them back, queries, and deletes rows", async () => {
-    const { provider, embeddingDim, vectorPath } = getFixture();
+    const { provider, embeddingDim, vaultRoot } = getFixture();
+    const vectorPath = join(vaultRoot, ".kn", `vectors-live-write-${randomUUID()}`);
     let collection: ReturnType<typeof createVaultCollection> | null = null;
 
     try {
-        collection = openVaultCollection(vectorPath, {});
+        collection = createVaultCollection(vectorPath, "live-write-test", TEI_MODEL);
         const indexedTexts = [
           "한국어 자연어 처리와 문장 임베딩 검색은 의미 기반 검색 품질을 좌우한다.",
           "Rust ownership and borrowing prevent memory safety bugs at compile time.",
@@ -703,6 +704,7 @@ describe("TEI OpenAI-compatible embedding integration", () => {
         expect(afterDelete["chunk-en-rust"]).toBeUndefined();
     } finally {
       collection?.closeSync();
+      rmSync(vectorPath, { recursive: true, force: true });
     }
   });
 

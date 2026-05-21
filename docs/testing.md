@@ -2,12 +2,13 @@
 
 ## Env Loading
 
-Project-local environment is centralized in repo-root `.env`.
+CLI environment is centralized in package-local `cli/.env` by default.
 
-- Bun automatically loads `.env` for `bun run` and `bun test`.
+- Bun automatically loads `.env` from the current package directory for
+  `bun run` and `bun test`; the documented CLI commands assume `cwd=cli/`.
 - Do not add `dotenv`.
-- Shell scripts source `.env` explicitly because they use env values before
-  starting Bun.
+- CLI shell scripts source `cli/.env` explicitly because they use env values
+  before starting Bun.
 - Override the env file for scripts with `KN_ENV_FILE=/path/to/env`.
 
 `.env` is intentionally gitignored. Keep machine-specific endpoint, model, and
@@ -20,9 +21,9 @@ Core:
 - `KN_HOME`: global kn config directory. Defaults to `~/.kn`; tests usually set
   it to an isolated temp directory.
 - `KN_TESTDATA_ROOT`: markdown fixture corpus used by live tests and local test
-  vault bootstrap. Defaults to repo-root `testdata/` from the `cli/` package,
-  but should be set in `.env` when using private, large, or machine-specific
-  test data.
+  vault bootstrap. From `cli/`, the default is `../testdata`, i.e. the
+  repository-root `testdata/` directory. Set it in `.env` when using private,
+  large, or machine-specific test data.
 
 Embedding provider and test vault bootstrap:
 
@@ -45,23 +46,39 @@ Live TEI/Codex integration tests:
 - `KN_CODEX_TIMEOUT_MS`: single Codex CLI call timeout.
 - `KN_TEI_ALL_TESTDATA_TIMEOUT_MS`: full `testdata/**/*.md` corpus timeout.
 
+Web:
+
+- Vite dev and preview use `http://127.0.0.1:39281`.
+- Playwright E2E uses the same port and starts the Vite dev server through
+  `webServer` in `web/playwright.config.js`.
+
 ## Commands
 
-Hermetic unit/integration suite:
+CLI hermetic unit/integration suite:
 
 ```bash
+cd cli
 bun test
+```
+
+TypeScript check:
+
+```bash
+cd cli
+bunx tsc --noEmit
 ```
 
 Live TEI/Codex embedding E2E:
 
 ```bash
+cd cli
 scripts/tei-e2e-test.sh
 ```
 
 Local test vault setup:
 
 ```bash
+cd cli
 scripts/test-env.sh tei-start
 scripts/test-env.sh setup
 scripts/test-env.sh demo
@@ -71,18 +88,57 @@ scripts/test-env.sh teardown
 For macOS Metal acceleration, run local TEI in one terminal:
 
 ```bash
+cd cli
 scripts/test-env.sh tei-start
 ```
 
 Then run tests or create the test vault from another terminal:
 
 ```bash
+cd cli
 scripts/tei-e2e-test.sh
 scripts/test-env.sh setup
 ```
 
 The CLI stores and calls an embedding server API endpoint only. It does not
 create, start, or own TEI containers; frontend/app code owns service lifecycle.
+
+Endpoint health checks:
+
+```bash
+cd cli
+bun run src/cli.ts service status --check
+bun run src/cli.ts vault status --check-providers
+```
+
+`service status --check` is the preferred narrow endpoint probe. `vault status
+--check-providers` remains useful when the same output should include vault
+metadata and provider health.
+
+Testdata corpus behavior:
+
+- `scripts/test-env.sh setup` runs `kn add "$KN_TESTDATA_ROOT" --recursive`, so
+  it indexes every `**/*.md` file under that root.
+- `tests/tei-integration.test.ts` has a live corpus test that scans
+  `new Bun.Glob("**/*.md")`, creates source rows under `sources/testdata/`,
+  creates rewritten fixtures under `rewritten/testdata/`, embeds all generated
+  chunks through TEI, then checks FTS, zvec fetch, semantic search, and hybrid
+  search.
+- If `KN_TESTDATA_ROOT` does not exist, the corpus tests print a skip reason and
+  return successfully. The smaller shared TEI fixture still runs when
+  `KN_TEI_BASE_URL` is set.
+
+Web verification:
+
+```bash
+cd web
+npm test
+npm run test:e2e
+```
+
+`npm run test:e2e` launches Chromium against `http://127.0.0.1:39281` and checks
+the workspace shell, command palette, Settings floating window, split pane, and
+floating window creation without console/page errors.
 
 ## Template Delivery To Agents
 

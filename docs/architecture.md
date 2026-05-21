@@ -6,6 +6,19 @@
 
 현재 백엔드는 LLM으로 prose를 직접 생성하지 않는다. CLI/MCP는 JSON context와 저장/검색 기능을 제공하고, 외부 LLM agent가 template을 사용해 rewritten 문서와 artifact를 작성하거나 기존 artifact를 보강한다.
 
+## Runtime Ports
+
+로컬 개발 기본 포트는 충돌 가능성이 높은 `5000`, `7000`, `8080`, `5173`
+대신 다음 값을 사용한다.
+
+| Surface | Default |
+| --- | --- |
+| Local TEI/OpenAI-compatible embedding API | `http://127.0.0.1:39280` |
+| Web Vite dev/preview | `http://127.0.0.1:39281` |
+
+CLI는 embedding server HTTP API만 호출한다. TEI 실행/중지, 컨테이너 기반 실행,
+macOS local service UX는 frontend/app packaging 책임이다.
+
 ## Document Layers
 
 | Layer | 소유자 | 저장 | 청킹/FTS/vector | 기본 검색 |
@@ -27,12 +40,13 @@
 
 일반 `kn` 명령:
 
-- `kn vault`
+- `kn vault create|list|switch|delete|status`
 - `kn add`
 - `kn sync`
 - `kn search`
-- `kn get`
-- `kn template`
+- `kn get`, `kn get batch`
+- `kn tag list|add|remove`
+- `kn template get|list|validate`
 - `kn report context`
 - `kn mcp`
 - `kn service status`
@@ -42,12 +56,41 @@ HTTP API만 의존하고, TEI 실행/중지 같은 service lifecycle은 frontend
 계층이 담당한다. LLM 호출 또는 prompt 조립 기능은 향후 `kn llm` namespace로
 격리한다.
 
+`kn service status --check`는 현재 vault에 설정된 embedding endpoint를
+점검하는 별도 service surface다. `kn vault status --check-providers`도
+vault metadata와 provider health를 함께 확인하는 기존 호환 surface로 남아
+있다.
+
+MCP stdio tool surface:
+
+- `kn_search`
+- `kn_get`
+- `kn_get_batch`
+- `kn_vault_status`
+- `kn_add_note`
+- `kn_template_get`
+- `kn_report_context`
+- `kn_rewrite_context`
+
+## Web Boundary
+
+`web/`는 현재 React/Vite renderer shell이다. 핵심 기능은 pane/tab/floating
+window workspace, command palette, Markdown host object, Settings/Todo/Tasks/
+Calendar object state, Graph 3D template preview, Base16/icon/theme runtime,
+JSONC global settings bridge다.
+
+검증은 `npm test`의 TypeScript/build/unit suite와 `npm run test:e2e`의
+Playwright smoke suite로 나뉜다. E2E는 Vite dev server를 `39281`에 띄우고
+Chromium으로 application menu, sidebar, command palette, Settings floating
+window, split pane, floating window 추가를 확인한다.
+
 Deferred/legacy:
 
 - `cluster`: frontend/app 계층에서 zvec 직접 접근으로 처리
 - `schedule`: CLI 타이머 관리에서 제외
 - `tag auto`: 제거
 - PageIndex: 후속 PoC
+- real 3D graph renderer/state model: web 후속 작업
 
 ## Retrieval
 

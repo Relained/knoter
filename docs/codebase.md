@@ -5,10 +5,10 @@
 
 ## Runtime Shape
 
-`knoter`는 Bun 기반 TypeScript CLI다. 일반 `kn` 명령은 LLM prose 생성을
-하지 않고, 저장/검색/검증/context bundle만 담당한다. 외부 LLM agent는
-MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdown을
-작성한다.
+`knoter`는 Bun 기반 TypeScript CLI와 React/Vite web renderer를 함께 둔
+모노레포다. 일반 `kn` 명령은 LLM prose 생성을 하지 않고,
+저장/검색/검증/context bundle만 담당한다. 외부 LLM agent는 MCP 또는 CLI
+출력으로 template/context를 읽고 rewritten/artifact Markdown을 작성한다.
 
 주요 데이터 흐름:
 
@@ -23,6 +23,9 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 
 ## Entry Points
 
+CLI paths in this table are relative to `cli/`. Web paths are relative to
+`web/`.
+
 | Path | 역할 |
 | --- | --- |
 | `src/cli.ts` | Commander root. 명령 등록 순서를 확인하는 곳. |
@@ -34,7 +37,13 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 | `src/search/*.ts` | keyword/semantic/hybrid retrieval와 score fusion. |
 | `src/providers/*.ts` | OpenAI-compatible embedding provider와 health check. |
 | `tests/*.test.ts` | behavior, storage, search, MCP, TEI integration harness. |
-| `docs/*.md` | active design docs. Archive는 `docs/archive/` 아래. |
+| `src/main.tsx` under `web/` | React renderer root, workspace shell composition. |
+| `src/domain/workspace.ts` under `web/` | pane/tab/floating object factories and workspace constants. |
+| `src/state/*.ts` under `web/` | web workspace reducer and localStorage persistence. |
+| `src/renderers/*.tsx` under `web/` | Note/Settings/Todo/Tasks/Calendar renderers and Graph 3D template preview. |
+| `tests/*.test.cjs` under `web/` | web unit/regression tests run by `npm test`. |
+| `tests/e2e/*.spec.js` under `web/` | Playwright browser smoke tests run by `npm run test:e2e`. |
+| `docs/*.md` under repo root | active design docs. Archive는 `docs/archive/` 아래. |
 
 ## Command Modules
 
@@ -44,12 +53,25 @@ MCP 또는 CLI 출력으로 template/context를 읽고 rewritten/artifact Markdo
 | `src/commands/add.ts` | `kn add` | 파일 ingest. source는 metadata-only, rewritten/artifact는 indexing. |
 | `src/commands/sync.ts` | `kn sync` | vault 파일과 metadata/vector store 동기화, pending recovery. |
 | `src/commands/search.ts` | `kn search` | keyword/semantic/hybrid search CLI wrapper. |
-| `src/commands/get.ts` | `kn get` | path/title/id 기반 note 조회와 batch 조회. |
+| `src/commands/get.ts` | `kn get`, `kn get batch` | path/suffix/substring/id 기반 note 조회와 batch 조회. |
 | `src/commands/tag.ts` | `kn tag` | 수동 tag 관리. `tag auto`는 제거된 방향. |
 | `src/commands/template.ts` | `kn template` | vault template/fallback 조회와 local validation. |
 | `src/commands/report.ts` | `kn report context` | 외부 agent용 JSON context bundle 생성. |
 | `src/commands/mcp.ts` | `kn mcp` | MCP stdio server 실행. |
 | `src/commands/service.ts` | `kn service status` | 외부 embedding service endpoint 점검. |
+
+Currently exposed MCP tools in `src/mcp/server.ts`:
+
+| Tool | 역할 |
+| --- | --- |
+| `kn_search` | semantic/keyword/hybrid retrieval wrapper. |
+| `kn_get` | 단일 note content/metadata 조회. |
+| `kn_get_batch` | 여러 path 또는 note id 일괄 조회. |
+| `kn_vault_status` | note/chunk/tag/pending count와 embedding model 조회. |
+| `kn_add_note` | rewritten/artifact Markdown 저장 및 인덱싱. |
+| `kn_template_get` | effective template payload 조회. |
+| `kn_report_context` | artifact/report agent용 context bundle 생성. |
+| `kn_rewrite_context` | source-layer rewrite agent용 evidence bundle 생성. |
 
 ## Core Modules
 
@@ -160,6 +182,7 @@ High-signal files:
 Baseline:
 
 ```bash
+bunx tsc --noEmit
 bun test
 git diff --check
 ```
@@ -169,6 +192,19 @@ Live TEI/Codex E2E:
 ```bash
 scripts/tei-e2e-test.sh
 ```
+
+Web:
+
+```bash
+cd ../web
+npm test
+npm run test:e2e
+```
+
+Default local ports:
+
+- TEI embedding API: `127.0.0.1:39280`
+- Vite dev/preview: `127.0.0.1:39281`
 
 ## Common Change Points
 
@@ -203,9 +239,16 @@ Change template contract:
 
 - No general LLM call in normal `kn` commands except embedding provider calls.
 - `kn llm` is the future namespace for prompt assembly or explicit LLM calls.
+- `cli/package.json` still has package name `nlpr` and no `bin.kn`; packaging is
+  intentionally listed as P1 work in `docs/plan.md`.
 - Container runtime and TEI process lifecycle are outside the CLI. The CLI only
   depends on the embedding server HTTP API.
 - Cluster analysis is outside the CLI. Frontend/app code can access zvec
   directly for that surface.
+- Web Graph 3D is currently a template preview/state placeholder, not a
+  Three.js-backed graph engine.
 - `KN_TESTDATA_ROOT` points live E2E and local bootstrap scripts at a gitignored
   fixture corpus, so private or large test data can stay outside tracked files.
+- `scripts/test-env.sh setup` and the live TEI corpus E2E both include every
+  `testdata/**/*.md` file when `KN_TESTDATA_ROOT` exists. Non-Markdown files are
+  intentionally outside that corpus.

@@ -9,6 +9,7 @@ Backend CLI for vault-based personal knowledge records.
 ```bash
 bun install
 bun run src/cli.ts --help
+bunx tsc --noEmit
 bun test
 ```
 
@@ -33,12 +34,31 @@ rewritten -> artifact output, indexes rewritten/artifact documents with the TEI
 embedding model, and verifies Korean keyword plus semantic search. Set
 `KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
 
+When `KN_TESTDATA_ROOT` exists, corpus tests and `scripts/test-env.sh setup`
+include every `**/*.md` file below that directory. Non-Markdown files are not
+part of the corpus.
+
 ## Current Scope
 
 - Backend CLI package inside the monorepo.
 - Frontend lives in `../web`.
 - Normal `kn` commands do not call LLMs except embedding.
 - External LLM agents use MCP/JSON context to rewrite sources and create artifacts.
+- Package metadata is not final yet: `package.json` still uses the legacy
+  package name and has no `bin.kn`.
+
+## Command Surface
+
+- `kn vault create|list|switch|delete|status`
+- `kn add`
+- `kn sync`
+- `kn search`
+- `kn get`, `kn get batch`
+- `kn tag list|add|remove`
+- `kn template get|list|validate`
+- `kn report context`
+- `kn mcp`
+- `kn service status`
 
 ## Docs
 

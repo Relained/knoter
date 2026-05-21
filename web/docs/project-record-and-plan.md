@@ -1,13 +1,13 @@
 # Project Record And Plan
 
-Last updated: 2026-05-09
+Last updated: 2026-05-21
 
 ## Current Baseline
 
-- Branch: `dev`
-- Current head: `3d11fac Allow floating windows to touch viewport edges`
+- Branch: `split-cli-web`
+- Current head: `f306d83 Add web smoke e2e on dedicated port`
 - Frontend stack: React, TypeScript, Vite
-- Verification command: `npm test`
+- Verification commands: `npm test`, `npm run test:e2e`
 - Development URL used during this phase: `http://127.0.0.1:39281/`
 
 ## Trace Log
@@ -75,6 +75,11 @@ This section records the implementation history in a form that can be followed f
 - `5ceca16` Open embedded objects as workspace views
   - Added embed actions to open embedded objects as pane tabs or floating windows.
   - Added project record document.
+- `f306d83` Add web smoke e2e on dedicated port
+  - Pinned Vite dev/preview to `127.0.0.1:39281` with strict port handling.
+  - Added Playwright Chromium smoke coverage for shell render, command palette,
+    Settings floating window, split pane, floating window creation, and console
+    error detection.
 
 ## Current Architecture
 
@@ -111,7 +116,8 @@ This section records the implementation history in a form that can be followed f
   - `Tasks`: lane-based task items
   - `Calendar`: dated events
 - Current preview-only object:
-  - `Graph 3D`, deferred until renderer/state model is chosen.
+  - `Graph 3D`, rendered through the object template preview until the real
+    graph renderer/state model is chosen.
 
 ### Markdown Host Model
 
@@ -155,7 +161,8 @@ This section records the implementation history in a form that can be followed f
 
 ## Decisions
 
-- Graph 3D is deferred until the graph renderer and state model are chosen.
+- Graph 3D is a template preview. A real graph renderer and state model are
+  deferred.
 - Search is not a standalone pane object. Search belongs to navigation surfaces:
   - sidebar filtering
   - command palette matching
@@ -189,11 +196,14 @@ This section records the implementation history in a form that can be followed f
   - `[[object:Todo]]`
   - `[[object:Tasks]]`
   - `[[object:Calendar]]`
-  - `[[object:Graph 3D]]` as preview-only until Graph 3D is implemented
+  - `[[object:Graph 3D]]` as a template preview until the graph engine is implemented
+- Dedicated Vite dev/preview port `39281`.
+- Playwright E2E smoke test via `npm run test:e2e`.
 
 ## Current Phase
 
-The current phase is closed at `3d11fac`.
+The original workspace shell phase is closed at `3d11fac`. The current
+monorepo/web verification baseline is `f306d83`.
 
 Completed closure items:
 
@@ -247,6 +257,7 @@ Completed closure items:
 Before merging each phase:
 
 - `npm test` passes.
+- `npm run test:e2e` passes.
 - Tab drag preview keeps tab and pane modes separated.
 - Menu drag guide line remains separate from tab drag preview.
 - Sidebar collapse and resize still work.
