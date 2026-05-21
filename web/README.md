@@ -68,6 +68,11 @@ npm run dev
 
 The dev and preview servers are pinned to `http://127.0.0.1:39281` with
 `strictPort`, so port conflicts fail loudly instead of moving to another port.
+`npm run dev` also attempts to prepare the CLI test vault by running
+`../cli/scripts/test-env.sh ensure` before Electron starts. When
+`KN_TESTDATA_ROOT` exists, this creates/selects `testvault`, indexes the fixture
+Markdown corpus, and passes the test `KN_HOME` to Electron so the IPC bridge
+loads that vault. Set `KNOTER_DEV_TEST_VAULT=0` to skip the bootstrap.
 
 ## Verify
 

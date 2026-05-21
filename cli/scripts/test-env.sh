@@ -8,6 +8,7 @@
 # Usage:
 #   scripts/test-env.sh tei-start   # run local text-embeddings-router in foreground
 #   scripts/test-env.sh setup       # create vault + index KN_TESTDATA_ROOT
+#   scripts/test-env.sh ensure      # create if needed, then index KN_TESTDATA_ROOT
 #   scripts/test-env.sh teardown    # remove vault and private KN_HOME
 #   scripts/test-env.sh kn ...      # run kn with the test environment
 #   scripts/test-env.sh demo        # run a few sample queries
@@ -92,6 +93,38 @@ setup() {
   echo "  scripts/test-env.sh demo"
 }
 
+ensure() {
+  if [[ ! -d "$TESTDATA_ROOT" ]]; then
+    echo "KN_TESTDATA_ROOT does not exist: $TESTDATA_ROOT" >&2
+    exit 1
+  fi
+
+  if [[ ! -d "$VAULT_PATH" ]]; then
+    echo "→ creating test vault at $VAULT_PATH"
+    mkdir -p "$VAULT_PATH"
+  fi
+
+  local api_key_args=()
+  if [[ -n "$EMBED_API_KEY" ]]; then
+    api_key_args=(--embedding-api-key "$EMBED_API_KEY")
+  fi
+
+  if ! run_kn vault status "$VAULT_NAME" >/dev/null 2>&1; then
+    echo "→ registering test vault '$VAULT_NAME'"
+    run_kn vault create "$VAULT_NAME" \
+      --path "$VAULT_PATH" \
+      --model "$EMBED_MODEL" \
+      --embedding-base-url "$EMBED_BASE_URL" \
+      "${api_key_args[@]}"
+  else
+    echo "→ test vault '$VAULT_NAME' already registered"
+    run_kn vault switch "$VAULT_NAME" >/dev/null
+  fi
+
+  echo "→ indexing test data from $TESTDATA_ROOT"
+  run_kn add "$TESTDATA_ROOT" --recursive --vault "$VAULT_NAME"
+}
+
 teardown() {
   echo "→ removing $VAULT_PATH and $KN_HOME"
   rm -rf "$VAULT_PATH" "$KN_HOME"
@@ -120,11 +153,12 @@ shift || true
 case "$cmd" in
   tei-start) tei_start ;;
   setup) setup ;;
+  ensure) ensure ;;
   teardown) teardown ;;
   demo) demo ;;
   kn) run_kn "$@" ;;
   *)
-    echo "usage: $0 {tei-start|setup|teardown|demo|kn ...}"
+    echo "usage: $0 {tei-start|setup|ensure|teardown|demo|kn ...}"
     exit 1
     ;;
 esac

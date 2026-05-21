@@ -86,9 +86,14 @@ Local test vault setup:
 cd cli
 scripts/test-env.sh tei-start
 scripts/test-env.sh setup
+scripts/test-env.sh ensure
 scripts/test-env.sh demo
 scripts/test-env.sh teardown
 ```
+
+`scripts/test-env.sh ensure` is the idempotent development path. It creates or
+selects the `testvault` vault under `cli/.test-vault`, then runs
+`kn add "$KN_TESTDATA_ROOT" --recursive --vault testvault`.
 
 For macOS Metal acceleration, run local TEI in one terminal:
 
@@ -142,6 +147,11 @@ npx playwright install chromium
 npm test
 npm run test:e2e
 ```
+
+`npm run dev` first attempts `cli/scripts/test-env.sh ensure` and passes the
+test `KN_HOME` to Electron so the web IPC bridge can load the test vault. Set
+`KNOTER_DEV_TEST_VAULT=0` to skip this bootstrap, or
+`KNOTER_DEV_TEST_VAULT=1` to make bootstrap failure stop dev startup.
 
 `npm run test:e2e` launches Chromium against `http://127.0.0.1:39281` and checks
 the workspace shell, command palette, Settings floating window, split pane, and

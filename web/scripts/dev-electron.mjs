@@ -1,13 +1,28 @@
 import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const devUrl = "http://127.0.0.1:39281";
 const processes = [];
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const webRoot = join(__dirname, "..");
+const repoRoot = join(webRoot, "..");
+const cliRoot = join(repoRoot, "cli");
+const devKnHome = process.env.KN_HOME ?? join(cliRoot, ".test-kn-home");
+const devEnv = {
+  ...process.env,
+  KN_HOME: devKnHome
+};
+
+if (process.env.KNOTER_DEV_TEST_VAULT !== "0") {
+  await runCliTestEnvEnsure({ required: process.env.KNOTER_DEV_TEST_VAULT === "1" });
+}
 
 if (!(await isServerReady(devUrl))) {
   const vite = spawn("npm", ["run", "dev:renderer"], {
     stdio: "inherit",
     shell: process.platform === "win32",
-    env: process.env
+    env: devEnv
   });
   processes.push(vite);
 
@@ -30,7 +45,7 @@ const electron = spawn("npm", ["run", "dev:electron"], {
   stdio: "inherit",
   shell: process.platform === "win32",
   env: {
-    ...process.env,
+    ...devEnv,
     KNOTER_DEV_SERVER_URL: devUrl
   }
 });
@@ -49,6 +64,31 @@ process.on("SIGTERM", () => {
   shutdown();
   process.exit(143);
 });
+
+function runCliTestEnvEnsure({ required }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bash", ["scripts/test-env.sh", "ensure"], {
+      cwd: cliRoot,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+      env: devEnv
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const error = new Error(`CLI test vault bootstrap failed with code ${code ?? 1}`);
+      if (required) {
+        reject(error);
+        return;
+      }
+      console.warn(`Warning: ${error.message}. Continuing without a bootstrapped CLI test vault.`);
+      resolve();
+    });
+  });
+}
 
 async function waitForServer(url, timeoutMs) {
   const startedAt = Date.now();
