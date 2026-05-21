@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { MetaDB } from "../src/stores/meta-store";
+import { randomTestPath } from "./helpers/test-paths";
 
 const TARGET_DATE = "2026-05-08";
 const ARTIFACT_PATH = "artifacts/2026-05-08/daily-report.md";
@@ -37,8 +37,8 @@ async function createFixture(): Promise<{
   vaultRoot: string;
   cleanup: () => void;
 }> {
-  const knHome = join("/tmp", `kn-report-home-${randomUUID()}`);
-  const vaultRoot = join("/tmp", `kn-report-vault-${randomUUID()}`);
+  const knHome = randomTestPath("kn-report-home");
+  const vaultRoot = randomTestPath("kn-report-vault");
   const vaultName = "work";
   const vaultKnDir = join(vaultRoot, ".kn");
   const templatePath = join(vaultKnDir, "template.md");

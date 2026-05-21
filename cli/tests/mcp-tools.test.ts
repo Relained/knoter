@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { MetaDB } from "../src/stores/meta-store";
 import { buildReportContextBundle } from "../src/core/report-context";
 import { buildRewriteContextBundle } from "../src/core/rewrite-context";
 import { buildTemplateGetPayload, createMcpServer } from "../src/mcp/server";
+import { randomTestPath } from "./helpers/test-paths";
 
 const TARGET_DATE = "2026-05-08";
 
@@ -14,8 +14,8 @@ async function createFixture(): Promise<{
   vaultRoot: string;
   cleanup: () => void;
 }> {
-  const knHome = join("/tmp", `kn-mcp-home-${randomUUID()}`);
-  const vaultRoot = join("/tmp", `kn-mcp-vault-${randomUUID()}`);
+  const knHome = randomTestPath("kn-mcp-home");
+  const vaultRoot = randomTestPath("kn-mcp-vault");
   const vaultName = "work";
   const vaultKnDir = join(vaultRoot, ".kn");
   const templatePath = join(vaultKnDir, "template.md");

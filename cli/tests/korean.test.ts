@@ -11,6 +11,7 @@ import {
 } from "../src/stores/vec-store";
 import type { ChunkInput } from "../src/stores/vec-store";
 import { detectLanguage } from "../src/pipeline/chunker";
+import { testOutputPath } from "./helpers/test-paths";
 
 // ─── Deterministic embedding ──────────────────────────────────────────────────
 // To keep tests hermetic, we don't call a real embedding provider. Instead we
@@ -42,7 +43,7 @@ function embed(text: string): number[] {
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const TEST_DIR = "./test_korean_vault";
+const TEST_DIR = testOutputPath("test_korean_vault");
 const VAULT_ID = "korean-vault";
 
 let db: MetaDB;

@@ -18,6 +18,7 @@ import {
   toZVecDoc,
 } from "../src/stores/vec-store";
 import { search } from "../src/search/hybrid";
+import { randomTestPath } from "./helpers/test-paths";
 
 const TEI_BASE_URL = process.env.KN_TEI_BASE_URL;
 const TEI_MODEL = process.env.KN_TEI_MODEL || "local-tei";
@@ -398,7 +399,7 @@ function printE2EDocument(label: string, path: string, content: string): void {
 async function createSharedTeiVaultFixture(): Promise<SharedTeiVaultFixture> {
   const provider = buildTeiProvider();
   const embeddingDim = await resolveEmbeddingDimension(provider);
-  const vaultRoot = join("/tmp", `kn-tei-e2e-shared-${randomUUID()}`);
+  const vaultRoot = randomTestPath("kn-tei-e2e-shared");
   const vectorPath = join(vaultRoot, ".kn", "vectors");
   const vaultConfig = buildTeiVaultConfig();
   const sourceRelPath = "sources/2026-05-08/raw.md";

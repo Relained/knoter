@@ -31,6 +31,7 @@ test("schema tables are created", () => {
   expect(names).toContain("note_signals");
   expect(names).toContain("pageindex_documents");
   expect(names).toContain("pageindex_nodes");
+  expect(names).toContain("document_graph_edges");
 });
 
 // ── Notes CRUD ──────────────────────────────────────────────────────────────
@@ -338,6 +339,43 @@ test("PageIndex metadata stores document and tree nodes", () => {
   const nodes = db.listPageIndexNodes("note_rewritten_001");
   expect(nodes.length).toBe(2);
   expect(nodes[1]!.parent_node_id).toBe("0001");
+});
+
+test("document graph edges can be replaced and listed by vault", () => {
+  db.replaceDocumentGraphEdges("personal", [
+    {
+      fromId: "note_001",
+      toId: "note_rewritten_001",
+      kind: "source_rewritten",
+      metadata: { sourcePath: "sources/2026-05-08/raw.md" },
+    },
+    {
+      fromId: "template:daily-report",
+      toId: "note_artifact_001",
+      kind: "artifact_template",
+    },
+  ]);
+
+  let edges = db.listDocumentGraphEdges("personal");
+  expect(edges.length).toBe(2);
+  expect(edges[0]!.from_id).toBe("note_001");
+  expect(JSON.parse(edges[0]!.metadata_json!)).toEqual({
+    sourcePath: "sources/2026-05-08/raw.md",
+  });
+
+  db.replaceDocumentGraphEdges("personal", [
+    {
+      fromId: "note_rewritten_001",
+      toId: "chunk_graph_001",
+      kind: "note_chunk",
+      metadata: { seqIndex: 0 },
+    },
+  ]);
+
+  edges = db.listDocumentGraphEdges("personal");
+  expect(edges.length).toBe(1);
+  expect(edges[0]!.kind).toBe("note_chunk");
+  expect(edges[0]!.to_id).toBe("chunk_graph_001");
 });
 
 // ── Vault Status ────────────────────────────────────────────────────────────

@@ -15,6 +15,8 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { withLock } from "../core/lock";
 import { setVerbose, logger } from "../core/logger";
+import { refreshDocumentGraph } from "../core/document-graph";
+import { extractLineageFromFrontmatter } from "../core/note-lineage";
 
 interface SyncResult {
   recovered: number;
@@ -198,6 +200,8 @@ async function processSync(
       result.reconciled = reconcile(metaDb, collection, vaultId);
     }
 
+    refreshDocumentGraph(metaDb, { vaultId, includeChunks: true });
+
     return result;
   } finally {
     metaDb.close();
@@ -317,6 +321,7 @@ async function addFile(
         docDate: parsed.docDate ?? undefined,
         layer: parsed.layer,
         kind: parsed.kind,
+        lineage: extractLineageFromFrontmatter(parsed.frontmatter),
         createdAt: now,
         updatedAt: now,
         language,
@@ -372,6 +377,7 @@ async function addFile(
       docDate: parsed.docDate ?? undefined,
       layer: parsed.layer,
       kind: parsed.kind,
+      lineage: extractLineageFromFrontmatter(parsed.frontmatter),
       createdAt: now,
       updatedAt: now,
     },

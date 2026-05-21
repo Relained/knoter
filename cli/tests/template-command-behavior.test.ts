@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomTestPath } from "./helpers/test-paths";
 
 async function runCli(args: string[], env: Record<string, string>): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", "src/cli.ts", ...args], {
@@ -24,7 +24,7 @@ async function runCli(args: string[], env: Record<string, string>): Promise<{ co
 }
 
 function randomHome(): string {
-  return join("/tmp", `kn-template-harness-${randomUUID()}`);
+  return randomTestPath("kn-template-harness");
 }
 
 async function createActiveVault(
@@ -32,7 +32,7 @@ async function createActiveVault(
   vaultName: string,
   templateContent: string
 ): Promise<{ vaultRoot: string; vaultTemplatePath: string }> {
-  const vaultRoot = join("/tmp", `kn-template-vault-${randomUUID()}`);
+  const vaultRoot = randomTestPath("kn-template-vault");
   const vaultKnDir = join(vaultRoot, ".kn");
   mkdirSync(vaultKnDir, { recursive: true });
 
@@ -162,7 +162,7 @@ describe("template command behavior", () => {
 
   test("template validate with custom absolute path returns valid path source", async () => {
     const knHome = randomHome();
-    const templateDir = join("/tmp", `kn-template-custom-${randomUUID()}`);
+    const templateDir = randomTestPath("kn-template-custom");
     const templatePath = join(templateDir, "template.md");
     mkdirSync(templateDir, { recursive: true });
     await Bun.write(
@@ -223,7 +223,7 @@ describe("template command behavior", () => {
 
   test("template validate flags malformed frontmatter opening without closing delimiter", async () => {
     const knHome = randomHome();
-    const templateDir = join("/tmp", `kn-template-malformed-${randomUUID()}`);
+    const templateDir = randomTestPath("kn-template-malformed");
     const templatePath = join(templateDir, "template.md");
     mkdirSync(templateDir, { recursive: true });
 
@@ -260,7 +260,7 @@ describe("template command behavior", () => {
 
   test("template validate with missing path returns invalid with readable-style error", async () => {
     const knHome = randomHome();
-    const missingPath = join("/tmp", `kn-template-missing-${randomUUID()}.md`);
+    const missingPath = `${randomTestPath("kn-template-missing")}.md`;
 
     const result = await runCli(["--format", "json", "template", "validate", missingPath], {
       KN_HOME: knHome,
@@ -290,7 +290,7 @@ describe("template command behavior", () => {
 
   test("template validate enforces required frontmatter fields when frontmatter exists", async () => {
     const knHome = randomHome();
-    const templateDir = join("/tmp", `kn-template-missing-contract-${randomUUID()}`);
+    const templateDir = randomTestPath("kn-template-missing-contract");
     const templatePath = join(templateDir, "template.md");
     mkdirSync(templateDir, { recursive: true });
 
@@ -327,7 +327,7 @@ describe("template command behavior", () => {
 
   test("template validate reports missing required sections and variables", async () => {
     const knHome = randomHome();
-    const templateDir = join("/tmp", `kn-template-missing-required-${randomUUID()}`);
+    const templateDir = randomTestPath("kn-template-missing-required");
     const templatePath = join(templateDir, "template.md");
     mkdirSync(templateDir, { recursive: true });
 
@@ -369,7 +369,7 @@ describe("template command behavior", () => {
 
   test("template validate rejects duplicate sections and invalid variable declarations", async () => {
     const knHome = randomHome();
-    const templateDir = join("/tmp", `kn-template-duplicate-${randomUUID()}`);
+    const templateDir = randomTestPath("kn-template-duplicate");
     const templatePath = join(templateDir, "template.md");
     mkdirSync(templateDir, { recursive: true });
 

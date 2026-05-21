@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomTestPath } from "./helpers/test-paths";
 
 async function runCli(args: string[], env?: Record<string, string>): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", "src/cli.ts", ...args], {
@@ -58,7 +59,7 @@ describe("CLI help surface", () => {
 
   test("template validate respects --format json", async () => {
     const result = await runCli(["--format", "json", "template", "validate"], {
-      KN_HOME: "/tmp/knoter-template-home",
+      KN_HOME: randomTestPath("knoter-template-home"),
     });
 
     expect(result.code).toBe(0);

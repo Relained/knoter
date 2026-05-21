@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { MetaDB } from "../src/stores/meta-store";
 import { addMarkdownNoteToVault } from "../src/core/add-note";
+import { randomTestPath } from "./helpers/test-paths";
 
 describe("addMarkdownNoteToVault", () => {
   test("adds rewritten markdown note, persists chunks, and marks synced", async () => {
-    const vaultRoot = join("/tmp", `kn-add-note-${randomUUID()}`);
+    const vaultRoot = randomTestPath("kn-add-note");
     mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
 
     const upsertCalls: unknown[][] = [];
@@ -66,7 +66,7 @@ describe("addMarkdownNoteToVault", () => {
   });
 
   test("persists rewritten source lineage from frontmatter", async () => {
-    const vaultRoot = join("/tmp", `kn-add-note-lineage-${randomUUID()}`);
+    const vaultRoot = randomTestPath("kn-add-note-lineage");
     mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
 
     const seedDb = new MetaDB(vaultRoot);
@@ -124,6 +124,79 @@ describe("addMarkdownNoteToVault", () => {
       expect(note?.source_path).toBe("sources/2026-05-08/raw.md");
       expect(note?.rewrite_agent).toBe("codex");
       expect(note?.rewrite_prompt_hash).toBe("prompt-hash-1");
+      expect(metaDb.listDocumentGraphEdges("work")).toContainEqual(
+        expect.objectContaining({
+          from_id: "source-1",
+          to_id: note?.id,
+          kind: "source_rewritten",
+        }),
+      );
+    } finally {
+      metaDb.close();
+      rmSync(vaultRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("stores source path and graph edge when frontmatter source_note_id is stale", async () => {
+    const vaultRoot = randomTestPath("kn-add-note-stale-lineage");
+    mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
+
+    const seedDb = new MetaDB(vaultRoot);
+    try {
+      seedDb.upsertNote({
+        id: "source-current",
+        vaultId: "work",
+        filePath: "sources/2026-05-08/raw.md",
+        title: "Current source",
+        fileHash: "source-hash",
+        docDate: "2026-05-08",
+        layer: "source",
+      });
+    } finally {
+      seedDb.close();
+    }
+
+    await addMarkdownNoteToVault({
+      vaultRoot,
+      vaultName: "work",
+      relPath: "rewritten/2026-05-08/stale-lineage-note.md",
+      content: [
+        "---",
+        "title: Stale Lineage Rewritten",
+        "layer: rewritten",
+        "doc_date: 2026-05-08",
+        "source_note_id: source-stale",
+        "source_path: sources/2026-05-08/raw.md",
+        "---",
+        "",
+        "# Stale Lineage Rewritten",
+        "",
+        "The source path should keep graph lineage usable.",
+      ].join("\n"),
+      embedProvider: {
+        name: "fake",
+        isLocal: true,
+        async embed(texts: string[]): Promise<number[][]> {
+          return texts.map(() => [0.1, 0.2, 0.3]);
+        },
+      },
+      vectorCollection: {
+        upsertSync(): void {},
+      },
+    });
+
+    const metaDb = new MetaDB(vaultRoot);
+    try {
+      const note = metaDb.getNoteByPath("work", "rewritten/2026-05-08/stale-lineage-note.md");
+      expect(note?.source_note_id).toBeNull();
+      expect(note?.source_path).toBe("sources/2026-05-08/raw.md");
+      expect(metaDb.listDocumentGraphEdges("work")).toContainEqual(
+        expect.objectContaining({
+          from_id: "source-current",
+          to_id: note?.id,
+          kind: "source_rewritten",
+        }),
+      );
     } finally {
       metaDb.close();
       rmSync(vaultRoot, { recursive: true, force: true });
@@ -131,7 +204,7 @@ describe("addMarkdownNoteToVault", () => {
   });
 
   test("rolls back metadata when embedding fails", async () => {
-    const vaultRoot = join("/tmp", `kn-add-note-fail-${randomUUID()}`);
+    const vaultRoot = randomTestPath("kn-add-note-fail");
     mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
 
     await expect(
@@ -175,7 +248,7 @@ describe("addMarkdownNoteToVault", () => {
   });
 
   test("restores existing note and file when vector sync fails during update", async () => {
-    const vaultRoot = join("/tmp", `kn-add-note-update-fail-${randomUUID()}`);
+    const vaultRoot = randomTestPath("kn-add-note-update-fail");
     const relPath = "rewritten/2026-05-08/update-note.md";
     mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
 

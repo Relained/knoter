@@ -15,6 +15,8 @@ import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
 import { withLock } from "../core/lock";
 import { setVerbose, logger } from "../core/logger";
+import { refreshDocumentGraph } from "../core/document-graph";
+import { extractLineageFromFrontmatter } from "../core/note-lineage";
 
 // File discovery
 function discoverFiles(target: string, recursive: boolean): string[] {
@@ -244,6 +246,7 @@ async function processAdd(
                 docDate: parsed.docDate ?? undefined,
                 layer: parsed.layer,
                 kind: parsed.kind,
+                lineage: extractLineageFromFrontmatter(parsed.frontmatter),
                 createdAt: now,
                 updatedAt: now,
                 language: detectLanguage(parsed.content),
@@ -336,6 +339,7 @@ async function processAdd(
             docDate: parsed.docDate ?? undefined,
             layer: parsed.layer,
             kind: parsed.kind,
+            lineage: extractLineageFromFrontmatter(parsed.frontmatter),
             createdAt: now,
             updatedAt: now,
             language,
@@ -429,6 +433,10 @@ async function processAdd(
           throw fileErr;
         }
       }
+    }
+
+    if (!options.dryRun) {
+      refreshDocumentGraph(metaDb, { vaultId, includeChunks: true });
     }
 
     return result;

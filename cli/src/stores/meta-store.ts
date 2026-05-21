@@ -187,6 +187,29 @@ export interface PageIndexNodeRow {
   depth: number | null;
 }
 
+export type DocumentGraphEdgeKind =
+  | "source_rewritten"
+  | "artifact_template"
+  | "note_chunk"
+  | "chunk_prev"
+  | "chunk_next";
+
+export interface DocumentGraphEdgeInput {
+  fromId: string;
+  toId: string;
+  kind: DocumentGraphEdgeKind;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DocumentGraphEdgeRow {
+  vault_id: string;
+  from_id: string;
+  to_id: string;
+  kind: DocumentGraphEdgeKind;
+  metadata_json: string | null;
+  created_at: string;
+}
+
 // ─── FTS5 Query Builder ─────────────────────────────────────────────────────
 
 /**
@@ -508,6 +531,26 @@ export class MetaDB {
         CREATE INDEX IF NOT EXISTS idx_pageindex_nodes_parent
         ON pageindex_nodes(note_id, parent_node_id)
       `);
+
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS document_graph_edges (
+          vault_id      TEXT NOT NULL,
+          from_id       TEXT NOT NULL,
+          to_id         TEXT NOT NULL,
+          kind          TEXT NOT NULL,
+          metadata_json TEXT,
+          created_at    TEXT NOT NULL,
+          PRIMARY KEY (vault_id, from_id, to_id, kind)
+        )
+      `);
+      this.db.run(`
+        CREATE INDEX IF NOT EXISTS idx_document_graph_edges_from
+        ON document_graph_edges(vault_id, from_id, kind)
+      `);
+      this.db.run(`
+        CREATE INDEX IF NOT EXISTS idx_document_graph_edges_to
+        ON document_graph_edges(vault_id, to_id, kind)
+      `);
     })();
   }
 
@@ -562,6 +605,10 @@ export class MetaDB {
     const layer = note.layer ?? "source";
     const kind = note.kind?.trim() || null;
     const lineage = note.lineage ?? {};
+    const sourceNoteId =
+      lineage.sourceNoteId && this.getNote(lineage.sourceNoteId)
+        ? lineage.sourceNoteId
+        : null;
     this.db.run(
       `INSERT INTO notes (
          id, vault_id, file_path, title, file_hash, frontmatter, vector_sync_status,
@@ -597,7 +644,7 @@ export class MetaDB {
         docDate,
         layer,
         kind,
-        lineage.sourceNoteId ?? null,
+        sourceNoteId,
         lineage.sourcePath ?? null,
         lineage.rewriteAgent ?? null,
         lineage.rewritePromptHash ?? null,
@@ -1001,6 +1048,43 @@ export class MetaDB {
          ORDER BY COALESCE(depth, 0), node_id`,
       )
       .all(noteId) as PageIndexNodeRow[];
+  }
+
+  // ── Document Graph Metadata ──────────────────────────────────────────────
+
+  replaceDocumentGraphEdges(
+    vaultId: string,
+    edges: DocumentGraphEdgeInput[],
+  ): void {
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      this.db.run("DELETE FROM document_graph_edges WHERE vault_id = ?", [vaultId]);
+      const insert = this.db.prepare(
+        `INSERT INTO document_graph_edges
+           (vault_id, from_id, to_id, kind, metadata_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      for (const edge of edges) {
+        insert.run(
+          vaultId,
+          edge.fromId,
+          edge.toId,
+          edge.kind,
+          edge.metadata ? JSON.stringify(edge.metadata) : null,
+          now,
+        );
+      }
+    })();
+  }
+
+  listDocumentGraphEdges(vaultId: string): DocumentGraphEdgeRow[] {
+    return this.db
+      .query(
+        `SELECT * FROM document_graph_edges
+         WHERE vault_id = ?
+         ORDER BY from_id, kind, to_id`,
+      )
+      .all(vaultId) as DocumentGraphEdgeRow[];
   }
 
   // ── FTS5 Search ───────────────────────────────────────────────────────────
