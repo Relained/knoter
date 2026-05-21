@@ -75,7 +75,7 @@ npm test
 In Electron development, point your `BrowserWindow` at the Vite dev URL:
 
 ```js
-mainWindow.loadURL("http://127.0.0.1:5173");
+mainWindow.loadURL("http://127.0.0.1:39281");
 ```
 
 For production packaging, build the renderer and load the generated file:

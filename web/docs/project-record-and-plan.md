@@ -8,7 +8,7 @@ Last updated: 2026-05-09
 - Current head: `3d11fac Allow floating windows to touch viewport edges`
 - Frontend stack: React, TypeScript, Vite
 - Verification command: `npm test`
-- Development URL used during this phase: `http://127.0.0.1:5175/`
+- Development URL used during this phase: `http://127.0.0.1:39281/`
 
 ## Trace Log
 
