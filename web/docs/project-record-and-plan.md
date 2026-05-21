@@ -1,14 +1,15 @@
 # Project Record And Plan
 
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 ## Current Baseline
 
-- Branch: `split-cli-web`
-- Current head: `f306d83 Add web smoke e2e on dedicated port`
-- Frontend stack: React, TypeScript, Vite
+- Branch: `web/graph-backend`
+- Current head: `7364c6d Run web dev through Electron`
+- Frontend stack: React, TypeScript, Vite, Electron development shell
 - Verification commands: `npm test`, `npm run test:e2e`
 - Development URL used during this phase: `http://127.0.0.1:39281/`
+  loaded by Electron during `npm run dev`
 
 ## Trace Log
 
@@ -81,6 +82,20 @@ This section records the implementation history in a form that can be followed f
     Settings floating window, split pane, floating window creation, and console
     error detection.
 
+### Sidebar, API Boundary, And Electron Shell
+
+- `1c1fed6` Add web sidebar surfaces and API contracts
+  - Converted the sidebar into an IDE-style surface host.
+  - Added Explorer/Search/Graph/Tasks/Settings surfaces.
+  - Moved source/rewritten/template selection into the Explorer surface.
+  - Added typed web API contracts for vault, explorer, graph, and search.
+  - Added IPC/preload/cache/daemon contract skeletons.
+- `7364c6d` Run web dev through Electron
+  - Added Electron dependency and `web/electron/main.mjs`.
+  - Added preload bridge exposing `window.knoterApi`.
+  - Changed `npm run dev` to launch Vite plus Electron.
+  - `npm run dev:renderer` remains available for Vite-only renderer work.
+
 ## Current Architecture
 
 ### State Layers
@@ -90,6 +105,7 @@ This section records the implementation history in a form that can be followed f
   - tabs
   - floating windows
   - active pane/window
+  - `sidebarExplorerFilters`
   - `objectStates`
 - `GlobalSettings`
   - sidebar state
@@ -135,7 +151,8 @@ This section records the implementation history in a form that can be followed f
 ### Search Model
 
 - Search is not modeled as a standalone pane object.
-- Sidebar search filters notes and workspace views.
+- Sidebar has a standalone Search surface placeholder. Explorer search filters
+  Explorer items within selected source/rewritten/template spaces.
 - Command palette search matches:
   - command id
   - label
@@ -163,9 +180,16 @@ This section records the implementation history in a form that can be followed f
 
 - Graph 3D is a template preview. A real graph renderer and state model are
   deferred.
-- Search is not a standalone pane object. Search belongs to navigation surfaces:
-  - sidebar filtering
+- Search is not a pane object. Search belongs to navigation surfaces:
+  - Sidebar Search surface
   - command palette matching
+- Sidebar surfaces are mutually exclusive and consume the whole sidebar surface
+  area, similar to an IDE activity bar model.
+- Explorer source/rewritten/template space selection belongs to the file
+  explorer surface, not to Graph 3D state.
+- Renderer-only development is no longer the target. Electron IPC and a daemon
+  boundary are the target runtime shape, but current IPC handlers still return
+  mock payloads.
 - Notes are Markdown workspace objects, not static placeholder pages.
 - Workspace objects can be mounted in two places:
   - as a full pane or floating window
@@ -198,12 +222,16 @@ This section records the implementation history in a form that can be followed f
   - `[[object:Calendar]]`
   - `[[object:Graph 3D]]` as a template preview until the graph engine is implemented
 - Dedicated Vite dev/preview port `39281`.
+- Electron-backed `npm run dev` shell.
+- Sidebar rail and surface host.
+- Explorer source/rewritten/template space selection, defaulting to Template.
+- Typed API, IPC, cache, and daemon contracts.
 - Playwright E2E smoke test via `npm run test:e2e`.
 
 ## Current Phase
 
 The original workspace shell phase is closed at `3d11fac`. The current
-monorepo/web verification baseline is `f306d83`.
+web graph/backend phase is active on `web/graph-backend`.
 
 Completed closure items:
 
@@ -213,28 +241,57 @@ Completed closure items:
 4. Floating window viewport constraints are symmetric and tested.
 5. Project record is consolidated in this document.
 
+Current branch closure items:
+
+1. Sidebar surface host is implemented.
+2. Explorer source/rewritten/template selection is implemented.
+3. Web API/IPC/cache contract skeletons are implemented.
+4. Electron dev shell is implemented.
+5. Actual daemon/vault data loading remains open.
+
 ## Next Plan
 
-1. Add object instance model.
+1. Replace mock IPC handlers with daemon-backed handlers.
+   - Resolve active vault from existing CLI config.
+   - Read CLI metadata and/or CLI graph projection.
+   - Return real `ExplorerItem[]` for source/rewritten/template.
+   - Keep web cache recoverable from vault/CLI metadata.
+
+2. Wire ExplorerSurface to real API data.
+   - Load items on surface mount and filter changes.
+   - Show source and rewritten files from active vault.
+   - Keep template items from vault template/fallback metadata.
+   - Add loading/error/refresh states.
+
+3. Add app-owned cache projection.
+   - Use separate web cache DB/snapshot files.
+   - Keep cache rebuildable.
+   - Defer OS-standard path migration until after daemon bridge is stable.
+
+4. Keep Graph 2D/3D renderer deferred.
+   - Use `graph.get` contract only.
+   - Do not add canvas/Three.js renderer until real graph payload is available.
+
+5. Add object instance model.
    - Introduce `objectId` separately from `WorkspaceObjectKind`.
    - Keep `WorkspaceObjectKey` compatibility for current singleton objects.
    - Allow multiple documents, task boards, todo lists, calendars, and canvases.
 
-2. Improve Markdown editor quality.
+6. Improve Markdown editor quality.
    - Replace simple textarea/parser with a proper editor and Markdown pipeline.
    - Candidate editor: CodeMirror for pragmatic Markdown editing.
    - Keep object embeds as first-class blocks.
 
-3. Add embed insertion UX.
+7. Add embed insertion UX.
    - Slash command or toolbar menu for inserting object blocks.
    - Object picker should use existing command/search infrastructure.
 
-4. Expand search.
+8. Expand search.
    - Search across note Markdown content and object states.
    - Show grouped results in sidebar and command palette.
    - Add result jump/open actions.
 
-5. Define Graph 3D separately.
+9. Define Graph 3D separately.
    - Decide renderer: likely Three.js.
    - Define graph state from existing object links instead of isolated mock data.
    - Keep it compatible with full-pane and embedded mounting.

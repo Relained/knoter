@@ -17,8 +17,9 @@
 | Web Vite dev/preview | `http://127.0.0.1:39281` |
 
 CLI는 embedding server HTTP API만 호출한다. TEI 실행/중지, 컨테이너 기반 실행,
-macOS local service UX는 향후 packaged app layer 책임이며 현재 `web/`
-renderer에는 구현되어 있지 않다.
+macOS local service UX는 향후 packaged app layer 책임이다. `web/`에는
+Electron shell과 IPC skeleton이 생겼지만, TEI lifecycle과 daemon-backed
+runtime은 아직 mock boundary 이후 단계다.
 
 ## Document Layers
 
@@ -80,10 +81,22 @@ MCP tool surface:
 
 ## Web Boundary
 
-`web/`는 현재 React/Vite renderer shell이다. 핵심 기능은 pane/tab/floating
-window workspace, command palette, Markdown host object, Settings/Todo/Tasks/
-Calendar object state, Graph 3D template preview, Base16/icon/theme runtime,
-JSONC global settings bridge다.
+`web/`는 React/Vite renderer에서 Electron-backed development shell로 이동
+중이다. `npm run dev`는 Vite dev server를 `127.0.0.1:39281`에 띄우고
+Electron BrowserWindow를 preload IPC와 함께 실행한다. 핵심 기능은 pane/tab/
+floating window workspace, command palette, Markdown host object, Settings/
+Todo/Tasks/Calendar object state, Graph 3D template preview, Base16/icon/theme
+runtime, JSONC global settings bridge다.
+
+Renderer는 SQLite를 직접 소유하지 않는다. Web은 typed API contract를 통해
+vault/explorer/graph/search payload를 요청하고, Electron main/preload/daemon
+layer가 CLI/vault metadata와 web cache projection을 담당하는 방향이다. 현재
+IPC handler는 mock payload를 반환하는 skeleton이며, daemon-backed 실제 vault
+연결은 다음 단계다.
+
+사이드바는 IDE-style surface host다. Rail에서 Explorer/Search/Graph/Tasks/
+Settings surface를 전환하고, Explorer surface는 source/rewritten/template
+space 선택을 갖는다. 기본 선택은 template-only다.
 
 검증은 `npm test`의 TypeScript/build/unit suite와 `npm run test:e2e`의
 Playwright smoke suite로 나뉜다. E2E는 Vite dev server를 `39281`에 띄우고
@@ -96,7 +109,25 @@ Deferred/legacy:
 - `schedule`: CLI 타이머 관리에서 제외
 - `tag auto`: 제거
 - PageIndex: 후속 PoC
-- real 3D graph renderer/state model: web 후속 작업
+- real 2D/3D graph renderer/state model: web 후속 작업. API/daemon bridge가
+  실제 graph payload를 제공하기 전까지 Graph 3D는 template preview로 유지한다.
+
+## Web API And Cache Direction
+
+Current typed web API surfaces:
+
+- `vault.getActive`, `vault.switch`
+- `explorer.list`, `explorer.refresh`
+- `graph.get`, `graph.refresh`
+- `search.query`
+
+Cache direction:
+
+- web cache is a recoverable projection, not source of truth
+- CLI vault metadata remains authoritative for notes/chunks/search state
+- web cache may use a separate SQLite DB and JSON snapshots later
+- OS-standard config/cache/state/log path migration is deferred to a later
+  milestone; do not mix it into the current daemon bridge work
 
 ## Retrieval
 
