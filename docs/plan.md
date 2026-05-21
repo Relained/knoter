@@ -153,8 +153,7 @@ cd web
 npm run dev
 ```
 
-This starts the Vite dev server on `127.0.0.1:39281` and launches the Electron
-shell. If a Vite server is already listening on that port, the dev runner
-reuses it.
+This starts or reuses the Vite renderer server on `127.0.0.1:39281` and
+launches the Electron shell.
 
 Detailed test and environment instructions live in `docs/testing.md`.

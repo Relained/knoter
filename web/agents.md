@@ -10,8 +10,14 @@ This file applies to the `web/` package only.
 
 - Stack: React 18, TypeScript, Vite 5, Playwright.
 - Dev/preview URL: `http://127.0.0.1:39281` with `strictPort`.
-- Current app shape: renderer-only workspace shell, not a packaged Electron app.
-- Current persistence: browser `localStorage`.
+- Current app shape: Electron development shell with a Vite renderer. It is not
+  a packaged app yet, and daemon-backed runtime handlers are still being built.
+- Current backend boundary: typed renderer API -> preload IPC -> Electron main
+  handlers. Current handlers may still be mock-backed until the daemon/vault
+  bridge is implemented.
+- Current persistence: workspace state uses browser `localStorage`; global
+  settings use JSONC runtime/config flow. Future web cache DB/snapshot files
+  must remain recoverable projections, not source of truth.
 - Current workspace objects: Markdown notes, Settings, Todo, Tasks, Calendar,
   and a Graph 3D template preview.
 - Graph 3D is not a real graph engine yet.
@@ -25,6 +31,8 @@ Primary local docs:
 - `web/README.md`
 - `web/docs/project-record-and-plan.md`
 - `web/docs/workspace-interaction-policy.md`
+- `web/docs/pane-inheritance.md` for pane split, toolbar inheritance, tab
+  dragging, docking, and floating behavior.
 - root `docs/architecture.md`, `docs/testing.md`
 
 ## 1) Harness Goal
@@ -57,7 +65,7 @@ settings/theme runtime.
 4. Enforce a hard requirement: no Worker output can advance to final Analyzer until that Worker's paired Fast Analyzer returns `PASS`.
 5. Enforce a hard requirement: no merge of Worker output until Analyzer returns `PASS`.
 6. Preserve all existing user decisions; do not override architecture unless explicitly approved.
-7. Use one consistent branch flow: `design -> implement -> verify -> release notes`.
+7. Use one consistent work phase flow: `design -> implement -> verify -> release notes`.
 8. For web work, include the affected UI surface, reducer/state path, CSS module,
    and expected verification commands in every task card.
 
@@ -94,15 +102,18 @@ settings/theme runtime.
 3. Use existing repository patterns and local conventions.
 4. Every behavior change must have at least one verification command or test impact note.
 5. Return diffs in this order: changed files, intent, risk, and exact verification commands.
-6. Do not introduce Electron, IPC, service lifecycle, or backend assumptions into
-   the renderer unless the task explicitly asks for packaged-app work.
+6. Keep renderer UI behind the existing API/preload abstractions. Put
+   Electron/preload/IPC changes in `electron/`, `src/ipc/`, `src/preload/`, and
+   `src/api/`; do not bypass them from components.
 7. Keep UI changes consistent with the dense workspace design. Avoid landing
    pages, marketing sections, nested cards, decorative background blobs, and
    one-off SVG icons when an existing semantic/lucide icon exists.
 8. Prefer existing modules:
    - `src/domain/workspace.ts` for object definitions and factories.
    - `src/state/workspaceReducer.ts` for workspace state transitions.
-   - `src/state/persistence.ts` for localStorage persistence.
+   - `src/state/persistence.ts` for workspace localStorage persistence.
+   - `src/settings/` for global settings and JSONC config runtime.
+   - `src/api/`, `src/ipc/`, and `src/preload/` for web backend boundaries.
    - `src/renderers/registry.tsx` and renderer files for workspace objects.
    - `src/commands/workspaceCommands.ts` for command palette entries.
    - `src/keybindings/` for keyboard shortcuts.
@@ -172,7 +183,9 @@ npm run test:e2e
 Notes:
 
 - `npm test` already runs `npm run check` and unit/regression tests.
-- `npm run test:e2e` starts the Vite dev server at `127.0.0.1:39281`.
+- `npm run test:e2e` starts `npm run dev` through Playwright webServer. That
+  starts or reuses the Vite renderer server at `127.0.0.1:39281` and launches
+  the Electron shell. Use `npm run dev:renderer` for Vite-only renderer work.
 - Install Chromium once on clean machines or CI images that do not cache
   Playwright browsers.
 - Before claiming E2E success, confirm there are no console/page errors.
@@ -183,8 +196,13 @@ High-signal test files:
 - `tests/workspace-persistence.test.cjs`
 - `tests/workspace-commands.test.cjs`
 - `tests/keybindings.test.cjs`
+- `tests/geometry.test.cjs`
+- `tests/global-config-runtime.test.cjs`
 - `tests/global-settings.test.cjs`
 - `tests/base16-runtime.test.cjs`
+- `tests/api-contract.test.cjs`
+- `tests/sidebar-explorer-model.test.cjs`
+- `tests/graph3d-model.test.cjs`
 - `tests/e2e/workspace-smoke.spec.js`
 
 ## 4.2) Web Change Rules
@@ -202,6 +220,9 @@ High-signal test files:
   panes, floating windows, and object controls.
 - Do not make Graph 3D look implemented as a real 3D engine. It is currently a
   template preview until a graph renderer/state model is chosen.
+- Real vault/explorer/graph/search data must flow through the typed API and
+  IPC/daemon boundary. Web cache storage, when added, must be separate from CLI
+  SQLite and rebuildable from CLI/vault source data.
 
 ## 5) Hard Failure Rules
 
@@ -210,6 +231,7 @@ High-signal test files:
 - Never allow Worker and Analyzer to share previous-run assumptions; Analyzer must operate independently.
 - Never approve changes without explicit PASS criteria and test evidence.
 - Never route user-facing behavior changes without a rollback plan.
-- Never treat renderer-only code as packaged Electron/app-service code.
+- Never treat the current Electron development shell as a completed packaged
+  app or service lifecycle implementation.
 - Never claim Playwright E2E coverage unless `npm run test:e2e` actually ran or
   the reason it could not run is documented.

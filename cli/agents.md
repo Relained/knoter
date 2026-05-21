@@ -23,13 +23,16 @@ The CLI stores vault documents, indexes rewritten/artifact Markdown, exposes sea
 - Artifacts are indexed but excluded from default search unless `--include-artifacts` is explicit.
 - Rewriting, task/workout/area/metric extraction, and artifact prose generation belong to an external LLM agent.
 - Future prompt assembly or direct LLM calls must live under a separate `kn llm` namespace.
-- CLI service lifecycle is limited to endpoint status/probing. Starting/stopping TEI or packaged-app services is outside this package.
+- Normal CLI service lifecycle is limited to endpoint status/probing.
+  Starting/stopping TEI or packaged-app services is outside product CLI
+  behavior. `scripts/test-env.sh tei-start` is a test/dev harness exception.
 - `kn mcp` stdio is the compatibility baseline. HTTP/daemon mode exists in code but remains experimental.
 
 ## Runtime And Tools
 
 Use Bun by default:
 
+- Run these commands from `cli/` unless a command explicitly says otherwise.
 - Use `bun run src/cli.ts --help` for local CLI execution.
 - Use `bun test` for tests.
 - Use `bunx tsc --noEmit` for the current ad hoc typecheck.
@@ -50,9 +53,11 @@ Package metadata is not final yet: `package.json` still uses the legacy name `nl
 | --- | --- |
 | `src/cli.ts` | Commander entrypoint and command registration. |
 | `src/commands/*` | CLI command surfaces and output handling. |
+| `src/commands/mcp.ts` | MCP transport command surface; `stdio` is the baseline and HTTP/daemon options are experimental. |
 | `src/core/*` | Command-independent business logic shared by CLI/MCP/tests. |
 | `src/core/report-*.ts` | Report context bundle, retrieval, continuity, serialization. |
-| `src/mcp/server.ts` | MCP stdio tools and experimental HTTP surface. |
+| `src/core/rewrite-context.ts` | Source-layer rewrite evidence bundle for external agents. |
+| `src/mcp/server.ts` | MCP tool definitions and transport-agnostic server factory. |
 | `src/pipeline/*` | Markdown parsing, chunking, hashing, embedding, preprocessing. |
 | `src/providers/*` | OpenAI-compatible embedding provider and health checks. |
 | `src/search/*` | Hybrid keyword/semantic retrieval and score fusion. |
@@ -75,7 +80,7 @@ This project uses SQLite and zvec side by side:
 | Layer | Purpose | Store |
 | --- | --- | --- |
 | Metadata source of truth | notes, chunks, tags, signals, FTS, change detection | SQLite via `bun:sqlite` |
-| Vector retrieval | dense semantic and sparse/vector search data | zvec |
+| Vector retrieval | dense semantic search data | zvec |
 
 Important invariants:
 
@@ -91,7 +96,8 @@ Important invariants:
 Local zvec types are in `node_modules/@zvec/zvec/src/index.d.ts`.
 
 - Use `ZVecCreateAndOpen(path, schema)` for new collections and `ZVecOpen(path)` for existing ones.
-- Sparse vector fields are not nullable; pass `{}` for an empty sparse vector.
+- Current schema uses dense vectors only. Do not reintroduce sparse-vector
+  fields unless the schema and tests are changed deliberately.
 - Nullable scalar/string fields may reject actual `null`; prefer `""` or `[]` as appropriate.
 - Embedding dimensions vary by model: common current values are `nomic-embed-text = 768` and `bge-m3 = 1024`.
 - Timestamps are Unix epoch milliseconds.
@@ -123,7 +129,9 @@ Change template behavior:
 Add a metadata field:
 
 1. Update parser/frontmatter extraction when relevant.
-2. Update `MetaDB` schema, row types, and migrations.
+2. Update `MetaDB` schema, row types, and compatibility helpers such as
+   add-column-on-open paths. Add a real migration layer only if introduced
+   deliberately.
 3. Update serializers exposed through report/MCP payloads.
 4. Update insert, reindex, and retrieval tests.
 
@@ -132,6 +140,7 @@ Add a metadata field:
 Before code-affecting commits in `cli/`, run:
 
 ```bash
+cd cli
 bunx tsc --noEmit
 bun test
 git diff --check
@@ -140,6 +149,7 @@ git diff --check
 For live TEI/Codex checks, use the documented opt-in flow:
 
 ```bash
+cd cli
 scripts/tei-e2e-test.sh
 ```
 

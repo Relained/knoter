@@ -51,8 +51,9 @@ explicitly approves a different direction.
 - Do not use branch names under `dev/...` when a local or remote `dev` branch
   exists. Git refs cannot cleanly contain both `dev` and `dev/<name>` at the
   same time.
-- Branch package work from `dev` unless the user explicitly approves a
-  different base.
+- Branch new package implementation work from `dev` unless the user explicitly
+  approves a different base. Continue on an existing active package branch when
+  it already matches the requested work.
 - Keep CLI and web implementation commits on separate package branches until an
   integration branch is explicitly needed.
 - Commit related changes in small, reviewable units after appropriate

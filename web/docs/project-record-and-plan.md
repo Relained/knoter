@@ -5,7 +5,8 @@ Last updated: 2026-05-22
 ## Current Baseline
 
 - Branch: `web/graph-backend`
-- Current head: `7364c6d Run web dev through Electron`
+- Current branch state: local `web/graph-backend` is based on `dev` after the
+  root Git workflow guide and contains the sidebar/API/Electron phase commits.
 - Frontend stack: React, TypeScript, Vite, Electron development shell
 - Verification commands: `npm test`, `npm run test:e2e`
 - Development URL used during this phase: `http://127.0.0.1:39281/`
@@ -95,6 +96,10 @@ This section records the implementation history in a form that can be followed f
   - Added preload bridge exposing `window.knoterApi`.
   - Changed `npm run dev` to launch Vite plus Electron.
   - `npm run dev:renderer` remains available for Vite-only renderer work.
+- `511c8c1` / `bc729de` Document web graph backend progress
+  - Updated shared docs with web API/IPC/cache direction, graph renderer
+    deferral, and current branch plan.
+  - The hash changed after local rebase onto the updated `dev` branch.
 
 ## Current Architecture
 
@@ -296,16 +301,16 @@ Current branch closure items:
    - Define graph state from existing object links instead of isolated mock data.
    - Keep it compatible with full-pane and embedded mounting.
 
-6. Continue tokenizing configurable UI constants.
+10. Continue tokenizing configurable UI constants.
    - Promote frequently changed component spacing, radius, and density values to semantic CSS variables.
    - Keep user-facing settings coarse enough to avoid unstable per-component configuration.
 
-7. Add floating window polish.
+11. Add floating window polish.
    - Optional snap zones.
    - Optional remembered per-object floating bounds.
    - Keyboard accessible window movement.
 
-8. Add settings export/import affordances.
+12. Add settings export/import affordances.
    - Preserve JSONC as the editable source.
    - Validate font stack strings and theme ids before applying.
 

@@ -49,8 +49,9 @@ Live TEI/Codex integration tests:
 Web:
 
 - Vite dev and preview use `http://127.0.0.1:39281`.
-- Playwright E2E uses the same port and starts the Vite dev server through
-  `webServer` in `web/playwright.config.js`.
+- Playwright E2E uses the same port and starts `npm run dev` through
+  `webServer` in `web/playwright.config.js`, which starts or reuses Vite and
+  launches the Electron development shell.
 
 ## Commands
 

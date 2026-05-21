@@ -30,7 +30,8 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | --- | --- |
 | `src/cli.ts` | Commander root. 명령 등록 순서를 확인하는 곳. |
 | `src/commands/*.ts` | CLI surface. 사용자 입력 파싱, config 로딩, output envelope 처리. |
-| `src/mcp/server.ts` | MCP tool definitions. `kn mcp` uses stdio by default; HTTP/daemon command options exist as experimental surface. |
+| `src/commands/mcp.ts` | MCP transport command surface. `stdio` is the baseline and HTTP/daemon options are experimental. |
+| `src/mcp/server.ts` | MCP tool definitions and transport-agnostic server factory. |
 | `src/core/*.ts` | command와 MCP가 공유하는 business logic. |
 | `src/stores/*.ts` | SQLite metadata store와 zvec vector store. |
 | `src/pipeline/*.ts` | Markdown parse/chunk/hash/embed/preprocess pipeline. |
@@ -40,6 +41,8 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | `src/main.tsx` under `web/` | React renderer root, workspace shell composition. |
 | `src/domain/workspace.ts` under `web/` | pane/tab/floating object factories and workspace constants. |
 | `src/state/*.ts` under `web/` | web workspace reducer and localStorage persistence. |
+| `src/api/*`, `src/ipc/*`, `src/preload/*` under `web/` | typed web API, IPC contracts, and preload adapter boundaries. |
+| `electron/*` under `web/` | Electron development shell and mock-backed IPC handlers. |
 | `src/renderers/*.tsx` under `web/` | Note/Settings/Todo/Tasks/Calendar renderers and Graph 3D template preview. |
 | `tests/*.test.cjs` under `web/` | web unit/regression tests run by `npm test`. |
 | `tests/e2e/*.spec.js` under `web/` | Playwright browser smoke tests run by `npm run test:e2e`. |
@@ -182,6 +185,7 @@ High-signal files:
 Baseline:
 
 ```bash
+cd cli
 # Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
 bun test
@@ -191,6 +195,7 @@ git diff --check
 Live TEI/Codex E2E:
 
 ```bash
+cd cli
 scripts/tei-e2e-test.sh
 ```
 
@@ -219,7 +224,9 @@ Add a new CLI behavior:
 Add a new document metadata field:
 
 1. Update parser extraction if it comes from frontmatter.
-2. Update `MetaDB` schema/migrations and row types.
+2. Update `MetaDB` schema, row types, and compatibility helpers such as
+   add-column-on-open paths. Add a real migration layer only when introduced
+   deliberately.
 3. Update serializers if exposed in report/MCP payloads.
 4. Update tests for insert/reindex/retrieval behavior.
 
@@ -245,7 +252,8 @@ Change template contract:
 - `cli/package.json` also has no package-local `check` script and keeps
   TypeScript as a peer dependency, so `bunx tsc --noEmit` is an ad hoc baseline.
 - Container runtime and TEI process lifecycle are outside the CLI. The CLI only
-  depends on the embedding server HTTP API.
+  depends on the embedding server HTTP API. `scripts/test-env.sh tei-start` is
+  a test/dev harness exception, not product service lifecycle.
 - Cluster analysis is outside the CLI. A future app/frontend layer can access
   zvec directly for that surface.
 - Web Graph 3D is currently a template preview/state placeholder, not a
