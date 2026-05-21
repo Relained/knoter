@@ -1,52 +1,52 @@
-# dependencies (bun install)
-node_modules
+# Dependencies
+node_modules/
+*/node_modules/
 
-# output
-out
-dist
+# Build output
+dist/
+*/dist/
+out/
+*/out/
 *.tgz
 
-# code coverage
-coverage
+# Test output and coverage
+coverage/
+*/coverage/
 *.lcov
+.test-build/
+*/.test-build/
+.test-vault/
+.test-kn-home/
+test_zvec_index/
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# Logs
+logs/
+*/logs/
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# dotenv environment variable files
+# Environment files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
 
-# caches
+# Caches
+.cache/
+*/.cache/
 .eslintcache
-.cache
 *.tsbuildinfo
 
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
-
-# SQLite databases
+# Local app data
+.kn/
+*/.kn/
 *.db
 *.db-wal
 *.db-shm
 
-# Vault metadata
-.kn/
-
-# zvec test index
-test_zvec_index/
-
-.claude/
+# Local-only fixtures and generated workspace state
 testdata/
 
-# Test environment
-.test-vault/
-.test-kn-home/
+# Editor and OS files
+.DS_Store
+.idea/
+.claude/

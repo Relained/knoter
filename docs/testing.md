@@ -19,6 +19,10 @@ Core:
 
 - `KN_HOME`: global kn config directory. Defaults to `~/.kn`; tests usually set
   it to an isolated temp directory.
+- `KN_TESTDATA_ROOT`: markdown fixture corpus used by live tests and local test
+  vault bootstrap. Defaults to repo-root `testdata/` from the `cli/` package,
+  but should be set in `.env` when using private, large, or machine-specific
+  test data.
 
 Embedding provider and test vault bootstrap:
 

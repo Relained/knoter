@@ -206,4 +206,5 @@ Change template contract:
 - No general LLM call in normal `kn` commands except embedding provider calls.
 - `kn llm` is the future namespace for prompt assembly or explicit LLM calls.
 - `schedule` and `cluster` code exists but is legacy/deferred relative to active direction.
-- `testdata/` is gitignored local data, but tests can use it when present for live E2E.
+- `KN_TESTDATA_ROOT` points live E2E and local bootstrap scripts at a gitignored
+  fixture corpus, so private or large test data can stay outside tracked files.

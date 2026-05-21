@@ -26,7 +26,7 @@ export interface EffectiveTemplate {
 }
 
 const FALLBACK_TEMPLATE_PATH = fileURLToPath(
-  new URL("../../docs/template.md", import.meta.url),
+  new URL("../../../docs/template.md", import.meta.url),
 );
 
 export async function resolveTemplateSource(vaultOpt?: string): Promise<ResolvedTemplateSource> {

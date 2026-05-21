@@ -1,11 +1,12 @@
 # knoter
 
-Monorepo layout for the knoter CLI and web frontend.
+Monorepo layout for the knoter CLI, shared project docs, and web frontend.
 
 ## Projects
 
 - `cli/`: TypeScript/Bun CLI, MCP server, indexing, search, and report tooling.
-- `web/`: React/Vite workspace frontend imported from `knoter-web`.
+- `docs/`: shared architecture, planning, testing, and artifact workflow docs.
+- `web/`: React/Vite workspace frontend with Electron-oriented build guidance.
 
 ## Common Commands
 
@@ -17,5 +18,5 @@ bun test
 ```sh
 cd web
 npm install
-npm run check
+npm test
 ```

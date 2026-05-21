@@ -21,15 +21,16 @@ KN_TEI_DIM=<embedding-dimension> \
 bun test tests/tei-integration.test.ts
 ```
 
-The TEI integration test uses `testdata/2026-04-16.md`, builds a Codex rewrite
-prompt for source -> rewritten -> artifact output, indexes rewritten/artifact
-documents with the TEI embedding model, and verifies Korean keyword plus semantic
-search. Set `KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
+The TEI integration test reads fixtures from `KN_TESTDATA_ROOT` (default:
+`../testdata` from this package), builds a Codex rewrite prompt for source ->
+rewritten -> artifact output, indexes rewritten/artifact documents with the TEI
+embedding model, and verifies Korean keyword plus semantic search. Set
+`KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
 
 ## Current Scope
 
-- Backend CLI only.
-- Frontend is deferred to `../knoter-web`.
+- Backend CLI package inside the monorepo.
+- Frontend lives in `../web`.
 - Normal `kn` commands do not call LLMs except embedding.
 - External LLM agents use MCP/JSON context to rewrite sources and create artifacts.
 
@@ -37,9 +38,9 @@ search. Set `KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
 
 Start with:
 
-- `docs/README.md`
-- `docs/architecture.md`
-- `docs/plan.md`
-- `docs/template.md`
+- `../docs/README.md`
+- `../docs/architecture.md`
+- `../docs/plan.md`
+- `../docs/template.md`
 
-Legacy notes are under `docs/archive/`.
+Legacy notes are under `../docs/archive/`.

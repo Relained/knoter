@@ -2,11 +2,12 @@
 # Test environment bootstrapper for kn CLI.
 #
 # Creates an isolated vault rooted at .test-vault/ with a private global config
-# at .test-kn-home/, then indexes testdata/ so you can immediately run searches.
+# at .test-kn-home/, then indexes KN_TESTDATA_ROOT so you can immediately run
+# searches without mixing local/private fixtures into the project tree.
 #
 # Usage:
 #   scripts/test-env.sh tei-install # create TEI podman container (one-time)
-#   scripts/test-env.sh setup       # create vault + index testdata/
+#   scripts/test-env.sh setup       # create vault + index KN_TESTDATA_ROOT
 #   scripts/test-env.sh teardown    # remove vault (keeps TEI container)
 #   scripts/test-env.sh tei-remove  # remove TEI container + model volume
 #   scripts/test-env.sh kn ...      # run kn with the test environment
@@ -23,6 +24,8 @@
 #   KN_TEI_PORT          default 8080    (host port mapped to container :80)
 #   KN_TEI_VOLUME        default kn-tei-models  (named volume for HF model cache)
 #   KN_TEI_GPU           default 0       (set to 1 for CUDA TEI + nvidia.com/gpu=all CDI)
+#   KN_TESTDATA_ROOT     default ../testdata from cli/; set this in .env to
+#                        keep execution/test fixtures outside the repo
 
 set -euo pipefail
 
@@ -53,6 +56,7 @@ else
 fi
 TEI_PORT="${KN_TEI_PORT:-8080}"
 TEI_VOLUME="${KN_TEI_VOLUME:-kn-tei-models}"
+TESTDATA_ROOT="${KN_TESTDATA_ROOT:-$REPO_ROOT/../testdata}"
 
 run_kn() {
   KN_HOME="$KN_HOME" bun run src/cli.ts "$@"
@@ -146,8 +150,13 @@ setup() {
     --runtime "$EMBED_RUNTIME" \
     "${gpu_flag[@]}"
 
-  echo "→ indexing testdata/"
-  run_kn add testdata/ --recursive --vault "$VAULT_NAME"
+  if [[ ! -d "$TESTDATA_ROOT" ]]; then
+    echo "KN_TESTDATA_ROOT does not exist: $TESTDATA_ROOT" >&2
+    exit 1
+  fi
+
+  echo "→ indexing test data from $TESTDATA_ROOT"
+  run_kn add "$TESTDATA_ROOT" --recursive --vault "$VAULT_NAME"
 
   echo
   echo "done. test environment ready:"
@@ -176,7 +185,7 @@ demo() {
   run_kn search "캡디" --mode keyword --top 3
   echo
   echo "=== get: 2026-04-22.md ==="
-  run_kn get testdata/2026-04-22.md
+  run_kn get "$TESTDATA_ROOT/2026-04-22.md"
 }
 
 cmd="${1:-}"

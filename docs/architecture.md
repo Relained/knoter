@@ -2,7 +2,7 @@
 
 ## Goal
 
-`knoter`는 유저의 기존 기록/비즈니스 로직 프로그램을 vault 기반 기록 시스템으로 대체하는 백엔드 CLI다. 프론트엔드는 별도 컨텍스트에서 `../knoter-web`에 React + Electron 형태로 진행한다.
+`knoter`는 유저의 기존 기록/비즈니스 로직 프로그램을 vault 기반 기록 시스템으로 대체하는 CLI와 React/Vite 웹 프론트엔드를 함께 관리하는 모노레포다. CLI는 `cli/`, 프론트엔드는 `web/`, 공유 문서는 루트 `docs/`에 둔다.
 
 현재 백엔드는 LLM으로 prose를 직접 생성하지 않는다. CLI/MCP는 JSON context와 저장/검색 기능을 제공하고, 외부 LLM agent가 template을 사용해 rewritten 문서와 artifact를 작성하거나 기존 artifact를 보강한다.
 

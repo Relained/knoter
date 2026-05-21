@@ -427,7 +427,7 @@ async function resolveEffectiveTemplateForVaultRoot(vaultRoot: string): Promise<
   }
 
   const fallbackTemplatePath = fileURLToPath(
-    new URL("../../docs/template.md", import.meta.url),
+    new URL("../../../docs/template.md", import.meta.url),
   );
   const parsed = await readTemplateFile(fallbackTemplatePath);
   return {

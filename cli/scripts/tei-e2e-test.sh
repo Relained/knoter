@@ -16,4 +16,5 @@ source "$ENV_PATH"
 set +a
 
 cd "$REPO_ROOT"
+export KN_TESTDATA_ROOT="${KN_TESTDATA_ROOT:-$REPO_ROOT/../testdata}"
 exec bun test tests/tei-integration.test.ts

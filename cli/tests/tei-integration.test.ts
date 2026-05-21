@@ -30,6 +30,7 @@ const CODEX_TIMEOUT_MS = process.env.KN_CODEX_TIMEOUT_MS
 const ALL_TESTDATA_TIMEOUT_MS = process.env.KN_TEI_ALL_TESTDATA_TIMEOUT_MS
   ? Number.parseInt(process.env.KN_TEI_ALL_TESTDATA_TIMEOUT_MS, 10)
   : 900_000;
+const TESTDATA_ROOT = process.env.KN_TESTDATA_ROOT || join(process.cwd(), "..", "testdata");
 const VAULT_NAME = "tei-e2e";
 const E2E_DATE = "2026-04-16";
 const E2E_SOURCE_BASENAME = `${E2E_DATE}.md`;
@@ -741,7 +742,7 @@ describe("TEI OpenAI-compatible embedding integration", () => {
       const vaultRoot = join("/tmp", `kn-tei-corpus-${randomUUID()}`);
       const vectorPath = join(vaultRoot, ".kn", "vectors");
       const vaultConfig = buildTeiVaultConfig();
-      const testdataRoot = join(process.cwd(), "testdata");
+      const testdataRoot = TESTDATA_ROOT;
       const testdataFiles = [...new Bun.Glob("**/*.md").scanSync({ cwd: testdataRoot })].sort();
       let collection: ReturnType<typeof createVaultCollection> | null = null;
 
@@ -906,8 +907,8 @@ describe("TEI OpenAI-compatible embedding integration", () => {
     const rewrittenRelPath = E2E_REWRITTEN_REL_PATH;
     const artifactRelPath = E2E_ARTIFACT_REL_PATH;
     const sourceNoteId = E2E_SOURCE_NOTE_ID;
-    const sourceContent = await Bun.file(join(process.cwd(), "testdata", E2E_SOURCE_BASENAME)).text();
-    const templateContent = await Bun.file(join(process.cwd(), "docs", "template.md")).text();
+    const sourceContent = await Bun.file(join(TESTDATA_ROOT, E2E_SOURCE_BASENAME)).text();
+    const templateContent = await Bun.file(join(process.cwd(), "..", "docs", "template.md")).text();
     const vaultConfig = buildTeiVaultConfig();
 
     let collection: ReturnType<typeof createVaultCollection> | null = null;

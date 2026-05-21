@@ -4,7 +4,7 @@ Last updated: 2026-05-08
 
 ## Current State
 
-Backend CLI is the active scope. Frontend work is deferred to a later context in `../knoter-web`.
+CLI and web frontend are now split inside one monorepo: `cli/`, `web/`, and shared root `docs/`.
 
 Implemented backbone:
 
