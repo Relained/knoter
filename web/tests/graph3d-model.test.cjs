@@ -11,10 +11,11 @@ const {
 } = require("../.test-build/graph3d/model.js");
 
 test("graph 3d filters default to template only", () => {
-  assert.deepEqual(graph3dFilterKeys, ["source", "rewritten", "template"]);
+  assert.deepEqual(graph3dFilterKeys, ["source", "rewritten", "artifact", "template"]);
   assert.deepEqual(defaultGraph3DFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(getSelectedGraph3DFilters(defaultGraph3DFilters), ["template"]);
@@ -25,11 +26,13 @@ test("graph 3d filters normalize invalid values with fallback", () => {
     {
       source: true,
       rewritten: "yes",
+      artifact: "no",
       template: null
     },
     {
       source: false,
       rewritten: true,
+      artifact: false,
       template: false
     }
   );
@@ -37,6 +40,7 @@ test("graph 3d filters normalize invalid values with fallback", () => {
   assert.deepEqual(normalized, {
     source: true,
     rewritten: true,
+    artifact: false,
     template: false
   });
 });
@@ -67,6 +71,7 @@ test("graph 3d object state normalization preserves valid labels and repairs fil
   assert.deepEqual(normalized.filters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: true
   });
 });
@@ -84,11 +89,13 @@ test("setGraph3DFilter toggles one filter without mutating the original state", 
   assert.deepEqual(state.filters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(nextState.filters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(getSelectedGraph3DFilters(nextState.filters), ["source", "template"]);

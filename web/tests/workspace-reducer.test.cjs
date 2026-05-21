@@ -225,6 +225,7 @@ test("default workspace state includes template object states", () => {
   assert.deepEqual(initialState.sidebarExplorerFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.equal(initialState.objectStates.Dashboard.kind, "note");
@@ -233,6 +234,7 @@ test("default workspace state includes template object states", () => {
   assert.deepEqual(initialState.objectStates["Graph 3D"].filters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.equal(initialState.objectStates.Tasks.kind, "tasks");
@@ -252,11 +254,13 @@ test("sidebar explorer filter updates are stored in workspace state", () => {
   assert.deepEqual(nextState.sidebarExplorerFilters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(initialState.sidebarExplorerFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
 });
@@ -326,6 +330,7 @@ test("graph 3d object state updates normalize filters", () => {
   assert.deepEqual(nextState.objectStates["Graph 3D"].filters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: true
   });
 });

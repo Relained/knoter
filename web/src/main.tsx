@@ -63,6 +63,7 @@ function App() {
   const [settingsPersistenceWarning, setSettingsPersistenceWarning] = useState(false);
   const [explorerItems, setExplorerItems] = useState<ExplorerItem[]>([]);
   const [explorerLoading, setExplorerLoading] = useState(false);
+  const [explorerRefreshNonce, setExplorerRefreshNonce] = useState(0);
   const globalSettingsChangedRef = useRef(false);
   const {
     menuPosition,
@@ -139,7 +140,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [sidebarExplorerFilters]);
+  }, [sidebarExplorerFilters, explorerRefreshNonce]);
 
   useEffect(() => {
     const constrainWindows = () => {
@@ -477,6 +478,7 @@ function App() {
             objectStates={objectStates}
             onResize={resizeSidebar}
             onChangeExplorerFilter={(layer, checked) => dispatchWorkspace({ type: "setSidebarExplorerFilter", layer, checked })}
+            onRefreshExplorer={() => setExplorerRefreshNonce((value) => value + 1)}
             actions={actions}
           />
         )}

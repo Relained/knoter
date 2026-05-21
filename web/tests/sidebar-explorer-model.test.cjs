@@ -11,10 +11,11 @@ const {
 } = require("../.test-build/sidebar/explorerModel.js");
 
 test("sidebar explorer filters default to template only", () => {
-  assert.deepEqual(sidebarExplorerLayerKeys, ["source", "rewritten", "template"]);
+  assert.deepEqual(sidebarExplorerLayerKeys, ["source", "rewritten", "artifact", "template"]);
   assert.deepEqual(defaultSidebarExplorerFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(getSelectedSidebarExplorerLayers(defaultSidebarExplorerFilters), ["template"]);
@@ -29,27 +30,30 @@ test("sidebar explorer filters normalize invalid stored values", () => {
     {
       source: true,
       rewritten: false,
+      artifact: false,
       template: true
     }
   );
 });
 
-test("sidebar explorer sections show selected spaces in source rewritten template order", () => {
+test("sidebar explorer sections show selected spaces in source rewritten artifact template order", () => {
   const sections = getSidebarExplorerSections(
     {
       source: true,
       rewritten: true,
+      artifact: true,
       template: true
     },
     "",
     () => ""
   );
 
-  assert.deepEqual(sections.map((section) => section.layer), ["source", "rewritten", "template"]);
-  assert.deepEqual(sections.map((section) => section.title), ["Source", "Rewritten", "Template"]);
+  assert.deepEqual(sections.map((section) => section.layer), ["source", "rewritten", "artifact", "template"]);
+  assert.deepEqual(sections.map((section) => section.title), ["Source", "Rewritten", "Artifact", "Template"]);
   assert.equal(sections[0].entries.length, 0);
   assert.equal(sections[1].entries.length, 0);
-  assert.equal(sections[2].entries.some((entry) => entry.key === "Dashboard"), true);
+  assert.equal(sections[2].entries.length, 0);
+  assert.equal(sections[3].entries.some((entry) => entry.key === "Dashboard"), true);
 });
 
 test("sidebar explorer template section is searchable by template note content", () => {
@@ -66,6 +70,7 @@ test("sidebar explorer sections use API explorer items when present", () => {
     {
       source: true,
       rewritten: true,
+      artifact: true,
       template: false
     },
     "meeting",
@@ -90,13 +95,24 @@ test("sidebar explorer sections use API explorer items when present", () => {
         docDate: "2026-05-22",
         updatedAt: null,
         graphNodeId: "rewritten:rewritten/2026-05-22/daily.md"
+      },
+      {
+        id: "artifact:artifacts/2026-05-22/daily.md",
+        layer: "artifact",
+        title: "daily",
+        path: "artifacts/2026-05-22/daily.md",
+        kind: null,
+        docDate: "2026-05-22",
+        updatedAt: null,
+        graphNodeId: "artifact:artifacts/2026-05-22/daily.md"
       }
     ]
   );
 
-  assert.deepEqual(sections.map((section) => section.layer), ["source", "rewritten"]);
+  assert.deepEqual(sections.map((section) => section.layer), ["source", "rewritten", "artifact"]);
   assert.deepEqual(sections[0].entries.map((entry) => entry.title), ["meeting"]);
   assert.deepEqual(sections[1].entries, []);
+  assert.deepEqual(sections[2].entries, []);
 });
 
 test("setSidebarExplorerFilter toggles one space without mutating the original filters", () => {
@@ -105,11 +121,13 @@ test("setSidebarExplorerFilter toggles one space without mutating the original f
   assert.deepEqual(defaultSidebarExplorerFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.deepEqual(nextFilters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: true
   });
 });

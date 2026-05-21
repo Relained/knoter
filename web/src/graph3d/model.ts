@@ -1,16 +1,18 @@
 import type { Graph3DFilterKey, Graph3DFilters, Graph3DObjectState } from "../domain/types";
 
-export const graph3dFilterKeys = ["source", "rewritten", "template"] as const satisfies readonly Graph3DFilterKey[];
+export const graph3dFilterKeys = ["source", "rewritten", "artifact", "template"] as const satisfies readonly Graph3DFilterKey[];
 
 export const defaultGraph3DFilters: Graph3DFilters = {
   source: false,
   rewritten: false,
+  artifact: false,
   template: true
 };
 
 export const graph3dFilterLabels: Record<Graph3DFilterKey, string> = {
   source: "Source",
   rewritten: "Rewritten",
+  artifact: "Artifact",
   template: "Template"
 };
 
@@ -22,6 +24,7 @@ export function normalizeGraph3DFilters(value: unknown, fallback: Graph3DFilters
   return {
     source: typeof source.source === "boolean" ? source.source : fallback.source,
     rewritten: typeof source.rewritten === "boolean" ? source.rewritten : fallback.rewritten,
+    artifact: typeof source.artifact === "boolean" ? source.artifact : fallback.artifact,
     template: typeof source.template === "boolean" ? source.template : fallback.template
   };
 }

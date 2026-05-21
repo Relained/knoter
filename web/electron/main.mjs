@@ -160,6 +160,7 @@ async function loadExplorerItems(activeVault) {
 
   items.push(...await listMarkdownLayer(active.root, "source", "sources"));
   items.push(...await listMarkdownLayer(active.root, "rewritten", "rewritten"));
+  items.push(...await listMarkdownLayer(active.root, "artifact", "artifacts"));
   return items;
 }
 

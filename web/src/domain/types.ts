@@ -6,9 +6,9 @@ export type SystemObjectKey = "Settings" | "Graph 3D" | "Tasks" | "Todo" | "Cale
 export type WorkspaceObjectKey = NoteKey | SystemObjectKey;
 export type WorkspaceObjectKind = "note" | "settings" | "graph3d" | "tasks" | "todo" | "calendar";
 
-export type Graph3DFilterKey = "source" | "rewritten" | "template";
+export type Graph3DFilterKey = "source" | "rewritten" | "artifact" | "template";
 export type Graph3DFilters = Record<Graph3DFilterKey, boolean>;
-export type SidebarExplorerLayerKey = "source" | "rewritten" | "template";
+export type SidebarExplorerLayerKey = "source" | "rewritten" | "artifact" | "template";
 export type SidebarExplorerFilters = Record<SidebarExplorerLayerKey, boolean>;
 
 export type NoteObjectState = {

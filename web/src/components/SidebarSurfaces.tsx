@@ -22,6 +22,7 @@ export type ExplorerSurfaceProps = {
   onChangeFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
   onOpenNote: (noteKey: NoteKey) => void;
   onOpenExplorerItem: (entry: SidebarExplorerEntry) => void;
+  onRefresh: () => void;
   onNewNote: () => void;
 };
 
@@ -36,6 +37,7 @@ export function ExplorerSurface({
   onChangeFilter,
   onOpenNote,
   onOpenExplorerItem,
+  onRefresh,
   onNewNote
 }: ExplorerSurfaceProps) {
   const activeTab = activePane?.tabs.find((tab) => tab.id === activePane.activeTabId);
@@ -83,9 +85,14 @@ export function ExplorerSurface({
       <section className="sidebar-section">
         <header>
           <span>Files</span>
-          <IconButton label="New note" onClick={onNewNote}>
-            <Icon name="document.new" size={15} />
-          </IconButton>
+          <span className="sidebar-header-actions">
+            <IconButton label="Refresh files" onClick={onRefresh}>
+              <Icon name="document.refresh" size={15} />
+            </IconButton>
+            <IconButton label="New note" onClick={onNewNote}>
+              <Icon name="document.new" size={15} />
+            </IconButton>
+          </span>
         </header>
         {explorerSections.map((section) => (
           <div className="sidebar-explorer-section" key={section.layer}>

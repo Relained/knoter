@@ -219,6 +219,7 @@ export function createDefaultWorkspaceState(): WorkspaceState {
     sidebarExplorerFilters: {
       source: false,
       rewritten: false,
+      artifact: false,
       template: true
     },
     panesById,

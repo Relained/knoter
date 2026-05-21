@@ -12,6 +12,7 @@ test("workspace persistence round-trips object states", () => {
     sidebarExplorerFilters: {
       source: true,
       rewritten: true,
+      artifact: false,
       template: false
     },
     objectStates: {
@@ -45,6 +46,7 @@ test("workspace persistence round-trips object states", () => {
   assert.deepEqual(loadedState.sidebarExplorerFilters, {
     source: true,
     rewritten: true,
+    artifact: false,
     template: false
   });
   assert.deepEqual(loadedState.objectStates.Todo.items, [
@@ -55,6 +57,7 @@ test("workspace persistence round-trips object states", () => {
   assert.deepEqual(loadedState.objectStates["Graph 3D"].filters, {
     source: true,
     rewritten: false,
+    artifact: false,
     template: false
   });
   assert.equal(loadedState.objectStates.Tasks.kind, "tasks");
@@ -72,6 +75,7 @@ test("workspace persistence defaults missing sidebar explorer filters to templat
   assert.deepEqual(loadedState.sidebarExplorerFilters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
   assert.equal(sidebarExplorerFilters.template, true);
@@ -99,6 +103,7 @@ test("workspace persistence defaults missing graph 3d filters to template only",
   assert.deepEqual(loadedState.objectStates["Graph 3D"].filters, {
     source: false,
     rewritten: false,
+    artifact: false,
     template: true
   });
 });

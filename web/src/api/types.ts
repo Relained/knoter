@@ -1,4 +1,4 @@
-export type ExplorerLayer = "source" | "rewritten" | "template";
+export type ExplorerLayer = "source" | "rewritten" | "artifact" | "template";
 export type SidebarSurface = "explorer" | "search" | "graph" | "tasks" | "settings";
 
 export type VaultSummary = {
@@ -89,7 +89,7 @@ export type SearchResult = {
   id: string;
   title: string;
   path: string;
-  layer: ExplorerLayer | "artifact";
+  layer: ExplorerLayer;
   score: number;
   snippet: string;
 };

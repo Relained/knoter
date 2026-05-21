@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   PanelTop,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   Square,
@@ -29,6 +30,7 @@ export type IconComponent = LucideIcon;
 export const lucideIconRegistry = {
   "command.search": Search,
   "document.new": FilePlus2,
+  "document.refresh": RefreshCw,
   "layout.split": Columns2,
   "layout.float": Maximize2,
   "layout.move": Move,

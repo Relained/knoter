@@ -2,17 +2,19 @@ import type { NoteKey, SidebarExplorerFilters } from "../domain/types";
 import { isNoteKey, notes } from "../domain/workspace";
 import type { ExplorerItem } from "../api/types";
 
-export const sidebarExplorerLayerKeys = ["source", "rewritten", "template"] as const;
+export const sidebarExplorerLayerKeys = ["source", "rewritten", "artifact", "template"] as const;
 
 export const defaultSidebarExplorerFilters: SidebarExplorerFilters = {
   source: false,
   rewritten: false,
+  artifact: false,
   template: true
 };
 
 export const sidebarExplorerLayerLabels: Record<keyof SidebarExplorerFilters, string> = {
   source: "Source",
   rewritten: "Rewritten",
+  artifact: "Artifact",
   template: "Template"
 };
 
@@ -42,6 +44,7 @@ export function normalizeSidebarExplorerFilters(
   return {
     source: typeof source.source === "boolean" ? source.source : fallback.source,
     rewritten: typeof source.rewritten === "boolean" ? source.rewritten : fallback.rewritten,
+    artifact: typeof source.artifact === "boolean" ? source.artifact : fallback.artifact,
     template: typeof source.template === "boolean" ? source.template : fallback.template
   };
 }

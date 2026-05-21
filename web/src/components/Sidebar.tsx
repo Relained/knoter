@@ -20,6 +20,7 @@ type SidebarProps = {
   objectStates: WorkspaceObjectStates;
   onResize: (width: number) => void;
   onChangeExplorerFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
+  onRefreshExplorer: () => void;
   actions: Pick<WorkspaceCommandActions, "newTab" | "openPalette" | "newFloating" | "splitSmart" | "openObject">;
 };
 
@@ -40,6 +41,7 @@ export function Sidebar({
   objectStates,
   onResize,
   onChangeExplorerFilter,
+  onRefreshExplorer,
   actions
 }: SidebarProps) {
   const [activeSurface, setActiveSurface] = useState<SidebarSurfaceKey>("explorer");
@@ -107,6 +109,7 @@ export function Sidebar({
             onChangeFilter={onChangeExplorerFilter}
             onOpenNote={openNote}
             onOpenExplorerItem={openExplorerItem}
+            onRefresh={onRefreshExplorer}
             onNewNote={actions.newTab}
           />
         )}

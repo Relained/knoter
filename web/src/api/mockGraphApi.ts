@@ -6,7 +6,8 @@ const now = new Date(0).toISOString();
 const explorerItems: ExplorerItem[] = [
   createExplorerItem("template-dashboard", "template", "Dashboard", "templates/dashboard.md"),
   createExplorerItem("template-plan", "template", "Project Plan", "templates/project-plan.md"),
-  createExplorerItem("template-research", "template", "Research Notes", "templates/research-notes.md")
+  createExplorerItem("template-research", "template", "Research Notes", "templates/research-notes.md"),
+  createExplorerItem("artifact-daily", "artifact", "Daily Artifact", "artifacts/2026-05-22/daily.md")
 ];
 
 const graphPayload: GraphPayload = {
