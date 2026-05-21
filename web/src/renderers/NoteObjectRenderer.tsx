@@ -66,30 +66,102 @@ export function NoteObjectRenderer(props: WorkspaceObjectRendererProps) {
 }
 
 function MarkdownPreview({ content, rendererProps }: { content: string; rendererProps: WorkspaceObjectRendererProps }) {
-  const blocks = content.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  const blocks = parseMarkdownBlocks(content);
   return (
     <>
       {blocks.map((block, index) => {
-        const embeddedObjectKey = parseObjectEmbed(block);
+        const embeddedObjectKey = block.kind === "paragraph" ? parseObjectEmbed(block.lines.join("\n")) : null;
         if (embeddedObjectKey) {
           return <EmbeddedObject key={index} objectKey={embeddedObjectKey} rendererProps={rendererProps} />;
         }
-        if (block.startsWith("# ")) return <h1 key={index}>{block.slice(2)}</h1>;
-        if (block.startsWith("## ")) return <h2 key={index}>{block.slice(3)}</h2>;
-        if (block.startsWith("### ")) return <h3 key={index}>{block.slice(4)}</h3>;
-        if (block.startsWith("- ")) {
+        if (block.kind === "heading") {
+          const HeadingTag = `h${block.level}` as const;
+          return <HeadingTag key={index}>{block.text}</HeadingTag>;
+        }
+        if (block.kind === "list") {
           return (
             <ul key={index}>
-              {block.split("\n").map((line, itemIndex) => (
-                <li key={itemIndex}>{line.replace(/^- /, "")}</li>
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderSoftBreakText(item)}</li>
               ))}
             </ul>
           );
         }
-        return <p key={index}>{block}</p>;
+        return <p key={index}>{renderSoftBreakText(block.lines.join("\n"))}</p>;
       })}
     </>
   );
+}
+
+type MarkdownBlock =
+  | { kind: "heading"; level: 1 | 2 | 3; text: string }
+  | { kind: "list"; items: string[] }
+  | { kind: "paragraph"; lines: string[] };
+
+function parseMarkdownBlocks(content: string): MarkdownBlock[] {
+  const blocks: MarkdownBlock[] = [];
+  let paragraph: string[] = [];
+  let listItems: string[] = [];
+
+  function flushParagraph() {
+    if (paragraph.length > 0) {
+      blocks.push({ kind: "paragraph", lines: paragraph });
+      paragraph = [];
+    }
+  }
+
+  function flushList() {
+    if (listItems.length > 0) {
+      blocks.push({ kind: "list", items: listItems });
+      listItems = [];
+    }
+  }
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({
+        kind: "heading",
+        level: heading[1].length as 1 | 2 | 3,
+        text: heading[2]
+      });
+      continue;
+    }
+
+    const listItem = trimmed.match(/^-\s+(.+)$/);
+    if (listItem) {
+      flushParagraph();
+      listItems.push(listItem[1]);
+      continue;
+    }
+
+    flushList();
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+function renderSoftBreakText(text: string) {
+  return text.split("\n").map((line, index) => (
+    <span key={index}>
+      {index > 0 && <br />}
+      {line}
+    </span>
+  ));
 }
 
 function EmbeddedObject({
