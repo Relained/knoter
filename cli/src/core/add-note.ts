@@ -178,11 +178,15 @@ export async function addMarkdownNoteToVault(input: AddMarkdownNoteInput): Promi
         try {
           return openVaultCollection(vectorIndexPath, {});
         } catch {
-          return createVaultCollection(
-            vectorIndexPath,
-            "vault",
-            input.vaultConfig?.embedding.model || "nomic-embed-text",
-          );
+          try {
+            return createVaultCollection(
+              vectorIndexPath,
+              "vault",
+              input.vaultConfig?.embedding.model || "nomic-embed-text",
+            );
+          } catch {
+            return openVaultCollection(vectorIndexPath, {});
+          }
         }
       })();
 

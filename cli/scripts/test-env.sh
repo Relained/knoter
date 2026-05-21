@@ -2,13 +2,14 @@
 # Test environment bootstrapper for kn CLI.
 #
 # Creates an isolated vault rooted at .test-vault/ with a private global config
-# at .test-kn-home/, then indexes KN_TESTDATA_ROOT so you can immediately run
-# searches without mixing local/private fixtures into the project tree.
+# at .test-kn-home/, indexes KN_TESTDATA_ROOT, then installs deterministic
+# rewritten/artifact agent fixtures so web dev can exercise the full document
+# layering path without running an external LLM agent.
 #
 # Usage:
 #   scripts/test-env.sh tei-start   # run local text-embeddings-router in foreground
-#   scripts/test-env.sh setup       # create vault + index KN_TESTDATA_ROOT
-#   scripts/test-env.sh ensure      # create if needed, then index KN_TESTDATA_ROOT
+#   scripts/test-env.sh setup       # create vault + index KN_TESTDATA_ROOT + fixtures
+#   scripts/test-env.sh ensure      # create if needed, then index KN_TESTDATA_ROOT + fixtures
 #   scripts/test-env.sh teardown    # remove vault and private KN_HOME
 #   scripts/test-env.sh kn ...      # run kn with the test environment
 #   scripts/test-env.sh demo        # run a few sample queries
@@ -45,6 +46,11 @@ TESTDATA_ROOT="${KN_TESTDATA_ROOT:-$REPO_ROOT/../testdata}"
 
 run_kn() {
   KN_HOME="$KN_HOME" bun run src/cli.ts "$@"
+}
+
+install_agent_fixtures() {
+  echo "→ installing deterministic rewritten/artifact fixtures"
+  KN_HOME="$KN_HOME" bun run scripts/agent-fixtures.ts --vault "$VAULT_NAME"
 }
 
 tei_start() {
@@ -85,6 +91,7 @@ setup() {
 
   echo "→ indexing test data from $TESTDATA_ROOT"
   run_kn add "$TESTDATA_ROOT" --recursive --vault "$VAULT_NAME"
+  install_agent_fixtures
 
   echo
   echo "done. test environment ready:"
@@ -123,6 +130,7 @@ ensure() {
 
   echo "→ indexing test data from $TESTDATA_ROOT"
   run_kn add "$TESTDATA_ROOT" --recursive --vault "$VAULT_NAME"
+  install_agent_fixtures
 }
 
 teardown() {

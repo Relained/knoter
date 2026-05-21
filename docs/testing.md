@@ -92,8 +92,13 @@ scripts/test-env.sh teardown
 ```
 
 `scripts/test-env.sh ensure` is the idempotent development path. It creates or
-selects the `testvault` vault under `cli/.test-vault`, then runs
-`kn add "$KN_TESTDATA_ROOT" --recursive --vault testvault`.
+selects the `testvault` vault under `cli/.test-vault`, runs
+`kn add "$KN_TESTDATA_ROOT" --recursive --vault testvault`, then installs
+deterministic rewritten/artifact fixtures from the indexed source notes. The
+fixture step copies `docs/template.md` into `.kn/template.md`, writes
+agent-style rewritten notes with source lineage, and creates durable artifacts
+for diet, workout, task, study, reflection, project, progress, and idea
+scenarios.
 
 For macOS Metal acceleration, run local TEI in one terminal:
 
@@ -149,7 +154,8 @@ npm run test:e2e
 ```
 
 `npm run dev` first attempts `cli/scripts/test-env.sh ensure` and passes the
-test `KN_HOME` to Electron so the web IPC bridge can load the test vault. Set
+test `KN_HOME` to Electron so the web IPC bridge can load the test vault,
+including source, rewritten, and artifact layers. Set
 `KNOTER_DEV_TEST_VAULT=0` to skip this bootstrap, or
 `KNOTER_DEV_TEST_VAULT=1` to make bootstrap failure stop dev startup.
 
