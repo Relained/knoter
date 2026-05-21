@@ -1,12 +1,14 @@
 # knoter docs
 
-이 디렉토리의 active 문서는 다음 3개만 우선 읽는다.
+이 디렉토리의 active 문서는 다음 항목을 우선 읽는다.
 
 | 문서 | 역할 |
 | --- | --- |
 | `docs/architecture.md` | 현재 유효한 구조/정책의 source of truth |
+| `docs/codebase.md` | 전체 코드베이스 읽기용 진입점 |
 | `docs/plan.md` | 다음 작업 순서와 완료 기준 |
-| `docs/template.md` | vault fallback 일일 보고서 템플릿 |
+| `docs/template.md` | vault fallback artifact workflow 템플릿 |
+| `docs/testing.md` | 테스트 실행과 `.env` 환경 변수 정리 |
 
 ## Archive
 

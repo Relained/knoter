@@ -286,13 +286,17 @@ function addCheck(
 }
 
 function hasMarkdownHeading(content: string): boolean {
-  return /^#{1,6}\s+.+$/m.test(content);
+  return /^#{1,6}\s+.+$/m.test(stripFencedCodeBlocks(content));
 }
 
 function extractHeadings(content: string): string[] {
-  return Array.from(content.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm))
+  return Array.from(stripFencedCodeBlocks(content).matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm))
     .map((match) => match[1]?.trim())
     .filter((heading): heading is string => Boolean(heading));
+}
+
+function stripFencedCodeBlocks(content: string): string {
+  return content.replace(/^(```|~~~).*?\n[\s\S]*?^\1\s*$/gm, "");
 }
 
 function normalizeHeading(value: string): string {

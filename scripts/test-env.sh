@@ -29,6 +29,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+ENV_PATH="${KN_ENV_FILE:-$REPO_ROOT/.env}"
+if [[ -f "$ENV_PATH" ]]; then
+  set -a
+  source "$ENV_PATH"
+  set +a
+fi
+
 export KN_HOME="$REPO_ROOT/.test-kn-home"
 VAULT_PATH="$REPO_ROOT/.test-vault"
 VAULT_NAME="testvault"

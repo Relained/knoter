@@ -35,7 +35,7 @@ Implemented backbone:
 ## P0 Next Work
 
 1. Document/code structure cleanup
-   - Active docs: `docs/README.md`, `docs/architecture.md`, `docs/plan.md`, `docs/template.md`.
+   - Active docs: `docs/README.md`, `docs/architecture.md`, `docs/codebase.md`, `docs/plan.md`, `docs/template.md`, `docs/testing.md`.
    - Legacy docs move under `docs/archive/`.
    - Report context internals split into small modules.
 
@@ -76,23 +76,4 @@ bun test
 git diff --check
 ```
 
-Local TEI integration test:
-
-```bash
-KN_TEI_BASE_URL=http://127.0.0.1:8080 \
-KN_TEI_MODEL=<model-id> \
-KN_TEI_DIM=<embedding-dimension> \
-bun test tests/tei-integration.test.ts
-```
-
-`KN_TEI_API_KEY` can be set if the OpenAI-compatible endpoint requires a bearer token.
-
-This integration test reads `testdata/2026-04-16.md`, builds a Codex rewrite
-prompt for source -> rewritten -> artifact output, stores rewritten/artifact
-Markdown under date-scoped layer directories, inserts real TEI embeddings into
-zvec, and checks Korean keyword plus semantic search. Set `KN_CODEX_CLI_E2E=1`
-to call the real Codex CLI agent during the test.
-
-Known caveat:
-
-- Avoid running `bun test tests/korean.test.ts` concurrently with full `bun test`; they share fixture paths and can false-fail under concurrent zvec/SQLite access.
+Detailed test and environment instructions live in `docs/testing.md`.

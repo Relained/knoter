@@ -4,7 +4,7 @@
 
 `knoter`는 유저의 기존 기록/비즈니스 로직 프로그램을 vault 기반 기록 시스템으로 대체하는 백엔드 CLI다. 프론트엔드는 별도 컨텍스트에서 `../knoter-web`에 React + Electron 형태로 진행한다.
 
-현재 백엔드는 LLM으로 prose를 직접 생성하지 않는다. CLI/MCP는 JSON context와 저장/검색 기능을 제공하고, 외부 LLM agent가 template을 사용해 rewritten 문서와 artifact를 작성한다.
+현재 백엔드는 LLM으로 prose를 직접 생성하지 않는다. CLI/MCP는 JSON context와 저장/검색 기능을 제공하고, 외부 LLM agent가 template을 사용해 rewritten 문서와 artifact를 작성하거나 기존 artifact를 보강한다.
 
 ## Document Layers
 
@@ -19,6 +19,7 @@
 - `source`는 metadata/lineage만 저장한다.
 - `rewritten` 생성은 항상 외부 LLM agent가 수행한다. `knoter`는 저장과 검증만 한다.
 - `artifact`는 인덱싱하지만 기본 검색에서 제외한다. `--include-artifacts`가 있을 때만 검색/continuity에 포함한다.
+- 최종 산출물은 단일 daily report로 고정하지 않는다. 하나의 context에서 daily report, task list, workout log, morning brief, personal wiki, area note 등 여러 artifact가 생성될 수 있고, 기존 artifact의 연장선으로 업데이트될 수 있다.
 - `kind`는 자동 추론하지 않는다. frontmatter 또는 외부 agent가 명시한 raw string만 저장한다.
 - task/workout/area/metric 추출은 rewritten 단계의 외부 agent가 판단하고 `note_signals`에 저장한다.
 
@@ -56,7 +57,7 @@ Deferred/legacy:
 
 ## Report Context
 
-`kn report context --date YYYY-MM-DD`는 외부 agent용 JSON bundle만 만든다.
+`kn report context --date YYYY-MM-DD`는 외부 agent용 JSON bundle만 만든다. Agent는 이 bundle을 시작점으로 삼고, 최종 artifact 계획을 세우기 전에 `kn search`, `kn get`, MCP retrieval 등으로 관련 DB 지식을 추가 탐색해야 한다.
 
 포함 항목:
 

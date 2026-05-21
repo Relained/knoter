@@ -78,7 +78,7 @@ describe("template command behavior", () => {
       expect.objectContaining({
         source: "fallback",
         path: expect.stringContaining("docs/template.md"),
-        content: expect.stringContaining("# knoter Daily Report Template"),
+        content: expect.stringContaining("# knoter Artifact Workflow Template"),
       })
     );
   });
