@@ -40,6 +40,33 @@ explicitly approves a different direction.
 - Never claim verification that was not actually run. If a command cannot run,
   document the reason.
 
+## Git Management
+
+- Keep `dev` as the shared integration base for agent-facing repository
+  guidance and cross-package planning docs.
+- Use package-scoped feature branches for implementation work:
+  - Web work: `web/<feature>`
+  - CLI work: `cli/<feature>`
+  - Cross-package integration work: `integration/<feature>`
+- Do not use branch names under `dev/...` when a local or remote `dev` branch
+  exists. Git refs cannot cleanly contain both `dev` and `dev/<name>` at the
+  same time.
+- Branch package work from `dev` unless the user explicitly approves a
+  different base.
+- Keep CLI and web implementation commits on separate package branches until an
+  integration branch is explicitly needed.
+- Commit related changes in small, reviewable units after appropriate
+  verification. Documentation-only commits usually need a read-through and
+  `git diff --check`.
+- Before committing, check the active branch and working tree with
+  `git branch --show-current` and `git status --short --branch`.
+- Never rewrite, reset, or discard user changes unless the user explicitly asks
+  for that operation. If unrelated local changes are present, leave them alone.
+- Do not push or delete remote branches unless the user explicitly asks.
+- When branch history needs cleanup, prefer local branch correction first:
+  create the correct branch from the intended base, cherry-pick or reapply only
+  the required commits, verify, and ask before any destructive remote action.
+
 ## Verification Routing
 
 For web-affecting changes, use the baseline in `web/agents.md` and shared
