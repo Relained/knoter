@@ -222,13 +222,43 @@ test("opening template objects creates floating workspace objects", () => {
 test("default workspace state includes template object states", () => {
   const initialState = createDefaultWorkspaceState();
 
+  assert.deepEqual(initialState.sidebarExplorerFilters, {
+    source: false,
+    rewritten: false,
+    template: true
+  });
   assert.equal(initialState.objectStates.Dashboard.kind, "note");
   assert.equal(initialState.objectStates.Dashboard.content.includes("# Dashboard"), true);
   assert.equal(initialState.objectStates["Graph 3D"].kind, "graph3d");
+  assert.deepEqual(initialState.objectStates["Graph 3D"].filters, {
+    source: false,
+    rewritten: false,
+    template: true
+  });
   assert.equal(initialState.objectStates.Tasks.kind, "tasks");
   assert.equal(initialState.objectStates.Todo.kind, "todo");
   assert.equal(initialState.objectStates.Calendar.kind, "calendar");
   assert.equal(initialState.objectStates.Settings, undefined);
+});
+
+test("sidebar explorer filter updates are stored in workspace state", () => {
+  const initialState = createDefaultWorkspaceState();
+  const nextState = workspaceReducer(initialState, {
+    type: "setSidebarExplorerFilter",
+    layer: "source",
+    checked: true
+  });
+
+  assert.deepEqual(nextState.sidebarExplorerFilters, {
+    source: true,
+    rewritten: false,
+    template: true
+  });
+  assert.deepEqual(initialState.sidebarExplorerFilters, {
+    source: false,
+    rewritten: false,
+    template: true
+  });
 });
 
 test("opening a template object restores its missing object state", () => {
@@ -273,6 +303,31 @@ test("object state updates reject mismatched object kinds", () => {
   });
 
   assert.equal(nextState, initialState);
+});
+
+test("graph 3d object state updates normalize filters", () => {
+  const initialState = createDefaultWorkspaceState();
+  const nextState = workspaceReducer(initialState, {
+    type: "setObjectState",
+    objectKey: "Graph 3D",
+    state: {
+      kind: "graph3d",
+      nodes: [],
+      links: ["Custom -> Link"],
+      filters: {
+        source: true,
+        rewritten: "invalid"
+      }
+    }
+  });
+
+  assert.deepEqual(nextState.objectStates["Graph 3D"].nodes, initialState.objectStates["Graph 3D"].nodes);
+  assert.deepEqual(nextState.objectStates["Graph 3D"].links, ["Custom -> Link"]);
+  assert.deepEqual(nextState.objectStates["Graph 3D"].filters, {
+    source: true,
+    rewritten: false,
+    template: true
+  });
 });
 
 test("opening an object in a pane adds it as a tab and keeps shared object state", () => {

@@ -12,6 +12,7 @@ import type {
   WorkspaceObjectStates,
   WorkspaceState
 } from "./types";
+import { defaultGraph3DFilters } from "../graph3d/model";
 
 export const toolbarPositions = ["top", "right", "bottom", "left"] as const;
 export const menuPositions = ["top", "right", "bottom", "left"] as const;
@@ -155,7 +156,8 @@ export function createDefaultObjectState(objectKey: WorkspaceObjectKey): Workspa
       return {
         kind,
         nodes: ["Notes", "Tasks", "Events"],
-        links: ["Notes -> Tasks", "Tasks -> Events", "Events -> Notes"]
+        links: ["Notes -> Tasks", "Tasks -> Events", "Events -> Notes"],
+        filters: { ...defaultGraph3DFilters }
       };
     case "tasks":
       return {
@@ -213,6 +215,11 @@ export function createDefaultWorkspaceState(): WorkspaceState {
 
   return {
     menuPosition: "top",
+    sidebarExplorerFilters: {
+      source: false,
+      rewritten: false,
+      template: true
+    },
     panesById,
     layoutTree: createLeafNode(pane.id),
     objectStates: createDefaultObjectStates(),

@@ -3,6 +3,7 @@ import type {
   FloatingWindowModel,
   Pane,
   SplitDirection,
+  SidebarExplorerLayerKey,
   WorkspaceObjectKey,
   WorkspaceObjectState,
   WorkspaceState
@@ -21,10 +22,13 @@ import {
   splitLayoutNode,
   toolbarPositions
 } from "../domain/workspace";
+import { normalizeGraph3DObjectState } from "../graph3d/model";
+import { setSidebarExplorerFilter } from "../sidebar/explorerModel";
 import { constrainFloatingWindow } from "../utils/geometry";
 
 export type WorkspaceAction =
   | { type: "setMenuPosition"; position: EdgePosition }
+  | { type: "setSidebarExplorerFilter"; layer: SidebarExplorerLayerKey; checked: boolean }
   | { type: "cycleMenuPosition" }
   | { type: "ensureActivePane" }
   | { type: "activatePane"; paneId: string }
@@ -62,6 +66,11 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
   switch (action.type) {
     case "setMenuPosition":
       return menuPositions.includes(action.position) ? { ...state, menuPosition: action.position } : state;
+    case "setSidebarExplorerFilter":
+      return {
+        ...state,
+        sidebarExplorerFilters: setSidebarExplorerFilter(state.sidebarExplorerFilters, action.layer, action.checked)
+      };
     case "cycleMenuPosition":
       return { ...state, menuPosition: nextPosition(menuPositions, state.menuPosition) };
     case "ensureActivePane":
@@ -429,14 +438,24 @@ function setObjectState(
   if (!isWorkspaceObjectKey(objectKey)) return state;
   const defaultState = createDefaultObjectState(objectKey);
   if (!defaultState || defaultState.kind !== objectState.kind) return state;
+  const nextObjectState =
+    objectState.kind === "graph3d" && defaultState.kind === "graph3d"
+      ? normalizeGraph3DObjectState(objectState, defaultState, normalizeStringList)
+      : objectState;
 
   return {
     ...state,
     objectStates: {
       ...state.objectStates,
-      [objectKey]: objectState
+      [objectKey]: nextObjectState
     }
   };
+}
+
+function normalizeStringList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const strings = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  return strings.length > 0 ? strings : fallback;
 }
 
 function createPaneFromTab(sourcePane: Pane, tab: Pane["tabs"][number]): Pane {

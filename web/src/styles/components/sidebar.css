@@ -2,8 +2,8 @@
   grid-area: sidebar;
   min-width: 0;
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
   overflow: hidden;
   border-right: 1px solid var(--border-subtle);
   background: var(--surface-panel);
@@ -35,6 +35,32 @@
   background: var(--accent-primary);
 }
 
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-panel-raised);
+}
+
+.sidebar-rail-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-rail-button.is-active {
+  color: var(--text-primary);
+  background: var(--accent-selected);
+}
+
 .sidebar-content {
   min-height: 0;
   overflow: auto;
@@ -52,6 +78,52 @@
   border-radius: 6px;
   color: var(--text-primary);
   background: var(--surface-panel-raised);
+}
+
+.sidebar-inline-input {
+  width: 100%;
+  min-height: 30px;
+  margin-bottom: 8px;
+  padding: 0 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--surface-panel-raised);
+}
+
+.sidebar-space-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 4px;
+}
+
+.sidebar-space-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--surface-panel-raised);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sidebar-space-option:has(input:checked) {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+  background: var(--accent-selected);
+}
+
+.sidebar-space-option input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent-primary);
 }
 
 .sidebar-section {
@@ -83,4 +155,32 @@
 .nav-item.is-active {
   color: var(--text-primary);
   background: var(--accent-selected);
+}
+
+.sidebar-explorer-section + .sidebar-explorer-section {
+  margin-top: 10px;
+}
+
+.sidebar-explorer-heading,
+.sidebar-empty-row {
+  min-height: 24px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.sidebar-explorer-heading {
+  font-weight: 700;
+}
+
+.sidebar-empty-row {
+  opacity: 0.72;
+}
+
+.sidebar-placeholder-surface p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }

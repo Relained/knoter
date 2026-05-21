@@ -31,6 +31,8 @@ import type {
   WorkspaceObjectStates,
   WorkspaceState
 } from "../domain/types";
+import { normalizeGraph3DObjectState } from "../graph3d/model";
+import { normalizeSidebarExplorerFilters } from "../sidebar/explorerModel";
 import { clampNumber, constrainFloatingWindow } from "../utils/geometry";
 
 const workspaceStorageVersion = 1;
@@ -91,6 +93,7 @@ function normalizeWorkspaceState(savedState: any): WorkspaceState {
 
   return {
     menuPosition: menuPositions.includes(savedState.menuPosition) ? savedState.menuPosition as EdgePosition : "top",
+    sidebarExplorerFilters: normalizeSidebarExplorerFilters(savedState.sidebarExplorerFilters),
     panesById: normalizedPanesById,
     layoutTree,
     objectStates: normalizeObjectStates(savedState.objectStates),
@@ -128,11 +131,7 @@ function normalizeObjectState(objectKey: WorkspaceObjectKey, savedState: any): W
         mode: normalizeNoteMode(savedState.mode, defaultState.mode)
       };
     case "graph3d":
-      return {
-        kind: "graph3d",
-        nodes: normalizeStringList(savedState.nodes, defaultState.nodes),
-        links: normalizeStringList(savedState.links, defaultState.links)
-      };
+      return normalizeGraph3DObjectState(savedState, defaultState, normalizeStringList);
     case "tasks":
       return {
         kind: "tasks",

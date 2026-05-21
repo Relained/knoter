@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
-import type { WorkspaceObjectKind, WorkspaceObjectState } from "../domain/types";
+import type { Graph3DFilterKey, WorkspaceObjectKind, WorkspaceObjectState } from "../domain/types";
+import { getSelectedGraph3DFilters, graph3dFilterLabels, normalizeGraph3DFilters } from "../graph3d/model";
 
 type ObjectTemplateRendererProps = {
   kind: Exclude<WorkspaceObjectKind, "note" | "settings">;
@@ -82,11 +83,7 @@ function getObjectLabels(
 
   switch (objectState.kind) {
     case "graph3d":
-      return {
-        ...template,
-        primary: objectState.nodes,
-        secondary: objectState.links
-      };
+      return getGraph3DLabels(objectState, template);
     case "tasks":
       return {
         ...template,
@@ -109,4 +106,31 @@ function getObjectLabels(
         secondary: objectState.events.map((event) => event.date)
       };
   }
+}
+
+function getGraph3DLabels(
+  objectState: Extract<WorkspaceObjectState, { kind: "graph3d" }>,
+  template: { primary: string[]; secondary: string[] }
+) {
+  const selectedFilters = getSelectedGraph3DFilters(normalizeGraph3DFilters(objectState.filters));
+  if (selectedFilters.length === 0) {
+    return {
+      ...template,
+      primary: ["No filters selected"],
+      secondary: ["Source, rewritten, and template are hidden"]
+    };
+  }
+
+  return {
+    ...template,
+    primary: selectedFilters.map((filterKey) => graph3dFilterLabels[filterKey]),
+    secondary: selectedFilters.flatMap((filterKey) => createGraph3DLayerLabels(filterKey, objectState))
+  };
+}
+
+function createGraph3DLayerLabels(filterKey: Graph3DFilterKey, objectState: Extract<WorkspaceObjectState, { kind: "graph3d" }>) {
+  const prefix = graph3dFilterLabels[filterKey];
+  const node = objectState.nodes[0] ?? "Nodes";
+  const link = objectState.links[0] ?? "Links";
+  return [`${prefix}: ${node}`, `${prefix}: ${link}`];
 }

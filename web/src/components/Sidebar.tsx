@@ -1,17 +1,20 @@
 import { useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
-import type { NoteKey, Pane, WorkspaceObjectKey, WorkspaceObjectStates } from "../domain/types";
-import { isNoteKey, notes, workspaceObjects } from "../domain/workspace";
-import { Icon } from "../icons/Icon";
-import { IconButton } from "./IconButton";
+import type { NoteKey, Pane, SidebarExplorerLayerKey, SidebarExplorerFilters, WorkspaceObjectKey, WorkspaceObjectStates } from "../domain/types";
+import { workspaceObjects } from "../domain/workspace";
 import type { WorkspaceCommandActions } from "../commands/workspaceCommands";
 import { sidebarWidthBounds } from "../settings/preferences";
+import type { SidebarSurfaceKey } from "../sidebar/types";
+import { sidebarSurfaceKeys, sidebarSurfaceLabels } from "../sidebar/types";
+import { ExplorerSurface, PlaceholderSurface } from "./SidebarSurfaces";
 
 type SidebarProps = {
   activePane?: Pane;
   openNote: (noteKey: NoteKey) => void;
+  explorerFilters: SidebarExplorerFilters;
   objectStates: WorkspaceObjectStates;
   onResize: (width: number) => void;
+  onChangeExplorerFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
   actions: Pick<WorkspaceCommandActions, "newTab" | "openPalette" | "newFloating" | "splitSmart" | "openObject">;
 };
 
@@ -22,24 +25,26 @@ type ResizeState = {
 
 const sidebarViewKeys = ["Tasks", "Todo", "Calendar", "Graph 3D"] as const satisfies readonly WorkspaceObjectKey[];
 
-export function Sidebar({ activePane, openNote, objectStates, onResize, actions }: SidebarProps) {
-  const [query, setQuery] = useState("");
-  const activeTab = activePane?.tabs.find((tab) => tab.id === activePane.activeTabId);
+export function Sidebar({
+  activePane,
+  openNote,
+  explorerFilters,
+  objectStates,
+  onResize,
+  onChangeExplorerFilter,
+  actions
+}: SidebarProps) {
+  const [activeSurface, setActiveSurface] = useState<SidebarSurfaceKey>("explorer");
+  const [explorerQuery, setExplorerQuery] = useState("");
+  const [viewQuery, setViewQuery] = useState("");
   const resizeRef = useRef<ResizeState | null>(null);
-  const normalizedQuery = query.trim().toLowerCase();
-  const noteKeys = useMemo(
-    () =>
-      Object.keys(notes)
-        .filter(isNoteKey)
-        .filter((noteKey) => matchesSidebarQuery(normalizedQuery, getNoteSearchText(noteKey, objectStates))),
-    [normalizedQuery, objectStates]
-  );
+  const normalizedViewQuery = viewQuery.trim().toLowerCase();
   const viewKeys = useMemo(
     () =>
       sidebarViewKeys.filter((objectKey) =>
-        matchesSidebarQuery(normalizedQuery, `${workspaceObjects[objectKey].title} ${workspaceObjects[objectKey].kind}`)
+        matchesSidebarQuery(normalizedViewQuery, `${workspaceObjects[objectKey].title} ${workspaceObjects[objectKey].kind}`)
       ),
-    [normalizedQuery]
+    [normalizedViewQuery]
   );
 
   function startResize(event: PointerEvent<HTMLSpanElement>) {
@@ -67,55 +72,88 @@ export function Sidebar({ activePane, openNote, objectStates, onResize, actions 
 
   return (
     <aside className="workspace-sidebar" aria-label="Workspace sidebar">
-      <div className="sidebar-content">
-        <section className="sidebar-search-section" aria-label="Sidebar search">
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder="Search workspace"
-            aria-label="Search workspace"
+      <nav className="sidebar-rail" aria-label="Sidebar surfaces">
+        {sidebarSurfaceKeys.map((surface) => (
+          <button
+            key={surface}
+            className={`sidebar-rail-button ${activeSurface === surface ? "is-active" : ""}`}
+            type="button"
+            onClick={() => setActiveSurface(surface)}
+            aria-label={sidebarSurfaceLabels[surface]}
+            title={sidebarSurfaceLabels[surface]}
+          >
+            {sidebarSurfaceLabels[surface].slice(0, 1)}
+          </button>
+        ))}
+      </nav>
+      <div className="sidebar-content" data-sidebar-surface={activeSurface}>
+        {activeSurface === "explorer" && (
+          <ExplorerSurface
+            activePane={activePane}
+            filters={explorerFilters}
+            query={explorerQuery}
+            objectStates={objectStates}
+            onQueryChange={setExplorerQuery}
+            onChangeFilter={onChangeExplorerFilter}
+            onOpenNote={openNote}
+            onNewNote={actions.newTab}
           />
-        </section>
-
-        <section className="sidebar-section">
-          <header>
-            <span>Vault</span>
-            <IconButton label="New note" onClick={actions.newTab}>
-              <Icon name="document.new" size={15} />
-            </IconButton>
-          </header>
-          {noteKeys.map((noteKey) => (
-            <button
-              key={noteKey}
-              className={`nav-item ${activeTab?.noteKey === noteKey ? "is-active" : ""}`}
-              type="button"
-              onClick={() => openNote(noteKey)}
-            >
-              {noteKey}
+        )}
+        {activeSurface === "search" && (
+          <section className="sidebar-section">
+            <header>
+              <span>Search</span>
+            </header>
+            <input
+              className="sidebar-inline-input"
+              type="search"
+              value={viewQuery}
+              onChange={(event) => setViewQuery(event.currentTarget.value)}
+              placeholder="Search workspace"
+              aria-label="Search workspace"
+            />
+            <button className="nav-item" type="button" onClick={actions.openPalette}>
+              Command Palette
             </button>
-          ))}
-        </section>
-
-        <section className="sidebar-section">
-          <header>
-            <span>Views</span>
-          </header>
-          <button className="nav-item" type="button" onClick={actions.openPalette}>
-            Command Palette
-          </button>
-          {viewKeys.map((objectKey) => (
-            <button className="nav-item" type="button" onClick={() => actions.openObject(objectKey)} key={objectKey}>
-              {workspaceObjects[objectKey].title}
+            {viewKeys.map((objectKey) => (
+              <button className="nav-item" type="button" onClick={() => actions.openObject(objectKey)} key={objectKey}>
+                {workspaceObjects[objectKey].title}
+              </button>
+            ))}
+          </section>
+        )}
+        {activeSurface === "graph" && (
+          <PlaceholderSurface title="Graph" description="Graph controls are wired to the API contract before renderer work resumes." />
+        )}
+        {activeSurface === "tasks" && (
+          <section className="sidebar-section">
+            <header>
+              <span>Tasks</span>
+            </header>
+            <button className="nav-item" type="button" onClick={() => actions.openObject("Tasks")}>
+              Tasks
             </button>
-          ))}
-          <button className="nav-item" type="button" onClick={() => actions.newFloating("Dashboard")}>
-            Floating Window
-          </button>
-          <button className="nav-item" type="button" onClick={actions.splitSmart}>
-            Split Pane
-          </button>
-        </section>
+            <button className="nav-item" type="button" onClick={() => actions.openObject("Todo")}>
+              Todo
+            </button>
+            <button className="nav-item" type="button" onClick={() => actions.openObject("Calendar")}>
+              Calendar
+            </button>
+          </section>
+        )}
+        {activeSurface === "settings" && (
+          <section className="sidebar-section">
+            <header>
+              <span>Workspace</span>
+            </header>
+            <button className="nav-item" type="button" onClick={() => actions.newFloating("Dashboard")}>
+              Floating Window
+            </button>
+            <button className="nav-item" type="button" onClick={actions.splitSmart}>
+              Split Pane
+            </button>
+          </section>
+        )}
       </div>
       <span
         className="sidebar-resize-handle"
@@ -135,11 +173,4 @@ function clampSidebarWidth(width: number) {
 
 function matchesSidebarQuery(query: string, searchText: string) {
   return !query || searchText.toLowerCase().includes(query);
-}
-
-function getNoteSearchText(noteKey: NoteKey, objectStates: WorkspaceObjectStates) {
-  const note = notes[noteKey];
-  const objectState = objectStates[noteKey];
-  const content = objectState?.kind === "note" ? objectState.content : "";
-  return `${note.title} ${note.summary} ${note.cards.flat().join(" ")} ${content}`;
 }

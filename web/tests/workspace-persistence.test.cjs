@@ -9,6 +9,11 @@ test("workspace persistence round-trips object states", () => {
   const initialState = createDefaultWorkspaceState();
   const savedState = {
     ...initialState,
+    sidebarExplorerFilters: {
+      source: true,
+      rewritten: true,
+      template: false
+    },
     objectStates: {
       ...initialState.objectStates,
       Dashboard: {
@@ -19,6 +24,16 @@ test("workspace persistence round-trips object states", () => {
       Todo: {
         kind: "todo",
         items: [{ id: "persisted", text: "Persist object state", done: true }]
+      },
+      "Graph 3D": {
+        kind: "graph3d",
+        nodes: ["Persisted"],
+        links: ["Persisted -> Template"],
+        filters: {
+          source: true,
+          rewritten: false,
+          template: false
+        }
       }
     }
   };
@@ -27,12 +42,65 @@ test("workspace persistence round-trips object states", () => {
 
   const loadedState = loadWorkspaceState();
 
+  assert.deepEqual(loadedState.sidebarExplorerFilters, {
+    source: true,
+    rewritten: true,
+    template: false
+  });
   assert.deepEqual(loadedState.objectStates.Todo.items, [
     { id: "persisted", text: "Persist object state", done: true }
   ]);
   assert.equal(loadedState.objectStates.Dashboard.mode, "preview");
   assert.equal(loadedState.objectStates.Dashboard.content.includes("[[object:Todo]]"), true);
+  assert.deepEqual(loadedState.objectStates["Graph 3D"].filters, {
+    source: true,
+    rewritten: false,
+    template: false
+  });
   assert.equal(loadedState.objectStates.Tasks.kind, "tasks");
+});
+
+test("workspace persistence defaults missing sidebar explorer filters to template only", () => {
+  installBrowserStorage("?workspace=sidebar-explorer-filter-normalization");
+  const initialState = createDefaultWorkspaceState();
+  const { sidebarExplorerFilters, ...legacyState } = initialState;
+
+  assert.equal(saveWorkspaceState(legacyState), true);
+
+  const loadedState = loadWorkspaceState();
+
+  assert.deepEqual(loadedState.sidebarExplorerFilters, {
+    source: false,
+    rewritten: false,
+    template: true
+  });
+  assert.equal(sidebarExplorerFilters.template, true);
+});
+
+test("workspace persistence defaults missing graph 3d filters to template only", () => {
+  installBrowserStorage("?workspace=graph-filter-normalization");
+  const initialState = createDefaultWorkspaceState();
+  const savedState = {
+    ...initialState,
+    objectStates: {
+      ...initialState.objectStates,
+      "Graph 3D": {
+        kind: "graph3d",
+        nodes: ["Legacy"],
+        links: ["Legacy -> Graph"]
+      }
+    }
+  };
+
+  assert.equal(saveWorkspaceState(savedState), true);
+
+  const loadedState = loadWorkspaceState();
+
+  assert.deepEqual(loadedState.objectStates["Graph 3D"].filters, {
+    source: false,
+    rewritten: false,
+    template: true
+  });
 });
 
 function installBrowserStorage(search) {

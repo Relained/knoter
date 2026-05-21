@@ -61,6 +61,7 @@ function App() {
   const globalSettingsChangedRef = useRef(false);
   const {
     menuPosition,
+    sidebarExplorerFilters,
     panesById,
     layoutTree,
     objectStates,
@@ -404,8 +405,10 @@ function App() {
           <Sidebar
             activePane={activePane}
             openNote={actions.openNote}
+            explorerFilters={sidebarExplorerFilters}
             objectStates={objectStates}
             onResize={resizeSidebar}
+            onChangeExplorerFilter={(layer, checked) => dispatchWorkspace({ type: "setSidebarExplorerFilter", layer, checked })}
             actions={actions}
           />
         )}
