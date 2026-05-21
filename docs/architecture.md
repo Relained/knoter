@@ -17,7 +17,8 @@
 | Web Vite dev/preview | `http://127.0.0.1:39281` |
 
 CLI는 embedding server HTTP API만 호출한다. TEI 실행/중지, 컨테이너 기반 실행,
-macOS local service UX는 frontend/app packaging 책임이다.
+macOS local service UX는 향후 packaged app layer 책임이며 현재 `web/`
+renderer에는 구현되어 있지 않다.
 
 ## Document Layers
 
@@ -52,16 +53,21 @@ macOS local service UX는 frontend/app packaging 책임이다.
 - `kn service status`
 
 일반 `kn` 명령은 임베딩 외 LLM 호출을 하지 않는다. CLI는 embedding server
-HTTP API만 의존하고, TEI 실행/중지 같은 service lifecycle은 frontend/app
-계층이 담당한다. LLM 호출 또는 prompt 조립 기능은 향후 `kn llm` namespace로
-격리한다.
+HTTP API만 의존한다. TEI 실행/중지 같은 service lifecycle은 향후 packaged
+app layer 책임이며 현재 React/Vite renderer에는 구현되어 있지 않다. LLM 호출
+또는 prompt 조립 기능은 향후 `kn llm` namespace로 격리한다.
 
 `kn service status --check`는 현재 vault에 설정된 embedding endpoint를
 점검하는 별도 service surface다. `kn vault status --check-providers`도
 vault metadata와 provider health를 함께 확인하는 기존 호환 surface로 남아
 있다.
 
-MCP stdio tool surface:
+`kn mcp`의 기본 transport는 `stdio`다. 코드에는 `--transport http`,
+`--daemon`, `kn mcp stop`이 존재하지만 현재는 experimental surface로 취급하고,
+호환성/테스트 기준은 stdio tool contract를 우선한다. HTTP mode는 `/health`와
+`/mcp` endpoint를 연다.
+
+MCP tool surface:
 
 - `kn_search`
 - `kn_get`
@@ -86,7 +92,7 @@ window, split pane, floating window 추가를 확인한다.
 
 Deferred/legacy:
 
-- `cluster`: frontend/app 계층에서 zvec 직접 접근으로 처리
+- `cluster`: 향후 app/frontend 계층에서 zvec 직접 접근으로 처리
 - `schedule`: CLI 타이머 관리에서 제외
 - `tag auto`: 제거
 - PageIndex: 후속 PoC

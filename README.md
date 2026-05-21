@@ -22,6 +22,7 @@ that OpenAI-compatible embedding endpoint.
 
 ```sh
 cd cli
+# Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
 bun test
 ```
@@ -29,6 +30,7 @@ bun test
 ```sh
 cd web
 npm install
+npx playwright install chromium
 npm test
 npm run test:e2e
 ```

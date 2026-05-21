@@ -1,114 +1,169 @@
-# GPT Project Development Harness
+# knoter CLI Agent Guide
 
-Last Updated: 2026-05-08  
-Project: `Documents/knoter`  
+Last updated: 2026-05-22
+Project: `Documents/knoter/cli`
 Language for this file: English
 
-## 1) Harness Goal
+This is the single active agent instruction file for the CLI package. Claude-specific guidance was merged here; `CLAUDE.md` is no longer maintained.
 
-The goal is to reduce risk in coding projects by separating responsibilities:
+## Project Snapshot
 
-- **Operator**: planning, routing, orchestration.
-- **Worker**: concrete code changes.
-- **Worker Pod**: one Worker plus one dedicated Fast Analyzer assigned to that Worker.
-- **Fast Analyzer**: quick, per-implementer objective validation before final review. Each Worker has its own paired Fast Analyzer.
-- **Analyzer**: final objective quality gate with no prior context.
+`knoter` is a Bun/TypeScript CLI inside a monorepo:
 
-This harness assumes model-specific routing with an explicit fallback path.
+- `cli/`: CLI, MCP server, indexing, search, report/context tooling.
+- `../web/`: React/Vite workspace frontend.
+- `../docs/`: shared architecture, planning, testing, and artifact workflow docs.
 
-## 2) Agent Roles and Model Assignment
+The CLI stores vault documents, indexes rewritten/artifact Markdown, exposes search/get/report/template context, and serves MCP tools for external LLM agents. Normal `kn` commands do not generate prose with an LLM; they only call an embedding endpoint when indexing or semantic search requires embeddings.
 
-### 2.1 Operator Agent
-- **Model to use**: `gpt-5.5` (**Yes**)
-- **Model fallback**: `gpt-5.5-pro` for policy-heavy decisions or ambiguous edge cases.
-- **Function**: Decompose requests, define acceptance criteria, assign Worker Pods, and require each Worker's paired Fast Analyzer to pass before final Analyzer.
+## Active Boundaries
 
-#### Mandatory Instructions
-1. Keep task scope explicit and small; if a change is >2000 modified lines or spans multiple modules, split into numbered subtasks.
-2. Send each Worker only the minimum required context: objective, files/paths, constraints, and test commands.
-3. Pair every Worker with a dedicated Fast Analyzer before implementation starts.
-4. Enforce a hard requirement: no Worker output can advance to final Analyzer until that Worker's paired Fast Analyzer returns `PASS`.
-5. Enforce a hard requirement: no merge of Worker output until Analyzer returns `PASS`.
-6. Preserve all existing user decisions; do not override architecture unless explicitly approved.
-7. Use one consistent branch flow: `design -> implement -> verify -> release notes`.
+- Source documents are metadata/lineage only. They are not chunked, indexed, or included in default search.
+- `rewritten` and `artifact` documents are parsed, chunked, embedded, stored in SQLite FTS, and upserted into zvec.
+- Artifacts are indexed but excluded from default search unless `--include-artifacts` is explicit.
+- Rewriting, task/workout/area/metric extraction, and artifact prose generation belong to an external LLM agent.
+- Future prompt assembly or direct LLM calls must live under a separate `kn llm` namespace.
+- CLI service lifecycle is limited to endpoint status/probing. Starting/stopping TEI or packaged-app services is outside this package.
+- `kn mcp` stdio is the compatibility baseline. HTTP/daemon mode exists in code but remains experimental.
 
----
+## Runtime And Tools
 
-### 2.2 Fast Analyzer (Dedicated Per Worker)
-- **Model to use**: `gpt-5.3-codex-spark` (**Yes**)
-- **Scope**: one Fast Analyzer is paired with exactly one Worker and runs immediately after that Worker's patch, per implementation batch.
-- **Function**: fast quality screening for syntax, compile/type issues, obvious regressions, missing constraints, and unimplemented acceptance criteria.
-- **Pairing rule**: `Worker N` must be reviewed by `Fast Analyzer N`. Fast Analyzer instances are not shared across Workers in the same implementation batch.
+Use Bun by default:
 
-#### Mandatory Instructions
-1. Start with the diff, changed files, and test output only.
-2. Focus on objective checks only (compile/lint/test failures, obvious behavior misses).
-3. Classify findings as `blocker / major / minor`.
-4. Return either `PASS` or `REVISE`.
-5. If `REVISE`, send only precise fixes required back to the paired Worker before moving to final Analyzer.
-6. Do not validate another Worker's patch unless explicitly reassigned by Operator after the current Worker Pod is closed.
+- Use `bun run src/cli.ts --help` for local CLI execution.
+- Use `bun test` for tests.
+- Use `bunx tsc --noEmit` for the current ad hoc typecheck.
+- Use `bun install`, not npm/yarn/pnpm, inside `cli/`.
+- Bun loads `.env` automatically from the package directory; do not add `dotenv`.
+- Prefer Bun-native APIs where already used: `bun:sqlite`, `Bun.file`, and `Bun.$`.
 
----
+Default local endpoints:
 
-### 2.3 Worker Agent (Primary)
-- **Model to use**: `gpt-5.3-codex-spark` (**Yes**)
-- **Escalation rule**: switch to `gpt-5.3-codex` when any of these are true:
-  - implementation is architectural or long-form (multi-file and multi-module),
-  - deep bug triage in existing code,
-  - complex test failures that need sustained reasoning.
+- Embedding API: `http://127.0.0.1:39280`
+- Web dev/preview: `http://127.0.0.1:39281`
 
-#### Mandatory Instructions
-1. Implement only what is requested by Operator.
-2. Produce minimal, scoped patches; avoid unrelated refactors.
-3. Use existing repository patterns and local conventions.
-4. Every behavior change must have at least one verification command or test impact note.
-5. Return diffs in this order: changed files, intent, risk, and exact verification commands.
+Package metadata is not final yet: `package.json` still uses the legacy name `nlpr`, has no `bin.kn`, and has no package-local `check` script. That cleanup is tracked as P1 work.
 
----
+## Code Map
 
-### 2.4 Analyzer Agent (Quality Gate)
-- **Model to use**: `gpt-5.5-pro` (**Yes**)
-- **Context rule**: **Zero prior chat history allowed** for each analysis pass.
-- **Function**: independent quality and risk review, objective pass/fail.
+| Path | Role |
+| --- | --- |
+| `src/cli.ts` | Commander entrypoint and command registration. |
+| `src/commands/*` | CLI command surfaces and output handling. |
+| `src/core/*` | Command-independent business logic shared by CLI/MCP/tests. |
+| `src/core/report-*.ts` | Report context bundle, retrieval, continuity, serialization. |
+| `src/mcp/server.ts` | MCP stdio tools and experimental HTTP surface. |
+| `src/pipeline/*` | Markdown parsing, chunking, hashing, embedding, preprocessing. |
+| `src/providers/*` | OpenAI-compatible embedding provider and health checks. |
+| `src/search/*` | Hybrid keyword/semantic retrieval and score fusion. |
+| `src/stores/meta-store.ts` | SQLite metadata, chunks, tags, signals, FTS, PageIndex placeholders. |
+| `src/stores/vec-store.ts` | zvec vector schema, upsert/fetch/query helpers. |
+| `tests/*.test.ts` | CLI behavior, storage, search, MCP, template, and TEI harness tests. |
 
-#### Mandatory Instructions
-1. Start each review with only: changed files, tests run, and issue report format.
-2. Do not read Operator rationale or previous model outputs as truth; re-evaluate independently from artifacts.
-3. Check for correctness, regressions, missing tests, and failure modes.
-4. Classify defects by severity: `critical / high / medium / low / advisory`.
-5. Output:
-   - `PASS` only when all critical/high issues are addressed.
-   - `FAIL + blocking issues` when any blocking item exists.
+Read these docs before larger changes:
 
----
+- `../docs/architecture.md`
+- `../docs/codebase.md`
+- `../docs/plan.md`
+- `../docs/testing.md`
+- `../docs/template.md`
 
-## 3) Model Usage Matrix
+## Storage Invariants
 
-| Role       | Primary Model             | Used? | Secondary / Fallback |
-|------------|---------------------------|-------|----------------------|
-| Operator   | `gpt-5.5`                 | Yes   | `gpt-5.5-pro`       |
-| Worker Pod | Worker + dedicated Fast Analyzer | Yes | one pod per implementer |
-| Fast Analyzer N | `gpt-5.3-codex-spark` | Yes | paired with Worker N only |
-| Worker N   | `gpt-5.3-codex-spark`     | Yes   | `gpt-5.3-codex`     |
-| Analyzer   | `gpt-5.5-pro`             | Yes   | none                 |
+This project uses SQLite and zvec side by side:
 
-## 4) End-to-End Runbook
+| Layer | Purpose | Store |
+| --- | --- | --- |
+| Metadata source of truth | notes, chunks, tags, signals, FTS, change detection | SQLite via `bun:sqlite` |
+| Vector retrieval | dense semantic and sparse/vector search data | zvec |
 
-1. Operator receives request and produces a task card.
-2. Operator splits implementation into Worker Pods when more than one implementer is needed.
-3. Operator dispatches each Worker with a bounded scope and success criteria.
-4. Operator assigns `Fast Analyzer N` to `Worker N` before implementation begins.
-5. Each Worker returns patch + verification command list.
-6. The paired Fast Analyzer for that Worker runs first and returns `PASS`/`REVISE`.
-7. Operator sends only fast-passing Worker outputs to final Analyzer with a **fresh context bundle** (no prior conversation).
-8. Analyzer returns `PASS` or `FAIL`.
-9. Operator merges only after `PASS` and records result log.
-10. For any failed pass, only Analyzer-identified blocking issues are reopened to the relevant Worker Pod.
+Important invariants:
 
-## 5) Hard Failure Rules
+- Each vault has SQLite at `<vault_root>/.kn/meta.db` and a zvec index under the vault.
+- The zvec vector ID and `chunks.id` are the same join key.
+- For rewritten/artifact indexing, write SQLite metadata first, then zvec, then mark synced.
+- Embedding or zvec failure must not leave inconsistent new metadata.
+- SQLite `ON DELETE CASCADE` owns note-to-chunk/tag cleanup.
+- FTS5 uses external content triggers; avoid manual FTS maintenance unless schema behavior changes.
 
-- Never skip a Worker's paired Fast Analyzer on code-affecting Worker output.
-- Never skip Analyzer on code-affecting commits.
-- Never allow Worker and Analyzer to share previous-run assumptions; Analyzer must operate independently.
-- Never approve changes without explicit PASS criteria and test evidence.
-- Never route user-facing behavior changes without a rollback plan.
+## zvec Notes
+
+Local zvec types are in `node_modules/@zvec/zvec/src/index.d.ts`.
+
+- Use `ZVecCreateAndOpen(path, schema)` for new collections and `ZVecOpen(path)` for existing ones.
+- Sparse vector fields are not nullable; pass `{}` for an empty sparse vector.
+- Nullable scalar/string fields may reject actual `null`; prefer `""` or `[]` as appropriate.
+- Embedding dimensions vary by model: common current values are `nomic-embed-text = 768` and `bge-m3 = 1024`.
+- Timestamps are Unix epoch milliseconds.
+- For filters, omit the `filter` key when no filter is needed. Do not pass `undefined` or an empty string.
+- zvec array filters use `CONTAIN_ANY` and `CONTAIN_ALL`; do not use `ARRAY_CONTAINS()` or similar unsupported helpers.
+
+## Common Change Points
+
+Add or change CLI behavior:
+
+1. Update `src/commands/<command>.ts`.
+2. Move shared behavior to `src/core/` when MCP or tests need it.
+3. Add or adjust focused tests.
+4. Update `tests/command-help.test.ts` when help or command surface changes.
+
+Change retrieval policy:
+
+1. Update `src/search/hybrid.ts` for user search.
+2. Update `src/core/report-retrieval.ts` and `src/core/report-continuity.ts` for agent context.
+3. Update report/MCP/search tests.
+
+Change template behavior:
+
+1. Update `../docs/template.md`.
+2. Update `src/core/template-validation.ts` only when validation semantics change.
+3. Update `tests/template-command-behavior.test.ts`.
+4. Document agent-facing implications in `../docs/architecture.md` or `../docs/testing.md`.
+
+Add a metadata field:
+
+1. Update parser/frontmatter extraction when relevant.
+2. Update `MetaDB` schema, row types, and migrations.
+3. Update serializers exposed through report/MCP payloads.
+4. Update insert, reindex, and retrieval tests.
+
+## Verification Baseline
+
+Before code-affecting commits in `cli/`, run:
+
+```bash
+bunx tsc --noEmit
+bun test
+git diff --check
+```
+
+For live TEI/Codex checks, use the documented opt-in flow:
+
+```bash
+scripts/tei-e2e-test.sh
+```
+
+For web-affecting changes, use the web package commands from `../docs/testing.md`.
+
+## Development Harness
+
+For code-affecting work, follow this flow:
+
+1. Design: keep scope explicit and small. Split work that spans multiple modules or would exceed roughly 2000 modified lines.
+2. Implement: make minimal scoped patches using existing repository patterns.
+3. Verify: run the narrowest useful tests plus the baseline checks when appropriate.
+4. Release notes: summarize changed files, intent, risk, and exact verification commands.
+
+Quality gates:
+
+- No code-affecting output is complete without objective verification evidence or a clear test-impact note.
+- Preserve existing user decisions and architecture unless explicitly approved.
+- Do not merge or present a patch as final when critical/high correctness issues are known.
+- User-facing behavior changes need an obvious rollback path or a reason the change is low risk.
+
+When multiple agents are explicitly used:
+
+- Pair each Worker with its own Fast Analyzer before implementation starts.
+- A Worker patch advances only after that paired Fast Analyzer returns `PASS`.
+- Final Analyzer review must start from changed files, tests run, and the issue report format only, not prior rationale.
+- Reopen only blocking issues identified by the Analyzer.

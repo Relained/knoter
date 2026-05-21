@@ -68,6 +68,10 @@ cd cli
 bunx tsc --noEmit
 ```
 
+This is the current ad hoc check command. `cli/package.json` does not yet have a
+package-local `check` script or pinned TypeScript dev dependency; that belongs
+to the P1 package metadata cleanup.
+
 Live TEI/Codex embedding E2E:
 
 ```bash
@@ -101,7 +105,8 @@ scripts/test-env.sh setup
 ```
 
 The CLI stores and calls an embedding server API endpoint only. It does not
-create, start, or own TEI containers; frontend/app code owns service lifecycle.
+create, start, or own TEI containers. Local service lifecycle is future
+packaged-app work and is not implemented in the current `web/` renderer.
 
 Endpoint health checks:
 
@@ -132,6 +137,7 @@ Web verification:
 
 ```bash
 cd web
+npx playwright install chromium
 npm test
 npm run test:e2e
 ```

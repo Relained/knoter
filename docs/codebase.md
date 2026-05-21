@@ -30,7 +30,7 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | --- | --- |
 | `src/cli.ts` | Commander root. 명령 등록 순서를 확인하는 곳. |
 | `src/commands/*.ts` | CLI surface. 사용자 입력 파싱, config 로딩, output envelope 처리. |
-| `src/mcp/server.ts` | MCP stdio tool surface. 외부 agent가 호출하는 API boundary. |
+| `src/mcp/server.ts` | MCP tool definitions. `kn mcp` uses stdio by default; HTTP/daemon command options exist as experimental surface. |
 | `src/core/*.ts` | command와 MCP가 공유하는 business logic. |
 | `src/stores/*.ts` | SQLite metadata store와 zvec vector store. |
 | `src/pipeline/*.ts` | Markdown parse/chunk/hash/embed/preprocess pipeline. |
@@ -57,7 +57,7 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | `src/commands/tag.ts` | `kn tag` | 수동 tag 관리. `tag auto`는 제거된 방향. |
 | `src/commands/template.ts` | `kn template` | vault template/fallback 조회와 local validation. |
 | `src/commands/report.ts` | `kn report context` | 외부 agent용 JSON context bundle 생성. |
-| `src/commands/mcp.ts` | `kn mcp` | MCP stdio server 실행. |
+| `src/commands/mcp.ts` | `kn mcp` | MCP server 실행. `stdio`가 기본이고 HTTP/daemon은 experimental. |
 | `src/commands/service.ts` | `kn service status` | 외부 embedding service endpoint 점검. |
 
 Currently exposed MCP tools in `src/mcp/server.ts`:
@@ -182,6 +182,7 @@ High-signal files:
 Baseline:
 
 ```bash
+# Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
 bun test
 git diff --check
@@ -241,10 +242,12 @@ Change template contract:
 - `kn llm` is the future namespace for prompt assembly or explicit LLM calls.
 - `cli/package.json` still has package name `nlpr` and no `bin.kn`; packaging is
   intentionally listed as P1 work in `docs/plan.md`.
+- `cli/package.json` also has no package-local `check` script and keeps
+  TypeScript as a peer dependency, so `bunx tsc --noEmit` is an ad hoc baseline.
 - Container runtime and TEI process lifecycle are outside the CLI. The CLI only
   depends on the embedding server HTTP API.
-- Cluster analysis is outside the CLI. Frontend/app code can access zvec
-  directly for that surface.
+- Cluster analysis is outside the CLI. A future app/frontend layer can access
+  zvec directly for that surface.
 - Web Graph 3D is currently a template preview/state placeholder, not a
   Three.js-backed graph engine.
 - `KN_TESTDATA_ROOT` points live E2E and local bootstrap scripts at a gitignored

@@ -73,6 +73,7 @@ The dev and preview servers are pinned to `http://127.0.0.1:39281` with
 
 ```sh
 npm run check
+npx playwright install chromium
 npm test
 npm run test:e2e
 ```
@@ -80,6 +81,8 @@ npm run test:e2e
 `npm run test:e2e` uses Playwright to start the Vite dev server on `39281` and
 drive Chromium through a smoke path covering the workspace shell, command
 palette, Settings, split pane, floating windows, and console/page error checks.
+Install the Chromium browser binary once with `npx playwright install chromium`
+on clean machines or CI images that do not already cache Playwright browsers.
 
 In Electron development, point your `BrowserWindow` at the Vite dev URL:
 

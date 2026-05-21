@@ -1,8 +1,31 @@
 # GPT Project Development Harness
 
-Last Updated: 2026-05-08
+Last Updated: 2026-05-22
 Project: `Documents/knoter`
 Language for this file: English
+
+## 0) Web Project Snapshot
+
+This file applies to the `web/` package only.
+
+- Stack: React 18, TypeScript, Vite 5, Playwright.
+- Dev/preview URL: `http://127.0.0.1:39281` with `strictPort`.
+- Current app shape: renderer-only workspace shell, not a packaged Electron app.
+- Current persistence: browser `localStorage`.
+- Current workspace objects: Markdown notes, Settings, Todo, Tasks, Calendar,
+  and a Graph 3D template preview.
+- Graph 3D is not a real graph engine yet.
+- Search is currently a sidebar/command-palette navigation surface, not a
+  standalone pane object.
+- TEI/service lifecycle UX is not implemented in the current renderer. Treat
+  local service start/stop/status as future packaged-app work.
+
+Primary local docs:
+
+- `web/README.md`
+- `web/docs/project-record-and-plan.md`
+- `web/docs/workspace-interaction-policy.md`
+- root `docs/architecture.md`, `docs/testing.md`
 
 ## 1) Harness Goal
 
@@ -15,6 +38,10 @@ The goal is to reduce risk in coding projects by separating responsibilities:
 - **Analyzer**: final objective quality gate with no prior context.
 
 This harness assumes model-specific routing with an explicit fallback path.
+
+For web work, the harness also guards interaction regressions in pane splitting,
+tab dragging, floating windows, persistence, command palette behavior, and
+settings/theme runtime.
 
 ## 2) Agent Roles and Model Assignment
 
@@ -31,6 +58,8 @@ This harness assumes model-specific routing with an explicit fallback path.
 5. Enforce a hard requirement: no merge of Worker output until Analyzer returns `PASS`.
 6. Preserve all existing user decisions; do not override architecture unless explicitly approved.
 7. Use one consistent branch flow: `design -> implement -> verify -> release notes`.
+8. For web work, include the affected UI surface, reducer/state path, CSS module,
+   and expected verification commands in every task card.
 
 ---
 
@@ -47,6 +76,8 @@ This harness assumes model-specific routing with an explicit fallback path.
 4. Return either `PASS` or `REVISE`.
 5. If `REVISE`, send only precise fixes required back to the paired Worker before moving to final Analyzer.
 6. Do not validate another Worker's patch unless explicitly reassigned by Operator after the current Worker Pod is closed.
+7. For UI changes, inspect screenshot/E2E evidence when available and check for
+   layout overlap, unstable dimensions, broken keyboard flows, and console errors.
 
 ---
 
@@ -63,6 +94,19 @@ This harness assumes model-specific routing with an explicit fallback path.
 3. Use existing repository patterns and local conventions.
 4. Every behavior change must have at least one verification command or test impact note.
 5. Return diffs in this order: changed files, intent, risk, and exact verification commands.
+6. Do not introduce Electron, IPC, service lifecycle, or backend assumptions into
+   the renderer unless the task explicitly asks for packaged-app work.
+7. Keep UI changes consistent with the dense workspace design. Avoid landing
+   pages, marketing sections, nested cards, decorative background blobs, and
+   one-off SVG icons when an existing semantic/lucide icon exists.
+8. Prefer existing modules:
+   - `src/domain/workspace.ts` for object definitions and factories.
+   - `src/state/workspaceReducer.ts` for workspace state transitions.
+   - `src/state/persistence.ts` for localStorage persistence.
+   - `src/renderers/registry.tsx` and renderer files for workspace objects.
+   - `src/commands/workspaceCommands.ts` for command palette entries.
+   - `src/keybindings/` for keyboard shortcuts.
+   - `src/styles/tokens/` and `src/styles/components/` for styling.
 
 ---
 
@@ -79,6 +123,8 @@ This harness assumes model-specific routing with an explicit fallback path.
 5. Output:
    - `PASS` only when all critical/high issues are addressed.
    - `FAIL + blocking issues` when any blocking item exists.
+6. For web patches, verify reducer invariants and persisted-state normalization,
+   not only visible component behavior.
 
 ---
 
@@ -105,6 +151,58 @@ This harness assumes model-specific routing with an explicit fallback path.
 9. Operator merges only after `PASS` and records result log.
 10. For any failed pass, only Analyzer-identified blocking issues are reopened to the relevant Worker Pod.
 
+## 4.1) Web Verification Baseline
+
+Use the smallest relevant subset first, then broaden when touching shared state,
+theme/runtime, persistence, or interaction code.
+
+```bash
+npm run check
+```
+
+```bash
+npm test
+```
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+Notes:
+
+- `npm test` already runs `npm run check` and unit/regression tests.
+- `npm run test:e2e` starts the Vite dev server at `127.0.0.1:39281`.
+- Install Chromium once on clean machines or CI images that do not cache
+  Playwright browsers.
+- Before claiming E2E success, confirm there are no console/page errors.
+
+High-signal test files:
+
+- `tests/workspace-reducer.test.cjs`
+- `tests/workspace-persistence.test.cjs`
+- `tests/workspace-commands.test.cjs`
+- `tests/keybindings.test.cjs`
+- `tests/global-settings.test.cjs`
+- `tests/base16-runtime.test.cjs`
+- `tests/e2e/workspace-smoke.spec.js`
+
+## 4.2) Web Change Rules
+
+- Preserve the tiling model: split the focused pane, not the entire workspace.
+- Empty panes survive only when they are the sole remaining pane.
+- Closing a pane collapses single-child split containers.
+- Floating windows must stay inside the viewport and may touch all four edges.
+- Embedded Markdown objects and full-pane/floating objects share
+  `objectStates[WorkspaceObjectKey]`.
+- The current object model is singleton-style; multiple instances require a
+  future `objectId` model.
+- Settings/global config runtime must tolerate invalid or older persisted data.
+- CSS should keep stable dimensions for toolbars, tab strips, icon buttons,
+  panes, floating windows, and object controls.
+- Do not make Graph 3D look implemented as a real 3D engine. It is currently a
+  template preview until a graph renderer/state model is chosen.
+
 ## 5) Hard Failure Rules
 
 - Never skip a Worker's paired Fast Analyzer on code-affecting Worker output.
@@ -112,3 +210,6 @@ This harness assumes model-specific routing with an explicit fallback path.
 - Never allow Worker and Analyzer to share previous-run assumptions; Analyzer must operate independently.
 - Never approve changes without explicit PASS criteria and test evidence.
 - Never route user-facing behavior changes without a rollback plan.
+- Never treat renderer-only code as packaged Electron/app-service code.
+- Never claim Playwright E2E coverage unless `npm run test:e2e` actually ran or
+  the reason it could not run is documented.

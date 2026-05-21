@@ -38,11 +38,13 @@ Implemented backbone:
 - Task/workout/area/metric extraction belongs to the external agent at rewritten time.
 - One template file exists per vault at `.kn/template.md`; `docs/template.md` is bundled fallback.
 - `kn llm` is the only future namespace allowed to assemble prompts or call LLMs.
-- Service lifecycle belongs to frontend/app packaging. CLI only exposes service
-  endpoint status/probing.
-- Cluster analysis belongs to frontend/app code with direct zvec access, not the
-  CLI command surface.
+- Service lifecycle belongs to a future packaged app layer, not the current
+  React/Vite web renderer. CLI only exposes service endpoint status/probing.
+- Cluster analysis belongs to a future app/frontend layer with direct zvec
+  access, not the CLI command surface.
 - PageIndex is a future PoC, not current retrieval backend.
+- `kn mcp` stdio is the compatibility baseline. HTTP/daemon/stop exists in code
+  as experimental surface and needs explicit hardening before being promoted.
 
 ## P0 Next Work
 
@@ -74,14 +76,14 @@ Implemented backbone:
 - CJK indexing: evaluate trigram setup and preprocessor direction.
 - Verification: broaden CLI E2E for `--dry-run`, `--tag`, `--after`, adjacent
   chunk merge, vector rollback.
-- Frontend/app integration design for local TEI start/stop/status using the
-  CLI's external service boundary.
+- Packaged-app integration design for local TEI start/stop/status using the
+  CLI's external service boundary; this is not implemented in `web/` renderer.
 - PageIndex PoC milestone design.
 
 ## P2
 
-- Frontend-owned local service execution UX, including macOS local TEI defaults.
-- SSE/HTTP MCP only if stdio is insufficient.
+- Packaged-app-owned local service execution UX, including macOS local TEI defaults.
+- Harden or remove experimental HTTP/daemon MCP surface.
 
 ## Verification Baseline
 
@@ -89,6 +91,7 @@ Use these before code-affecting commits:
 
 ```bash
 cd cli
+# Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
 bun test
 git diff --check
@@ -98,6 +101,7 @@ For web-affecting changes:
 
 ```bash
 cd web
+npx playwright install chromium
 npm test
 npm run test:e2e
 ```

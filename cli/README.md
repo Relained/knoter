@@ -9,6 +9,7 @@ Backend CLI for vault-based personal knowledge records.
 ```bash
 bun install
 bun run src/cli.ts --help
+# Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
 bun test
 ```
@@ -45,7 +46,8 @@ part of the corpus.
 - Normal `kn` commands do not call LLMs except embedding.
 - External LLM agents use MCP/JSON context to rewrite sources and create artifacts.
 - Package metadata is not final yet: `package.json` still uses the legacy
-  package name and has no `bin.kn`.
+  package name, keeps TypeScript as a peer dependency, and has no `bin.kn` or
+  package-local `check` script.
 
 ## Command Surface
 
@@ -57,7 +59,7 @@ part of the corpus.
 - `kn tag list|add|remove`
 - `kn template get|list|validate`
 - `kn report context`
-- `kn mcp`
+- `kn mcp` (`stdio` default; HTTP/daemon mode is present but experimental)
 - `kn service status`
 
 ## Docs
