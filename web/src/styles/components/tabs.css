@@ -1,0 +1,73 @@
+.tab-strip {
+  display: flex;
+  align-items: end;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-tabbar);
+  scrollbar-width: thin;
+}
+
+.tab {
+  height: var(--tab-height);
+  max-width: var(--tab-max-width);
+  min-width: var(--tab-min-width);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px 0 12px;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.tab-placeholder {
+  min-height: var(--tab-height);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tab.is-active {
+  color: var(--text-primary);
+  background: var(--surface-panel);
+}
+
+.tab-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.tab-drag-handle {
+  cursor: grab;
+}
+
+.tab-drag-handle:active {
+  cursor: grabbing;
+}
+
+.tab span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  color: var(--text-muted);
+}

@@ -1,0 +1,50 @@
+:root {
+  --theme-workbench-background: var(--base00);
+  --theme-titlebar-background: var(--base04);
+  --theme-command-background: var(--base04);
+  --theme-command-input-background: var(--base01);
+  --theme-panel-background: var(--base03);
+  --theme-panel-raised-background: var(--base05);
+  --theme-card-background: rgb(255 255 255 / 3%);
+  --theme-control-hover-background: rgb(255 106 0 / 10%);
+  --theme-overlay-background: rgb(0 0 0 / 52%);
+  --theme-border-subtle: var(--base07);
+  --theme-text-primary: var(--base0B);
+  --theme-text-muted: var(--base09);
+  --theme-accent-primary: var(--base0C);
+  --theme-accent-primary-contrast: var(--base0E);
+  --theme-accent-secondary: var(--base0D);
+  --theme-selection-background: rgb(255 106 0 / 16%);
+  --theme-selection-border: rgb(255 106 0 / 78%);
+  --theme-selection-soft-background: rgb(255 106 0 / 14%);
+  --theme-focus-border: rgb(255 106 0 / 88%);
+  --theme-grid-line: rgb(255 255 255 / 2%);
+  --theme-shadow-floating: 0 18px 50px rgb(0 0 0 / 58%);
+  --theme-shadow-accent-glow: 0 0 18px rgb(255 106 0 / 42%);
+
+  --surface-app: var(--theme-workbench-background);
+  --surface-titlebar: var(--theme-titlebar-background);
+  --surface-command: var(--theme-command-background);
+  --surface-command-input: var(--theme-command-input-background);
+  --surface-panel: var(--theme-panel-background);
+  --surface-panel-raised: var(--theme-panel-raised-background);
+  --surface-card: var(--theme-card-background);
+  --surface-hover: var(--theme-control-hover-background);
+  --surface-overlay: var(--theme-overlay-background);
+
+  --border-subtle: var(--theme-border-subtle);
+  --text-primary: var(--theme-text-primary);
+  --text-muted: var(--theme-text-muted);
+
+  --accent-primary: var(--theme-accent-primary);
+  --accent-primary-contrast: var(--theme-accent-primary-contrast);
+  --accent-secondary: var(--theme-accent-secondary);
+  --accent-selected: var(--theme-selection-background);
+  --accent-selected-strong: var(--theme-selection-border);
+  --accent-selected-soft: var(--theme-selection-soft-background);
+  --accent-focus-ring: var(--theme-focus-border);
+
+  --grid-line: var(--theme-grid-line);
+  --shadow-floating: var(--theme-shadow-floating);
+  --shadow-accent-glow: var(--theme-shadow-accent-glow);
+}

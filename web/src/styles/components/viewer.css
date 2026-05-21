@@ -1,0 +1,39 @@
+.viewer {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+
+.viewer h1 {
+  margin: 0 0 12px;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.viewer p {
+  max-width: 760px;
+  color: var(--text-muted);
+}
+
+.meta-grid {
+  max-width: 760px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.meta-card {
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+
+.meta-card strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent-secondary);
+}

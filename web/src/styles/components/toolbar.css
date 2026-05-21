@@ -1,0 +1,17 @@
+.pane-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel-raised);
+  scrollbar-width: thin;
+}
+
+.pane-toolbar .icon-button {
+  width: var(--toolbar-button-size);
+  height: var(--toolbar-button-size);
+}

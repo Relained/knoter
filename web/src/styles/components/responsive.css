@@ -1,0 +1,9 @@
+@media (max-width: 760px) {
+  :root {
+    --sidebar-size: 196px;
+  }
+
+  .viewer {
+    padding: 16px;
+  }
+}

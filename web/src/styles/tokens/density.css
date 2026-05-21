@@ -1,0 +1,11 @@
+:root {
+  --menu-size: 42px;
+  --sidebar-size: 248px;
+  --sidebar-min-size: 168px;
+  --sidebar-max-size: 420px;
+  --toolbar-button-size: 29px;
+  --menu-button-size: 31px;
+  --tab-height: 32px;
+  --tab-min-width: 112px;
+  --tab-max-width: 210px;
+}

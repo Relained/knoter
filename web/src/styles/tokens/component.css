@@ -1,0 +1,23 @@
+:root {
+  --theme-menu-background: var(--base05);
+  --theme-menu-primary-action-background: var(--base0C);
+  --theme-menu-primary-action-foreground: var(--base0E);
+  --theme-tabbar-background: var(--base02);
+  --theme-preview-edge-guide-background: var(--base0C);
+  --theme-preview-edge-guide-contrast: var(--base0E);
+  --theme-preview-tab-placement-background: rgb(255 106 0 / 14%);
+  --theme-preview-tab-placement-border: rgb(255 106 0 / 78%);
+  --theme-preview-tab-placement-gloss: rgb(255 255 255 / 5%);
+  --theme-preview-tab-placement-inner-border: rgb(255 255 255 / 7%);
+
+  --surface-menu: var(--theme-menu-background);
+  --surface-tabbar: var(--theme-tabbar-background);
+  --menu-primary-action-background: var(--theme-menu-primary-action-background);
+  --menu-primary-action-foreground: var(--theme-menu-primary-action-foreground);
+  --preview-edge-guide-background: var(--theme-preview-edge-guide-background);
+  --preview-edge-guide-contrast: var(--theme-preview-edge-guide-contrast);
+  --preview-tab-placement-background: var(--theme-preview-tab-placement-background);
+  --preview-tab-placement-border: var(--theme-preview-tab-placement-border);
+  --preview-tab-placement-gloss: var(--theme-preview-tab-placement-gloss);
+  --preview-tab-placement-inner-border: var(--theme-preview-tab-placement-inner-border);
+}

@@ -1,0 +1,53 @@
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  --sidebar-layout-size: var(--sidebar-resized-size, var(--sidebar-size));
+  grid-template-columns: var(--sidebar-layout-size) 1fr;
+  grid-template-rows: var(--menu-size) 1fr;
+  grid-template-areas:
+    "menu menu"
+    "sidebar main";
+}
+
+.app-shell[data-sidebar-collapsed="true"] {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "menu"
+    "main";
+}
+
+.app-shell[data-menu-position="bottom"] {
+  grid-template-rows: 1fr var(--menu-size);
+  grid-template-areas:
+    "sidebar main"
+    "menu menu";
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-menu-position="bottom"] {
+  grid-template-areas:
+    "main"
+    "menu";
+}
+
+.app-shell[data-menu-position="left"] {
+  grid-template-columns: var(--menu-size) var(--sidebar-layout-size) 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "menu sidebar main";
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-menu-position="left"] {
+  grid-template-columns: var(--menu-size) 1fr;
+  grid-template-areas: "menu main";
+}
+
+.app-shell[data-menu-position="right"] {
+  grid-template-columns: var(--sidebar-layout-size) 1fr var(--menu-size);
+  grid-template-rows: 1fr;
+  grid-template-areas: "sidebar main menu";
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-menu-position="right"] {
+  grid-template-columns: 1fr var(--menu-size);
+  grid-template-areas: "main menu";
+}

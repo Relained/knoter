@@ -1,0 +1,140 @@
+.markdown-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.markdown-header {
+  max-width: 1180px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.markdown-header p {
+  margin: 0;
+}
+
+.markdown-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+
+.markdown-mode-switch button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+
+.markdown-mode-switch button.is-active {
+  color: var(--text-primary);
+  background: var(--accent-selected);
+}
+
+.markdown-workspace {
+  min-height: 0;
+  max-width: 1180px;
+  display: grid;
+  gap: 10px;
+}
+
+.markdown-mode-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.markdown-mode-edit,
+.markdown-mode-preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.markdown-editor,
+.markdown-preview {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+
+.markdown-editor {
+  width: 100%;
+  resize: none;
+  padding: 14px;
+  color: var(--text-primary);
+  font: var(--font-size-editor) / var(--line-height-editor) var(--font-editor);
+}
+
+.markdown-preview {
+  padding: 16px;
+  font: var(--font-size-editor) / var(--line-height-editor) var(--font-editor);
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  margin: 0 0 10px;
+}
+
+.markdown-preview h2,
+.markdown-preview h3 {
+  margin-top: 18px;
+}
+
+.markdown-preview p,
+.markdown-preview ul {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+.markdown-preview ul {
+  padding-left: 20px;
+}
+
+.markdown-object-embed {
+  overflow: hidden;
+  margin: 14px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.markdown-object-embed > header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.markdown-object-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.markdown-object-actions .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.markdown-object-embed .viewer {
+  max-height: 420px;
+  padding: 14px;
+}
+
+@media (max-width: 900px) {
+  .markdown-mode-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

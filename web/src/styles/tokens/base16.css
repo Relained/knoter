@@ -1,0 +1,20 @@
+:root {
+  color-scheme: var(--theme-color-scheme, dark);
+
+  --base00: #050505;
+  --base01: #090909;
+  --base02: #0d0d0d;
+  --base03: #111111;
+  --base04: #151515;
+  --base05: #1b1b1b;
+  --base06: #202020;
+  --base07: #303030;
+  --base08: #3b3b3b;
+  --base09: #777777;
+  --base0A: #b8b8b8;
+  --base0B: #eeeeee;
+  --base0C: #ff6a00;
+  --base0D: #ff7a00;
+  --base0E: #120800;
+  --base0F: #ffffff;
+}

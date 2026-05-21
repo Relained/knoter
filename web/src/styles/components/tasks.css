@@ -1,0 +1,132 @@
+.tasks-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.tasks-header {
+  max-width: 1080px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tasks-header p {
+  margin: 0;
+}
+
+.tasks-stats {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.tasks-stats div {
+  min-width: 66px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+
+.tasks-stats dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.tasks-stats dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.tasks-board {
+  max-width: 1080px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  overflow: auto;
+}
+
+.tasks-lane {
+  min-width: 0;
+  min-height: 220px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+}
+
+.tasks-lane-header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tasks-lane-header h2 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.tasks-lane-header span {
+  color: var(--text-muted);
+}
+
+.tasks-lane-items {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.tasks-item {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--toolbar-button-size);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-panel);
+}
+
+.tasks-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-empty {
+  padding: 10px;
+  color: var(--text-muted);
+}
+
+.tasks-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--toolbar-button-size);
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tasks-add-form input {
+  min-width: 0;
+  height: var(--toolbar-button-size);
+  padding: 0 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+}

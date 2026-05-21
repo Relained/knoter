@@ -1,0 +1,14 @@
+.persistence-warning {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 90;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 9px 12px;
+  border: 1px solid var(--accent-selected-strong);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--surface-command);
+  box-shadow: var(--shadow-floating);
+  animation: edge-preview-in var(--motion-command-enter-duration) var(--ease-emphasized);
+}

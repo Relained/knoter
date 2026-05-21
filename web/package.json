@@ -1,0 +1,28 @@
+{
+  "name": "knoter-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React Electron-style workspace template with panes, tabs, command palette, floating windows, and movable bars.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "check": "tsc --noEmit && vite build",
+    "test": "npm run check && npm run test:unit",
+    "test:unit": "tsc -p tsconfig.test.json && node scripts/prepare-test-build.cjs && node --test tests/*.test.cjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "electron:hint": "node -e \"console.log('Use Vite dev URL in development, then load dist/index.html in Electron production builds.')\""
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

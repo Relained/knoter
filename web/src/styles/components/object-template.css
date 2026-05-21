@@ -1,0 +1,82 @@
+.object-template {
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr);
+  gap: 18px;
+}
+
+.object-template-header h1 {
+  margin-bottom: 8px;
+}
+
+.object-template-header p {
+  margin: 0;
+}
+
+.object-template-surface {
+  min-height: 220px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    var(--surface-card);
+  background-size: 18px 18px;
+}
+
+.object-template-primary {
+  position: relative;
+  min-height: 150px;
+}
+
+.object-template-primary span {
+  position: absolute;
+  left: calc(16% + var(--object-index) * 23%);
+  top: calc(28% + var(--object-row) * 26%);
+  min-width: 86px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-accent-glow);
+}
+
+.object-template-primary span::before,
+.object-template-primary span::after {
+  content: "";
+  position: absolute;
+  width: 54px;
+  height: 1px;
+  background: var(--border-subtle);
+  transform-origin: left center;
+}
+
+.object-template-primary span::before {
+  left: -44px;
+  top: 50%;
+  transform: rotate(-18deg);
+}
+
+.object-template-primary span::after {
+  right: -54px;
+  top: 50%;
+  transform: rotate(16deg);
+}
+
+.object-template-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.object-template-secondary span {
+  padding: 7px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--surface-panel);
+}
