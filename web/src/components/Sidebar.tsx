@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import type { NoteKey, Pane, SidebarExplorerLayerKey, SidebarExplorerFilters, WorkspaceObjectKey, WorkspaceObjectStates } from "../domain/types";
+import type { ExplorerItem } from "../api/types";
 import { workspaceObjects } from "../domain/workspace";
 import type { WorkspaceCommandActions } from "../commands/workspaceCommands";
 import { sidebarWidthBounds } from "../settings/preferences";
@@ -12,6 +13,8 @@ type SidebarProps = {
   activePane?: Pane;
   openNote: (noteKey: NoteKey) => void;
   explorerFilters: SidebarExplorerFilters;
+  explorerItems?: ExplorerItem[];
+  explorerLoading?: boolean;
   objectStates: WorkspaceObjectStates;
   onResize: (width: number) => void;
   onChangeExplorerFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
@@ -29,6 +32,8 @@ export function Sidebar({
   activePane,
   openNote,
   explorerFilters,
+  explorerItems,
+  explorerLoading,
   objectStates,
   onResize,
   onChangeExplorerFilter,
@@ -92,6 +97,8 @@ export function Sidebar({
             activePane={activePane}
             filters={explorerFilters}
             query={explorerQuery}
+            explorerItems={explorerItems}
+            loading={explorerLoading}
             objectStates={objectStates}
             onQueryChange={setExplorerQuery}
             onChangeFilter={onChangeExplorerFilter}

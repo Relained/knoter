@@ -1,4 +1,5 @@
 import type { NoteKey, Pane, SidebarExplorerFilters, SidebarExplorerLayerKey, WorkspaceObjectStates } from "../domain/types";
+import type { ExplorerItem } from "../api/types";
 import { Icon } from "../icons/Icon";
 import { IconButton } from "./IconButton";
 import {
@@ -13,6 +14,8 @@ export type ExplorerSurfaceProps = {
   activePane?: Pane;
   filters: SidebarExplorerFilters;
   query: string;
+  explorerItems?: ExplorerItem[];
+  loading?: boolean;
   objectStates: WorkspaceObjectStates;
   onQueryChange: (query: string) => void;
   onChangeFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
@@ -24,6 +27,8 @@ export function ExplorerSurface({
   activePane,
   filters,
   query,
+  explorerItems,
+  loading = false,
   objectStates,
   onQueryChange,
   onChangeFilter,
@@ -38,7 +43,8 @@ export function ExplorerSurface({
     (noteKey) => {
       const objectState = objectStates[noteKey];
       return objectState?.kind === "note" ? objectState.content : "";
-    }
+    },
+    explorerItems
   );
 
   return (
@@ -85,13 +91,19 @@ export function ExplorerSurface({
               section.entries.map((entry) => (
                 <button
                   key={entry.key}
-                  className={`nav-item ${activeTab?.noteKey === entry.key ? "is-active" : ""}`}
+                  className={`nav-item ${entry.noteKey && activeTab?.noteKey === entry.noteKey ? "is-active" : ""}`}
                   type="button"
-                  onClick={() => onOpenNote(entry.key)}
+                  onClick={() => {
+                    if (entry.noteKey) onOpenNote(entry.noteKey);
+                  }}
+                  disabled={!entry.noteKey}
+                  title={entry.path ?? entry.title}
                 >
                   {entry.title}
                 </button>
               ))
+            ) : loading ? (
+              <div className="sidebar-empty-row">Loading...</div>
             ) : (
               <div className="sidebar-empty-row">No items</div>
             )}

@@ -10,6 +10,8 @@ import { WorkspacePane } from "./components/WorkspacePane";
 import { createWorkspaceCommands } from "./commands/workspaceCommands";
 import type { Command } from "./commands/types";
 import { getPaneIdsFromLayout } from "./domain/workspace";
+import { getSelectedSidebarExplorerLayers } from "./sidebar/explorerModel";
+import type { ExplorerItem } from "./api/types";
 import type {
   EdgePosition,
   EdgePreviewModel,
@@ -58,6 +60,8 @@ function App() {
   const [tabPlacementPreview, setTabPlacementPreview] = useState<TabPlacementPreviewModel | null>(null);
   const [workspacePersistenceWarning, setWorkspacePersistenceWarning] = useState(false);
   const [settingsPersistenceWarning, setSettingsPersistenceWarning] = useState(false);
+  const [explorerItems, setExplorerItems] = useState<ExplorerItem[]>([]);
+  const [explorerLoading, setExplorerLoading] = useState(false);
   const globalSettingsChangedRef = useRef(false);
   const {
     menuPosition,
@@ -112,6 +116,29 @@ function App() {
   useEffect(() => {
     if (!activePaneId && panes[0]) dispatchWorkspace({ type: "ensureActivePane" });
   }, [activePaneId, panes]);
+
+  useEffect(() => {
+    const api = window.knoterApi;
+    if (!api) return;
+
+    let cancelled = false;
+    const layers = getSelectedSidebarExplorerLayers(sidebarExplorerFilters);
+    setExplorerLoading(true);
+    api.explorer.list({ layers })
+      .then((items) => {
+        if (!cancelled) setExplorerItems(items);
+      })
+      .catch(() => {
+        if (!cancelled) setExplorerItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExplorerLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sidebarExplorerFilters]);
 
   useEffect(() => {
     const constrainWindows = () => {
@@ -406,6 +433,8 @@ function App() {
             activePane={activePane}
             openNote={actions.openNote}
             explorerFilters={sidebarExplorerFilters}
+            explorerItems={explorerItems}
+            explorerLoading={explorerLoading}
             objectStates={objectStates}
             onResize={resizeSidebar}
             onChangeExplorerFilter={(layer, checked) => dispatchWorkspace({ type: "setSidebarExplorerFilter", layer, checked })}

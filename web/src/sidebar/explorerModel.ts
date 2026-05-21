@@ -1,5 +1,6 @@
 import type { NoteKey, SidebarExplorerFilters } from "../domain/types";
 import { isNoteKey, notes } from "../domain/workspace";
+import type { ExplorerItem } from "../api/types";
 
 export const sidebarExplorerLayerKeys = ["source", "rewritten", "template"] as const;
 
@@ -16,9 +17,11 @@ export const sidebarExplorerLayerLabels: Record<keyof SidebarExplorerFilters, st
 };
 
 export type SidebarExplorerEntry = {
-  key: NoteKey;
+  key: string;
   title: string;
   searchText: string;
+  noteKey: NoteKey | null;
+  path: string | null;
 };
 
 export type SidebarExplorerSection = {
@@ -61,16 +64,37 @@ export function getSelectedSidebarExplorerLayers(filters: SidebarExplorerFilters
 export function getSidebarExplorerSections(
   filters: SidebarExplorerFilters,
   query: string,
-  getNoteContent: (noteKey: NoteKey) => string = () => ""
+  getNoteContent: (noteKey: NoteKey) => string = () => "",
+  explorerItems?: ExplorerItem[]
 ): SidebarExplorerSection[] {
   const normalizedQuery = query.trim().toLowerCase();
   return getSelectedSidebarExplorerLayers(filters).map((layer) => ({
     layer,
     title: sidebarExplorerLayerLabels[layer],
-    entries: layer === "template"
-      ? getTemplateEntries(normalizedQuery, getNoteContent)
-      : []
+    entries: getExplorerEntries(layer, normalizedQuery, getNoteContent, explorerItems)
   }));
+}
+
+function getExplorerEntries(
+  layer: keyof SidebarExplorerFilters,
+  query: string,
+  getNoteContent: (noteKey: NoteKey) => string,
+  explorerItems?: ExplorerItem[]
+) {
+  const externalItems = explorerItems?.filter((item) => item.layer === layer);
+  if (externalItems && externalItems.length > 0) {
+    return externalItems
+      .map((item) => ({
+        key: item.id,
+        title: item.title,
+        searchText: `${item.title} ${item.path} ${item.kind ?? ""}`,
+        noteKey: isNoteKey(item.title) ? item.title : null,
+        path: item.path
+      }))
+      .filter((entry) => !query || entry.searchText.toLowerCase().includes(query));
+  }
+
+  return layer === "template" ? getTemplateEntries(query, getNoteContent) : [];
 }
 
 function getTemplateEntries(query: string, getNoteContent: (noteKey: NoteKey) => string): SidebarExplorerEntry[] {
@@ -79,7 +103,9 @@ function getTemplateEntries(query: string, getNoteContent: (noteKey: NoteKey) =>
     .map((noteKey) => ({
       key: noteKey,
       title: noteKey,
-      searchText: getTemplateSearchText(noteKey, getNoteContent(noteKey))
+      searchText: getTemplateSearchText(noteKey, getNoteContent(noteKey)),
+      noteKey,
+      path: null
     }))
     .filter((entry) => !query || entry.searchText.toLowerCase().includes(query));
 }

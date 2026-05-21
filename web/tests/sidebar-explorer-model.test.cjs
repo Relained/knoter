@@ -61,6 +61,44 @@ test("sidebar explorer template section is searchable by template note content",
   assert.deepEqual(sections[0].entries.map((entry) => entry.key), ["Dashboard"]);
 });
 
+test("sidebar explorer sections use API explorer items when present", () => {
+  const sections = getSidebarExplorerSections(
+    {
+      source: true,
+      rewritten: true,
+      template: false
+    },
+    "meeting",
+    () => "",
+    [
+      {
+        id: "source:sources/2026-05-22/meeting.md",
+        layer: "source",
+        title: "meeting",
+        path: "sources/2026-05-22/meeting.md",
+        kind: null,
+        docDate: "2026-05-22",
+        updatedAt: null,
+        graphNodeId: "source:sources/2026-05-22/meeting.md"
+      },
+      {
+        id: "rewritten:rewritten/2026-05-22/daily.md",
+        layer: "rewritten",
+        title: "daily",
+        path: "rewritten/2026-05-22/daily.md",
+        kind: null,
+        docDate: "2026-05-22",
+        updatedAt: null,
+        graphNodeId: "rewritten:rewritten/2026-05-22/daily.md"
+      }
+    ]
+  );
+
+  assert.deepEqual(sections.map((section) => section.layer), ["source", "rewritten"]);
+  assert.deepEqual(sections[0].entries.map((entry) => entry.title), ["meeting"]);
+  assert.deepEqual(sections[1].entries, []);
+});
+
 test("setSidebarExplorerFilter toggles one space without mutating the original filters", () => {
   const nextFilters = setSidebarExplorerFilter(defaultSidebarExplorerFilters, "source", true);
 
