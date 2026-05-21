@@ -1,6 +1,8 @@
 import type {
   ExplorerItem,
   ExplorerListInput,
+  ExplorerReadInput,
+  ExplorerReadResult,
   ExplorerRefreshResult,
   GraphGetInput,
   GraphPayload,
@@ -17,6 +19,7 @@ export type KnotenApi = {
   };
   explorer: {
     list(input: ExplorerListInput): Promise<ExplorerItem[]>;
+    read(input: ExplorerReadInput): Promise<ExplorerReadResult>;
     refresh(): Promise<ExplorerRefreshResult>;
   };
   graph: {

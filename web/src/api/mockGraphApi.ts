@@ -48,6 +48,15 @@ export const mockKnotenApi: KnotenApiClient = {
         return `${item.title} ${item.path} ${item.kind ?? ""}`.toLowerCase().includes(query);
       });
     },
+    async read(input) {
+      const item = explorerItems.find((entry) => entry.path === input.path);
+      return {
+        title: item?.title ?? "Mock Document",
+        path: input.path,
+        layer: item?.layer ?? "source",
+        content: `# ${item?.title ?? "Mock Document"}\n\n${input.path}`
+      };
+    },
     async refresh() {
       return {
         vaultId: "mock",

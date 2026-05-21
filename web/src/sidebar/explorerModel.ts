@@ -22,6 +22,7 @@ export type SidebarExplorerEntry = {
   searchText: string;
   noteKey: NoteKey | null;
   path: string | null;
+  layer: keyof SidebarExplorerFilters;
 };
 
 export type SidebarExplorerSection = {
@@ -89,7 +90,8 @@ function getExplorerEntries(
         title: item.title,
         searchText: `${item.title} ${item.path} ${item.kind ?? ""}`,
         noteKey: isNoteKey(item.title) ? item.title : null,
-        path: item.path
+        path: item.path,
+        layer: item.layer
       }))
       .filter((entry) => !query || entry.searchText.toLowerCase().includes(query));
   }
@@ -105,7 +107,8 @@ function getTemplateEntries(query: string, getNoteContent: (noteKey: NoteKey) =>
       title: noteKey,
       searchText: getTemplateSearchText(noteKey, getNoteContent(noteKey)),
       noteKey,
-      path: null
+      path: null,
+      layer: "template" as const
     }))
     .filter((entry) => !query || entry.searchText.toLowerCase().includes(query));
 }

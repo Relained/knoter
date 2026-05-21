@@ -31,6 +31,17 @@ export type ExplorerRefreshResult = {
   cachePath: string | null;
 };
 
+export type ExplorerReadInput = {
+  path: string;
+};
+
+export type ExplorerReadResult = {
+  title: string;
+  path: string;
+  layer: ExplorerLayer;
+  content: string;
+};
+
 export type GraphNodeType = "note" | "chunk" | "template";
 export type GraphEdgeType = "source_rewritten" | "artifact_template" | "note_chunk" | "chunk_prev" | "chunk_next";
 

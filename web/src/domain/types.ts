@@ -2,7 +2,7 @@ export type EdgePosition = "top" | "right" | "bottom" | "left";
 export type SplitDirection = "horizontal" | "vertical";
 
 export type NoteKey = "Dashboard" | "Project Plan" | "Research Notes" | "Canvas Draft";
-export type SystemObjectKey = "Settings" | "Graph 3D" | "Tasks" | "Todo" | "Calendar";
+export type SystemObjectKey = "Settings" | "Graph 3D" | "Tasks" | "Todo" | "Calendar" | "Vault Document";
 export type WorkspaceObjectKey = NoteKey | SystemObjectKey;
 export type WorkspaceObjectKind = "note" | "settings" | "graph3d" | "tasks" | "todo" | "calendar";
 

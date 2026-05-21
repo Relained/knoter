@@ -11,6 +11,7 @@ import { createWorkspaceCommands } from "./commands/workspaceCommands";
 import type { Command } from "./commands/types";
 import { getPaneIdsFromLayout } from "./domain/workspace";
 import { getSelectedSidebarExplorerLayers } from "./sidebar/explorerModel";
+import type { SidebarExplorerEntry } from "./sidebar/explorerModel";
 import type { ExplorerItem } from "./api/types";
 import type {
   EdgePosition,
@@ -354,6 +355,39 @@ function App() {
     dispatchWorkspace({ type: "openFloatingWindow", objectKey });
   }
 
+  async function openExplorerItem(entry: SidebarExplorerEntry) {
+    if (entry.noteKey) {
+      actions.openNote(entry.noteKey);
+      return;
+    }
+    if (!entry.path || !window.knoterApi || !activePane) return;
+
+    try {
+      const document = await window.knoterApi.explorer.read({ path: entry.path });
+      dispatchWorkspace({
+        type: "setObjectState",
+        objectKey: "Vault Document",
+        state: {
+          kind: "note",
+          content: formatVaultDocumentContent(document.title, document.path, document.content),
+          mode: "split"
+        }
+      });
+      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document" });
+    } catch (error) {
+      dispatchWorkspace({
+        type: "setObjectState",
+        objectKey: "Vault Document",
+        state: {
+          kind: "note",
+          content: `# ${entry.title}\n\nUnable to load ${entry.path}.\n\n${error instanceof Error ? error.message : String(error)}`,
+          mode: "preview"
+        }
+      });
+      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document" });
+    }
+  }
+
   function openObjectTarget(objectKey: WorkspaceObjectKey, target: "pane" | "floating") {
     if (target === "floating" || !activePane) {
       openFloatingWindow(objectKey);
@@ -432,6 +466,7 @@ function App() {
           <Sidebar
             activePane={activePane}
             openNote={actions.openNote}
+            openExplorerItem={openExplorerItem}
             explorerFilters={sidebarExplorerFilters}
             explorerItems={explorerItems}
             explorerLoading={explorerLoading}
@@ -611,6 +646,10 @@ function TilingWorkspace({
 
 function layoutNodeKey(node: LayoutNode, index: number) {
   return node.type === "leaf" ? node.paneId : `${node.direction}-${index}`;
+}
+
+function formatVaultDocumentContent(title: string, path: string, content: string) {
+  return `# ${title}\n\n${path}\n\n${content}`;
 }
 
 function applyGlobalSettingsRuntime(settings: GlobalSettings) {

@@ -35,6 +35,7 @@ test("IPC API adapter maps typed client calls to channels", async () => {
     if (channel === "vault:getActive") return null;
     if (channel === "vault:switch") return { id: input.vaultId, name: input.vaultId, root: ".", active: true };
     if (channel === "explorer:list") return [];
+    if (channel === "explorer:read") return { title: "daily", path: input.path, layer: "source", content: "# daily" };
     if (channel === "explorer:refresh") return { vaultId: "work", itemCount: 0, refreshedAt: "now", cachePath: null };
     if (channel === "graph:get") return { vaultId: "work", generatedAt: "now", nodes: [], edges: [] };
     if (channel === "graph:refresh") return { vaultId: "work", nodeCount: 0, edgeCount: 0, refreshedAt: "now", cachePath: null };
@@ -45,6 +46,7 @@ test("IPC API adapter maps typed client calls to channels", async () => {
   await api.vault.getActive();
   await api.vault.switch("work");
   await api.explorer.list({ layers: ["template"] });
+  await api.explorer.read({ path: "sources/2026-05-22/daily.md" });
   await api.graph.get({ includeChunks: true });
   await api.search.query({ query: "daily", mode: "hybrid" });
 
@@ -52,6 +54,7 @@ test("IPC API adapter maps typed client calls to channels", async () => {
     "vault:getActive",
     "vault:switch",
     "explorer:list",
+    "explorer:read",
     "graph:get",
     "search:query"
   ]);

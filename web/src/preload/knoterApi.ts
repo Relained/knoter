@@ -9,6 +9,7 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
     },
     explorer: {
       list: (input) => invoke("explorer:list", input),
+      read: (input) => invoke("explorer:read", input),
       refresh: () => invoke("explorer:refresh", undefined)
     },
     graph: {

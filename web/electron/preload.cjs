@@ -7,6 +7,7 @@ const api = {
   },
   explorer: {
     list: (input) => ipcRenderer.invoke("explorer:list", input),
+    read: (input) => ipcRenderer.invoke("explorer:read", input),
     refresh: () => ipcRenderer.invoke("explorer:refresh")
   },
   graph: {

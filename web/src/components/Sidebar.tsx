@@ -6,12 +6,14 @@ import { workspaceObjects } from "../domain/workspace";
 import type { WorkspaceCommandActions } from "../commands/workspaceCommands";
 import { sidebarWidthBounds } from "../settings/preferences";
 import type { SidebarSurfaceKey } from "../sidebar/types";
+import type { SidebarExplorerEntry } from "../sidebar/explorerModel";
 import { sidebarSurfaceKeys, sidebarSurfaceLabels } from "../sidebar/types";
 import { ExplorerSurface, PlaceholderSurface } from "./SidebarSurfaces";
 
 type SidebarProps = {
   activePane?: Pane;
   openNote: (noteKey: NoteKey) => void;
+  openExplorerItem: (entry: SidebarExplorerEntry) => void;
   explorerFilters: SidebarExplorerFilters;
   explorerItems?: ExplorerItem[];
   explorerLoading?: boolean;
@@ -31,6 +33,7 @@ const sidebarViewKeys = ["Tasks", "Todo", "Calendar", "Graph 3D"] as const satis
 export function Sidebar({
   activePane,
   openNote,
+  openExplorerItem,
   explorerFilters,
   explorerItems,
   explorerLoading,
@@ -103,6 +106,7 @@ export function Sidebar({
             onQueryChange={setExplorerQuery}
             onChangeFilter={onChangeExplorerFilter}
             onOpenNote={openNote}
+            onOpenExplorerItem={openExplorerItem}
             onNewNote={actions.newTab}
           />
         )}

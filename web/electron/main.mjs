@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, extname, join, relative } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -65,6 +65,7 @@ function installIpcHandlers() {
       return `${item.title} ${item.path} ${item.kind ?? ""}`.toLowerCase().includes(query);
     });
   });
+  ipcMain.handle("explorer:read", async (_event, input) => readExplorerItem(input));
   ipcMain.handle("explorer:refresh", async () => {
     const active = await getActiveVaultSummary();
     const items = await loadExplorerItems(active);
@@ -108,6 +109,30 @@ function installIpcHandlers() {
       snippet: result.content ?? result.heading ?? ""
     }));
   });
+}
+
+async function readExplorerItem(input) {
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error("No active vault found");
+
+  const items = await loadExplorerItems(active);
+  const item = items.find((candidate) => candidate.path === input.path);
+  if (!item) throw new Error(`Explorer item not found: ${input.path}`);
+
+  const vaultRoot = resolve(active.root);
+  const absolutePath = isAbsolute(item.path) ? item.path : resolve(vaultRoot, item.path);
+  const relativePath = relative(vaultRoot, absolutePath);
+  const outsideVault = relativePath === ".." || relativePath.startsWith(`..${sep}`);
+  if (outsideVault && item.layer !== "template") {
+    throw new Error(`Explorer item is outside the active vault: ${item.path}`);
+  }
+
+  return {
+    title: item.title,
+    path: item.path,
+    layer: item.layer,
+    content: await readFile(absolutePath, "utf8")
+  };
 }
 
 async function getActiveVaultSummary() {

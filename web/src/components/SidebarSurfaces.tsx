@@ -9,6 +9,7 @@ import {
   sidebarExplorerLayerLabels,
   setSidebarExplorerFilter
 } from "../sidebar/explorerModel";
+import type { SidebarExplorerEntry } from "../sidebar/explorerModel";
 
 export type ExplorerSurfaceProps = {
   activePane?: Pane;
@@ -20,6 +21,7 @@ export type ExplorerSurfaceProps = {
   onQueryChange: (query: string) => void;
   onChangeFilter: (layer: SidebarExplorerLayerKey, checked: boolean) => void;
   onOpenNote: (noteKey: NoteKey) => void;
+  onOpenExplorerItem: (entry: SidebarExplorerEntry) => void;
   onNewNote: () => void;
 };
 
@@ -33,6 +35,7 @@ export function ExplorerSurface({
   onQueryChange,
   onChangeFilter,
   onOpenNote,
+  onOpenExplorerItem,
   onNewNote
 }: ExplorerSurfaceProps) {
   const activeTab = activePane?.tabs.find((tab) => tab.id === activePane.activeTabId);
@@ -94,9 +97,12 @@ export function ExplorerSurface({
                   className={`nav-item ${entry.noteKey && activeTab?.noteKey === entry.noteKey ? "is-active" : ""}`}
                   type="button"
                   onClick={() => {
-                    if (entry.noteKey) onOpenNote(entry.noteKey);
+                    if (entry.noteKey) {
+                      onOpenNote(entry.noteKey);
+                      return;
+                    }
+                    onOpenExplorerItem(entry);
                   }}
-                  disabled={!entry.noteKey}
                   title={entry.path ?? entry.title}
                 >
                   {entry.title}

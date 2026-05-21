@@ -75,7 +75,8 @@ export const workspaceObjects = {
   "Graph 3D": { key: "Graph 3D", kind: "graph3d", title: "Graph 3D" },
   Tasks: { key: "Tasks", kind: "tasks", title: "Tasks" },
   Todo: { key: "Todo", kind: "todo", title: "Todo" },
-  Calendar: { key: "Calendar", kind: "calendar", title: "Calendar" }
+  Calendar: { key: "Calendar", kind: "calendar", title: "Calendar" },
+  "Vault Document": { key: "Vault Document", kind: "note", title: "Vault Document" }
 } satisfies Record<WorkspaceObjectKey, WorkspaceObjectDefinition>;
 
 export function isNoteKey(value: string): value is NoteKey {
