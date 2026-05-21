@@ -10,6 +10,7 @@ import { registerTemplateCommand } from "./commands/template";
 import { registerReportCommand } from "./commands/report";
 import { registerMcpCommand } from "./commands/mcp";
 import { registerServiceCommand } from "./commands/service";
+import { registerLlmCommand } from "./commands/llm";
 
 const program = new Command();
 
@@ -34,5 +35,6 @@ registerTemplateCommand(program);
 registerReportCommand(program);
 registerMcpCommand(program);
 registerServiceCommand(program);
+registerLlmCommand(program);
 
 program.parse(process.argv);

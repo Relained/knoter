@@ -89,6 +89,15 @@ describe("CLI help surface", () => {
     expect(result.stdout).toContain("--check");
   });
 
+  test("llm rewrite help is exposed under explicit llm namespace", async () => {
+    const result = await runCli(["llm", "rewrite", "--help"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Usage: kn llm rewrite");
+    expect(result.stdout).toContain("--source <path>");
+    expect(result.stdout).toContain("--agent <codex>");
+  });
+
   test("search help exposes deprecated threshold alias", async () => {
     const result = await runCli(["search", "--help"]);
 

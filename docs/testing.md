@@ -46,6 +46,22 @@ Live TEI/Codex integration tests:
 - `KN_CODEX_TIMEOUT_MS`: single Codex CLI call timeout.
 - `KN_TEI_ALL_TESTDATA_TIMEOUT_MS`: full `testdata/**/*.md` corpus timeout.
 
+Explicit LLM rewrite command:
+
+- `kn llm rewrite --source <vault-relative-source>` calls Codex CLI, asks it to
+  write `rewritten.md` and `artifact.md` in an isolated agent workspace, then
+  imports those Markdown files into the active vault as `rewritten` and
+  `artifact` notes.
+- The command is intentionally under `kn llm`; normal `kn add`, `kn search`,
+  and report/template commands do not generate prose.
+- Importing the Codex-authored outputs still indexes chunks and therefore needs
+  the vault embedding provider to be reachable.
+- `KN_CODEX_BIN` or `--codex-bin` selects the Codex executable. Use
+  `--workspace` to keep the raw agent inputs/outputs for inspection.
+- `--test-embeddings` is a local smoke-test escape hatch: Codex still generates
+  the prose, but indexing uses deterministic vectors instead of calling the
+  embedding endpoint.
+
 Web:
 
 - Vite dev and preview use `http://127.0.0.1:39281`.
