@@ -369,22 +369,26 @@ function App() {
         objectKey: "Vault Document",
         state: {
           kind: "note",
+          title: document.title,
+          path: document.path,
           content: formatVaultDocumentContent(document.title, document.path, document.content),
           mode: "split"
         }
       });
-      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document" });
+      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document", title: document.title });
     } catch (error) {
       dispatchWorkspace({
         type: "setObjectState",
         objectKey: "Vault Document",
         state: {
           kind: "note",
+          title: entry.title,
+          path: entry.path,
           content: `# ${entry.title}\n\nUnable to load ${entry.path}.\n\n${error instanceof Error ? error.message : String(error)}`,
           mode: "preview"
         }
       });
-      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document" });
+      dispatchWorkspace({ type: "openObjectInPane", paneId: activePane.id, objectKey: "Vault Document", title: entry.title });
     }
   }
 

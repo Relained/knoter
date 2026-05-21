@@ -17,7 +17,7 @@ const emptyNoteState: NoteObjectState = {
 export function NoteObjectRenderer(props: WorkspaceObjectRendererProps) {
   const { objectKey, noteKey, objectState, onChangeObjectState } = props;
   const noteState = objectState?.kind === "note" ? objectState : emptyNoteState;
-  const title = noteKey ? notes[noteKey]?.title ?? noteKey : "Untitled";
+  const title = noteKey ? notes[noteKey]?.title ?? noteKey : noteState.title ?? "Untitled";
 
   function commit(patch: Partial<NoteObjectState>) {
     if (!objectKey) return;
@@ -29,7 +29,7 @@ export function NoteObjectRenderer(props: WorkspaceObjectRendererProps) {
       <header className="markdown-header">
         <div>
           <h1>{title}</h1>
-          <p>Markdown editor and viewer share one workspace object.</p>
+          <p>{noteState.path ?? "Markdown editor and viewer share one workspace object."}</p>
         </div>
         <div className="markdown-mode-switch" role="group" aria-label="Markdown mode">
           {(["edit", "preview", "split"] as const).map((mode) => (

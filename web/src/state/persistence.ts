@@ -128,7 +128,9 @@ function normalizeObjectState(objectKey: WorkspaceObjectKey, savedState: any): W
           typeof savedState.content === "string" && savedState.content.trim()
             ? savedState.content
             : defaultState.content,
-        mode: normalizeNoteMode(savedState.mode, defaultState.mode)
+        mode: normalizeNoteMode(savedState.mode, defaultState.mode),
+        ...(typeof savedState.title === "string" && savedState.title.trim() ? { title: savedState.title } : {}),
+        ...(typeof savedState.path === "string" && savedState.path.trim() ? { path: savedState.path } : {})
       };
     case "graph3d":
       return normalizeGraph3DObjectState(savedState, defaultState, normalizeStringList);

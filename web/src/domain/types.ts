@@ -15,6 +15,8 @@ export type NoteObjectState = {
   kind: "note";
   content: string;
   mode: "edit" | "preview" | "split";
+  title?: string;
+  path?: string;
 };
 
 export type Graph3DObjectState = {

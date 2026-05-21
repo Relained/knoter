@@ -34,7 +34,7 @@ export type WorkspaceAction =
   | { type: "activatePane"; paneId: string }
   | { type: "newTab"; paneId: string }
   | { type: "openNote"; paneId: string; noteKey: string }
-  | { type: "openObjectInPane"; paneId: string; objectKey: string }
+  | { type: "openObjectInPane"; paneId: string; objectKey: string; title?: string }
   | { type: "movePaneToolbar"; paneId: string }
   | { type: "setPaneToolbarPosition"; paneId: string; position: EdgePosition }
   | { type: "selectTab"; paneId: string; tabId: string }
@@ -85,7 +85,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case "openNote":
       return openObjectInPane(state, action.paneId, action.noteKey);
     case "openObjectInPane":
-      return openObjectInPane(state, action.paneId, action.objectKey);
+      return openObjectInPane(state, action.paneId, action.objectKey, action.title);
     case "movePaneToolbar":
       return updatePane(state, action.paneId, (pane) => ({
         ...pane,
@@ -343,15 +343,18 @@ function splitTabToPane(
   };
 }
 
-function openObjectInPane(state: WorkspaceState, paneId: string, objectKey: string): WorkspaceState {
+function openObjectInPane(state: WorkspaceState, paneId: string, objectKey: string, title?: string): WorkspaceState {
   if (!isWorkspaceObjectKey(objectKey)) return state;
   const withObjectState = ensureObjectState(state, objectKey);
 
   return updatePane(withObjectState, paneId, (pane) => {
     const existing = pane.tabs.find((tab) => tab.objectKey === objectKey);
-    if (existing) return { ...pane, activeTabId: existing.id };
+    if (existing) {
+      const tabs = title ? pane.tabs.map((tab) => tab.id === existing.id ? { ...tab, title } : tab) : pane.tabs;
+      return { ...pane, tabs, activeTabId: existing.id };
+    }
     const tab = createTab(objectKey);
-    return { ...pane, tabs: [...pane.tabs, tab], activeTabId: tab.id };
+    return { ...pane, tabs: [...pane.tabs, title ? { ...tab, title } : tab], activeTabId: tab.id };
   });
 }
 

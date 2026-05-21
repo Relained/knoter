@@ -369,6 +369,28 @@ test("opening an object in a pane restores missing object state", () => {
   assert.equal(nextState.panesById[paneId].tabs.some((tab) => tab.objectKey === "Tasks"), true);
 });
 
+test("opening a vault document in a pane can update the reused tab title", () => {
+  const initialState = createDefaultWorkspaceState();
+  const paneId = initialState.activePaneId;
+  const firstState = workspaceReducer(initialState, {
+    type: "openObjectInPane",
+    paneId,
+    objectKey: "Vault Document",
+    title: "2026-03-05"
+  });
+  const secondState = workspaceReducer(firstState, {
+    type: "openObjectInPane",
+    paneId,
+    objectKey: "Vault Document",
+    title: "2026-05-13"
+  });
+  const vaultTabs = secondState.panesById[paneId].tabs.filter((tab) => tab.objectKey === "Vault Document");
+
+  assert.equal(vaultTabs.length, 1);
+  assert.equal(vaultTabs[0].title, "2026-05-13");
+  assert.equal(secondState.panesById[paneId].activeTabId, vaultTabs[0].id);
+});
+
 test("floating window updates are constrained to the viewport", () => {
   global.window = {
     innerWidth: 900,
