@@ -19,7 +19,6 @@ export function registerLlmCommand(program: Command): void {
     .option("--codex-bin <path>", "Codex CLI binary", process.env.KN_CODEX_BIN || "codex")
     .option("--timeout-ms <n>", "Codex CLI timeout in milliseconds", "240000")
     .option("--rewritten-path <path>", "Vault-relative rewritten output path")
-    .option("--artifact-path <path>", "Vault-relative artifact output path")
     .option("--workspace <path>", "Agent working directory")
     .option("--test-embeddings", "Use deterministic local embeddings for live agent smoke tests")
     .option("--force", "Overwrite existing rewritten/artifact notes")
@@ -45,7 +44,6 @@ export function registerLlmCommand(program: Command): void {
           codexBin: options.codexBin,
           timeoutMs,
           rewrittenPath: options.rewrittenPath,
-          artifactPath: options.artifactPath,
           workspace: options.workspace,
           useDeterministicEmbeddings: !!options.testEmbeddings,
           force: !!options.force,

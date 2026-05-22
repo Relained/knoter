@@ -49,9 +49,10 @@ Live TEI/Codex integration tests:
 Explicit LLM rewrite command:
 
 - `kn llm rewrite --source <vault-relative-source>` calls Codex CLI, asks it to
-  write `rewritten.md` and `artifact.md` in an isolated agent workspace, then
-  imports those Markdown files into the active vault as `rewritten` and
-  `artifact` notes.
+  write `rewritten.md` plus any template-justified `artifacts/**/*.md` files in
+  an isolated agent workspace, then imports those Markdown files into the
+  active vault. Artifacts are durable scenario documents chosen from
+  `docs/template.md`; the command must not force one daily artifact per source.
 - The command is intentionally under `kn llm`; normal `kn add`, `kn search`,
   and report/template commands do not generate prose.
 - Importing the Codex-authored outputs still indexes chunks and therefore needs

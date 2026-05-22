@@ -57,21 +57,26 @@ describe("llm rewrite", () => {
             "## 정리",
             "- 실제 Codex agent 산출물과 같은 계약으로 저장되는 rewritten 테스트 문서다.",
           ].join("\n"),
-          artifactContent: [
-            "---",
-            'title: "Codex artifact"',
-            "layer: artifact",
-            "kind: study-guide",
-            'artifact_template_id: "study-rewrite-v1"',
-            'source_path: "rewritten/2026-03-05/2026-03-05.md"',
-            "---",
-            "",
-            "# Codex artifact",
-            "",
-            "## Study 지식 정리",
-            "- 자료구조와 NLP 학습 노트를 artifact로 정리한다.",
-          ].join("\n"),
-          lastMessage: "created rewritten.md and artifact.md",
+          artifactFiles: [
+            {
+              path: "artifacts/study/study-index.md",
+              content: [
+                "---",
+                'title: "Codex study artifact"',
+                "layer: artifact",
+                "kind: study-guide",
+                'artifact_template_id: "study-rewrite-v1"',
+                'source_path: "rewritten/2026-03-05/2026-03-05.md"',
+                "---",
+                "",
+                "# Study 지식 정리",
+                "",
+                "## Study 지식 정리",
+                "- 자료구조와 NLP 학습 노트를 artifact로 정리한다.",
+              ].join("\n"),
+            },
+          ],
+          lastMessage: "created rewritten.md and artifacts/study/study-index.md",
           stdout: "",
           stderr: "",
         };
@@ -87,14 +92,18 @@ describe("llm rewrite", () => {
       });
 
       expect(result.rewrittenPath).toBe("rewritten/2026-03-05/2026-03-05.md");
-      expect(result.artifactPath).toBe("artifacts/2026-03-05/2026-03-05-artifact.md");
       expect(result.rewritten.status).toBe("added");
-      expect(result.artifact.status).toBe("added");
+      expect(result.artifacts).toEqual([
+        expect.objectContaining({
+          path: "artifacts/study/study-index.md",
+          status: "added",
+        }),
+      ]);
 
       const metaDb = new MetaDB(vaultRoot);
       try {
         const rewritten = metaDb.getNoteByPath(VAULT_NAME, result.rewrittenPath);
-        const artifact = metaDb.getNoteByPath(VAULT_NAME, result.artifactPath);
+        const artifact = metaDb.getNoteByPath(VAULT_NAME, "artifacts/study/study-index.md");
         expect(rewritten?.rewrite_agent).toBe("codex-cli");
         expect(rewritten?.source_path).toBe(SOURCE_REL_PATH);
         expect(artifact?.artifact_template_id).toBe("study-rewrite-v1");
