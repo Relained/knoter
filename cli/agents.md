@@ -95,7 +95,7 @@ Read these docs before larger changes:
 
 - `../docs/architecture.md`
 - `../docs/codebase.md`
-- `../docs/plan.md`
+- `../docs/plan/` (progress.md, roadmap.md)
 - `../docs/testing.md`
 - `../docs/template.md`
 

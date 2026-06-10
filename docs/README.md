@@ -6,9 +6,23 @@
 | --- | --- |
 | `docs/architecture.md` | 현재 유효한 구조/정책의 source of truth |
 | `docs/codebase.md` | 전체 코드베이스 읽기용 진입점 |
-| `docs/plan.md` | 현재 상태, 다음 작업 순서와 완료 기준 |
-| `docs/template.md` | vault fallback artifact workflow 템플릿 (런타임 계약, `kn template get`으로 전달됨) |
+| `docs/template.md` | vault fallback artifact workflow 템플릿 (런타임 계약, `kn template get`으로 전달됨 — CLI 코드가 이 경로를 직접 참조하므로 이동 금지) |
 | `docs/testing.md` | 테스트 실행과 `.env` 환경 변수 정리 |
+
+진행상황과 전체 plan은 `docs/plan/` 서브디렉토리에 있다.
+
+| 문서 | 역할 |
+| --- | --- |
+| `docs/plan/progress.md` | 구현 완료된 현재 상태(진행상황)와 검증 기준 |
+| `docs/plan/roadmap.md` | 활성 결정사항과 P0–P2 전체 plan |
+| `docs/plan/web-fix-plan.md` | 워크벤치 디자인 결함 수정 계획과 진행 체크 |
+
+기능 설계 문서는 `docs/design/` 서브디렉토리에 있다.
+
+| 문서 | 역할 |
+| --- | --- |
+| `docs/design/widget-bar.md` | 위젯 바 / 알림 이동 설계 |
+| `docs/design/web-commands.md` | 커맨드 레지스트리 / CLI 실연동 / 단축키 설계 |
 
 에이전트 작업 지침은 패키지별 가이드를 따른다.
 

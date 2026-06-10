@@ -150,8 +150,9 @@ Renderer는 SQLite를 직접 소유하지 않는다. Web은 typed API contract
 Electron main handler가 CLI JSON surface를 호출해 active vault의
 `sources/`, legacy `rewritten/`, `artifacts/` Markdown과 effective template로
 Explorer projection을 만든다. 이는 packaged daemon이 아니라 web cache 구축
-전의 임시 CLI-backed bridge다. 현재 workbench renderer는 아직 fixture 기반
-상태로 동작하며 `knoterApi` 연결이 다음 작업이다(`docs/plan.md`).
+전의 임시 CLI-backed bridge다. workbench renderer는 `knoterApi`에 연결되어
+vault 문서를 커맨드 팔레트로 열람한다. 진행 상황은 `docs/plan/progress.md`,
+남은 작업은 `docs/plan/roadmap.md`를 본다.
 
 현재 web 검증은 `npm run check`의 TypeScript/build 확인이 기준이다. Web
 unit test와 Playwright smoke harness는 제거된 상태이며, 재도입 전까지 해당

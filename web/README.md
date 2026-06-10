@@ -33,4 +33,4 @@ automated verification.
 
 - `agents.md` (agent work guide for this package)
 - `../docs/architecture.md`, `../docs/codebase.md`, `../docs/testing.md`,
-  `../docs/plan.md`
+  `../docs/plan/` (progress.md, roadmap.md)

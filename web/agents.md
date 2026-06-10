@@ -20,7 +20,7 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
 - A right-side widget bar pins any view as an always-visible widget
   (equal-ratio vertical split, drag resize); status messages surface through a
   bell icon in the overlay menu bar plus a 4s transient toast. Design notes:
-  `docs/widget-bar.md`.
+  `docs/design/widget-bar.md`.
 - There is no web unit-test or Playwright harness. `npm run check`
   (TypeScript + Vite build) is the only automated verification. Do not claim
   test coverage that does not exist.
@@ -31,7 +31,7 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   (`src/workbench/commands/registry.ts`) — every UI button calls
   `executeCommand(id)`, the same path as the command palette. Commands with
   options open a second palette stage (option form). Design notes:
-  `docs/web-commands.md`.
+  `docs/design/web-commands.md`.
 
 ## Code Map
 
@@ -133,7 +133,8 @@ Agent/artifact HTML is untrusted input:
   `Mod+M`, `Mod+Q`, `Mod+Shift+R`). Users edit bindings in Settings →
   Keyboard Shortcuts.
 - Known design-defect backlog and fix sequencing live in
-  `docs/web-fix-plan.md` — consult it before reworking layout/interaction.
+  `docs/plan/web-fix-plan.md` — consult it before reworking
+  layout/interaction.
 
 ## Commands
 
