@@ -29,8 +29,9 @@ The only LLM-calling surface is the explicit `kn llm` namespace.
   included in default search.
 - `rewritten` and `artifact` documents are parsed, chunked, embedded, stored in
   SQLite FTS, and upserted into zvec.
-- Artifacts are indexed but excluded from default search unless
-  `--include-artifacts` is explicit.
+- Artifacts are indexed; `kind: llm-wiki` artifacts are part of default
+  search/report retrieval (date-scope exempt in report retrieval), while all
+  other artifact kinds need an explicit `--include-artifacts`.
 - Rewriting, task/workout/area/metric extraction, and artifact prose generation
   belong to an external LLM agent.
 - `kn llm` is the only namespace allowed to assemble prompts or call an LLM.

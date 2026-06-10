@@ -16,9 +16,11 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
 - Artifact display is HTML-first, with a separate plain text search projection
   in the target model. Untrusted agent HTML renders only through the sandboxed
   iframe or the sanitized external window path.
-- Default retrieval target is `artifact.kind: llm-wiki`. Current CLI still
-  excludes artifacts by default and uses legacy rewritten as the default indexed
-  knowledge layer until kind-filtered llm-wiki retrieval is implemented.
+- Default retrieval target is `artifact.kind: llm-wiki`, implemented in the
+  CLI: default search/report retrieval covers non-artifact layers plus
+  llm-wiki artifacts (date-scope exempt in report retrieval); other artifact
+  kinds need explicit `--include-artifacts`. Legacy rewritten stays indexed
+  and default-searchable until the storage migration removes it.
 - Task/workout/area/metric extraction belongs to the external agent when it
   updates artifacts.
 - One template file exists per vault at `.kn/template.md`; `docs/template.md` is bundled fallback.
@@ -101,7 +103,9 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
      captions and confidence/page/region metadata.
    - [ ] Add artifact display/search projection split: HTML display, plain-text
      search projection, heading outline, source references.
-   - [ ] Promote `artifact.kind: llm-wiki` to the default retrieval target.
+   - [x] Promote `artifact.kind: llm-wiki` to the default retrieval target
+     (search + report retrieval; other artifact kinds stay behind
+     `--include-artifacts`).
    - [ ] Migrate `rewritten` storage/search behavior to legacy alias or remove it
      after fixture and report-context updates.
 

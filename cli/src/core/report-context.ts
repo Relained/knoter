@@ -64,7 +64,18 @@ export async function buildReportContextBundle(input: ReportContextInput): Promi
     MAX_NOTE_ROWS,
     0,
   );
-  const notesById = new Map(allDateNotes.map((note) => [note.id, note]));
+  // llm-wiki artifacts are date-exempt retrieval targets, so retrieval rows
+  // must be able to resolve them even when they carry no doc_date.
+  const wikiNotes = input.metaDb.listNotesByKind(
+    input.vaultName,
+    "artifact",
+    "llm-wiki",
+    MAX_NOTE_ROWS,
+    0,
+  );
+  const notesById = new Map(
+    [...allDateNotes, ...wikiNotes].map((note) => [note.id, note]),
+  );
 
   const sourceInventory = input.metaDb
     .listNotesByDate(input.vaultName, input.date, "source", MAX_NOTE_ROWS, 0)

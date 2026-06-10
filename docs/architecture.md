@@ -201,16 +201,15 @@ Cache direction:
 
 ## Retrieval
 
-현재 구현의 기본 검색은 SQLite FTS5 + zvec hybrid다. Target model의 기본
-검색은 `artifact.kind: llm-wiki`이며, 현재 CLI가 `kind` 기반 artifact default
-retrieval을 제공하기 전까지 web search는 legacy indexed knowledge를
-CLI-compatible fallback으로 사용한다.
+현재 구현의 기본 검색은 SQLite FTS5 + zvec hybrid다. 기본 검색 대상은
+non-artifact 레이어(legacy rewritten 포함)와 `artifact.kind: llm-wiki`다.
 
 - CJK 청킹은 `Intl.Segmenter` 기반 문장 경계를 사용한다.
 - 짧은 CJK keyword는 FTS5 trigram 한계를 보완하기 위해 안전한 LIKE fallback을 사용한다.
 - zvec score는 distance가 아니라 similarity로 normalize한다.
-- artifact는 현재 CLI에서는 기본 검색에서 제외한다. Target model에서는
-  `llm-wiki` artifact만 기본 검색에 포함하고 다른 artifact는 명시적으로 포함한다.
+- `llm-wiki` artifact만 기본 검색에 포함하고 다른 artifact는
+  `--include-artifacts`로 명시적으로 포함한다. report retrieval에서
+  `llm-wiki`는 날짜 스코프 면제 대상이다(durable 지식 베이스).
 
 ## Document Graph Projection
 
