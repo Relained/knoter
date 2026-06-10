@@ -6,7 +6,7 @@ import {
   quickAccessToolItems,
   systemToolItems,
 } from "../fixtures";
-import type { ToastMessage, ToolKey } from "../types";
+import type { RunningOperation, ToastMessage, ToolKey } from "../types";
 import { NotificationMenu } from "./NotificationMenu";
 import { ToolMenu } from "./ToolMenu";
 
@@ -20,6 +20,7 @@ export function OverlayBar({
   openTool,
   settingsOpen,
   unreadCount,
+  runningOps,
   toastHistory,
   onOpenTool,
   onToggleNotifications,
@@ -30,6 +31,7 @@ export function OverlayBar({
   openTool: ToolKey | null;
   settingsOpen: boolean;
   unreadCount: number;
+  runningOps: RunningOperation[];
   toastHistory: ToastMessage[];
   onOpenTool: (
     tool: ToolKey | null | ((current: ToolKey | null) => ToolKey | null),
@@ -166,6 +168,13 @@ export function OverlayBar({
                   onClick={onToggleNotifications}
                 >
                   <Icon name={tool.icon} size={18} />
+                  {runningOps.length > 0 && (
+                    <span
+                      className="notification-spinner"
+                      role="status"
+                      aria-label={`${runningOps.length} operation(s) running`}
+                    />
+                  )}
                   {unreadCount > 0 && (
                     <span className="notification-badge" aria-hidden="true">
                       {unreadCount > 9 ? "9+" : unreadCount}
@@ -175,6 +184,7 @@ export function OverlayBar({
                 {openTool === "notifications" && menuStyle && (
                   <NotificationMenu
                     messages={toastHistory}
+                    runningOps={runningOps}
                     style={menuStyle}
                     onDismiss={onDismissMessage}
                     onClearAll={onClearMessages}

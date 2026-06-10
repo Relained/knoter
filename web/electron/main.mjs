@@ -288,6 +288,7 @@ async function openHtmlWindow(input) {
   const title = validateNonEmptyString(input?.title, "HTML window title").slice(0, 120);
   const html = validateNonEmptyString(input?.html, "HTML window content");
   if (html.length > 1_000_000) throw new Error("HTML window content is too large");
+  const theme = normalizeWindowTheme(input?.theme);
 
   const win = new BrowserWindow({
     width: 720,
@@ -302,11 +303,55 @@ async function openHtmlWindow(input) {
       sandbox: true
     }
   });
-  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createExternalHtmlDocument(html))}`);
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createExternalHtmlDocument(html, theme))}`);
   return { opened: true };
 }
 
-function createExternalHtmlDocument(html) {
+// Fallback when the renderer sends no (or an invalid) theme snapshot.
+const defaultWindowTheme = {
+  mode: "dark",
+  background: "#090909",
+  surface: "#111111",
+  border: "#303030",
+  textPrimary: "#eeeeee",
+  textSecondary: "#b8b8b8",
+  textMuted: "#777777",
+  accent: "#ff6a00",
+  fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+};
+
+// Theme values are interpolated into an inline <style>, so only plain hex
+// colors and a conservative font-family charset are accepted.
+function normalizeWindowTheme(theme) {
+  if (!theme || typeof theme !== "object") return defaultWindowTheme;
+  return {
+    mode: theme.mode === "light" ? "light" : "dark",
+    background: hexColorOr(theme.background, defaultWindowTheme.background),
+    surface: hexColorOr(theme.surface, defaultWindowTheme.surface),
+    border: hexColorOr(theme.border, defaultWindowTheme.border),
+    textPrimary: hexColorOr(theme.textPrimary, defaultWindowTheme.textPrimary),
+    textSecondary: hexColorOr(theme.textSecondary, defaultWindowTheme.textSecondary),
+    textMuted: hexColorOr(theme.textMuted, defaultWindowTheme.textMuted),
+    accent: hexColorOr(theme.accent, defaultWindowTheme.accent),
+    fontFamily: fontFamilyOr(theme.fontFamily, defaultWindowTheme.fontFamily)
+  };
+}
+
+function hexColorOr(value, fallback) {
+  return typeof value === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)
+    ? value
+    : fallback;
+}
+
+function fontFamilyOr(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const fontFamily = value.trim();
+  return fontFamily.length > 0 && fontFamily.length <= 240 && /^[\w\s,'"-]+$/.test(fontFamily)
+    ? fontFamily
+    : fallback;
+}
+
+function createExternalHtmlDocument(html, theme) {
   return `<!doctype html>
 <html>
   <head>
@@ -317,11 +362,13 @@ function createExternalHtmlDocument(html) {
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-      body { margin: 0; padding: 22px; color: #eeeeee; background: #090909; line-height: 1.55; }
+      :root { color-scheme: ${theme.mode}; font-family: ${theme.fontFamily}; }
+      body { margin: 0; padding: 22px; color: ${theme.textPrimary}; background: ${theme.background}; line-height: 1.55; }
       h1, h2, h3 { line-height: 1.15; }
-      .eyebrow { color: #ff6a00; font-size: 12px; font-weight: 700; text-transform: uppercase; }
-      a { color: #ff7a00; }
+      p { color: ${theme.textSecondary}; }
+      pre { overflow: auto; padding: 14px; border: 1px solid ${theme.border}; border-radius: 8px; background: ${theme.surface}; }
+      .eyebrow { color: ${theme.accent}; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      a { color: ${theme.accent}; }
     </style>
   </head>
   <body>${sanitizeHtmlFragment(html)}</body>

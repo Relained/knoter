@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDialogDismiss } from "../hooks/useDialogDismiss";
 import type {
   SourceDraft,
   SourcePrivacy,
@@ -18,13 +19,12 @@ export function SourceModal({
   onClose: () => void;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const dismiss = useDialogDismiss(onClose);
 
   return (
     <div
       className="source-modal-backdrop"
-      onPointerDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onPointerDown={dismiss.onBackdropPointerDown}
     >
       <section
         className="source-modal"

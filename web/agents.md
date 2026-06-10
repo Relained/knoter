@@ -76,7 +76,8 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
     (temp file → `kn add`)
   - `template.get`, `template.list`, `tag.list`, `tag.update`
   - `report.context`, `llm.rewrite` (codex|claude)
-  - `html.openWindow`
+  - `html.openWindow` (optional `theme` snapshot; the main process validates
+    hex colors and the font-family charset before interpolating styles)
 - Electron main handlers shell out to the CLI as
   `bun <repo>/cli/src/cli.ts --format json ...`. Override with
   `KNOTER_CLI_ENTRY`, `KNOTER_CLI_RUNNER`, `KNOTER_CLI_TIMEOUT_MS`.
@@ -126,6 +127,17 @@ Agent/artifact HTML is untrusted input:
   Fixed-size icon buttons need explicit `padding: 0`, or the UA button padding
   shifts grid-centered icons. Tab surfaces show no hover color; the circular
   close button is the only per-tab hover affordance.
+- Sandboxed and external HTML documents take colors and font from
+  `getSandboxTheme()` in `src/workbench/utils/html.ts` (active base16 scheme +
+  UI font stack) — do not hardcode palette values in generated documents.
+- Dialogs (settings, source modal, command palette) dismiss through the
+  shared `useDialogDismiss` hook (Escape + backdrop pointer-down). Palette
+  results are MRU-ordered (`src/workbench/commands/mru.ts`); ↑/↓ move the
+  selection and hover syncs it.
+- Long-running backend commands wrap their work in
+  `beginOperation`/`endOperation` (command context) so the bell spinner and
+  the notification popup show progress; the bottom-right `StatusChip` shows
+  the active vault, document count, and connection warnings.
 - Keyboard shortcuts bind chords to command ids through
   `src/workbench/commands/keybindings.ts`; the dispatcher lives in `App.tsx`.
   Escape is reserved for dismissal — never bind it or use it to open surfaces.

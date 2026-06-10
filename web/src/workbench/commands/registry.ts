@@ -35,6 +35,8 @@ export type CommandContext = {
   refreshVaultData: () => Promise<void>;
   beginAgentRun: () => boolean;
   endAgentRun: () => void;
+  beginOperation: (label: string) => number;
+  endOperation: (operationId: number) => void;
 };
 
 const searchModes = ["hybrid", "keyword", "semantic"] as const;
@@ -111,17 +113,22 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
       run: async (values) => {
         const api = requireApi(ctx);
         if (!api) return;
-        ctx.pushStatus("Sync started...");
-        const result = await api.sync.run({
-          full: values.full === true,
-          changed: values.changed === true,
-          prune: values.prune === true,
-        });
-        const errorNote = result.errors.length > 0 ? `, errors: ${result.errors.length}` : "";
-        ctx.pushStatus(
-          `Sync complete: +${result.added} added, ${result.updated} updated, ${result.pruned} pruned${errorNote}.`,
-        );
-        await ctx.refreshVaultData();
+        const operationId = ctx.beginOperation("Sync vault index");
+        try {
+          ctx.pushStatus("Sync started...");
+          const result = await api.sync.run({
+            full: values.full === true,
+            changed: values.changed === true,
+            prune: values.prune === true,
+          });
+          const errorNote = result.errors.length > 0 ? `, errors: ${result.errors.length}` : "";
+          ctx.pushStatus(
+            `Sync complete: +${result.added} added, ${result.updated} updated, ${result.pruned} pruned${errorNote}.`,
+          );
+          await ctx.refreshVaultData();
+        } finally {
+          ctx.endOperation(operationId);
+        }
       },
     },
     {
@@ -213,16 +220,21 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
       run: async (values) => {
         const api = requireApi(ctx);
         if (!api) return;
-        ctx.pushStatus("Choose source files in the file picker...");
-        const result = await api.source.addFromPicker({ tags: parseTags(values.tags) });
-        if (result.canceled) {
-          ctx.pushStatus("Add source canceled.");
-          return;
+        const operationId = ctx.beginOperation("Add source files");
+        try {
+          ctx.pushStatus("Choose source files in the file picker...");
+          const result = await api.source.addFromPicker({ tags: parseTags(values.tags) });
+          if (result.canceled) {
+            ctx.pushStatus("Add source canceled.");
+            return;
+          }
+          ctx.pushStatus(
+            `Sources added: ${result.filesAdded} added, ${result.filesUpdated} updated, ${result.filesSkipped} skipped.`,
+          );
+          await ctx.refreshVaultData();
+        } finally {
+          ctx.endOperation(operationId);
         }
-        ctx.pushStatus(
-          `Sources added: ${result.filesAdded} added, ${result.filesUpdated} updated, ${result.filesSkipped} skipped.`,
-        );
-        await ctx.refreshVaultData();
       },
     },
     {
@@ -400,19 +412,24 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         const api = requireApi(ctx);
         if (!api) return;
         const date = stringValue(values.date);
-        ctx.pushStatus(`Building report context for ${date}...`);
-        const bundle = await api.report.context({
-          date,
-          includeArtifacts: values.includeArtifacts === true,
-        });
-        ctx.upsertTab({
-          id: `report-context-${date}`,
-          title: `Report Context ${date}`,
-          kind: "artifact",
-          label: "Report",
-          html: jsonHtml(`Report Context ${date}`, bundle),
-        });
-        ctx.pushStatus(`Report context ready for ${date}.`);
+        const operationId = ctx.beginOperation(`Report context ${date}`);
+        try {
+          ctx.pushStatus(`Building report context for ${date}...`);
+          const bundle = await api.report.context({
+            date,
+            includeArtifacts: values.includeArtifacts === true,
+          });
+          ctx.upsertTab({
+            id: `report-context-${date}`,
+            title: `Report Context ${date}`,
+            kind: "artifact",
+            label: "Report",
+            html: jsonHtml(`Report Context ${date}`, bundle),
+          });
+          ctx.pushStatus(`Report context ready for ${date}.`);
+        } finally {
+          ctx.endOperation(operationId);
+        }
       },
     },
     {
@@ -445,6 +462,7 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         }
         const source = stringValue(values.source);
         const agent = enumValue(values.agent, llmAgents, "codex");
+        const operationId = ctx.beginOperation(`Agent rewrite (${agent}): ${source}`);
         try {
           ctx.pushStatus(`Agent rewrite running (${agent}): ${source} — this can take minutes.`);
           const result = await api.llm.rewrite({ source, agent });
@@ -454,6 +472,7 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           await ctx.refreshVaultData();
         } finally {
           ctx.endAgentRun();
+          ctx.endOperation(operationId);
         }
       },
     },

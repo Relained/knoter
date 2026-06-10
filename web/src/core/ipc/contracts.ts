@@ -8,6 +8,7 @@ import type {
   GraphGetInput,
   GraphPayload,
   GraphRefreshResult,
+  HtmlWindowTheme,
   LlmRewriteRunInput,
   LlmRewriteRunResult,
   NoteSaveInput,
@@ -44,7 +45,7 @@ export type IpcRequestMap = {
   "tag:update": TagUpdateInput;
   "report:context": ReportContextInput;
   "llm:rewrite": LlmRewriteRunInput;
-  "html:openWindow": { title: string; html: string };
+  "html:openWindow": { title: string; html: string; theme?: HtmlWindowTheme };
 };
 
 export type IpcResponseMap = {

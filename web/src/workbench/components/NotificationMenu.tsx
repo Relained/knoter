@@ -1,13 +1,15 @@
 import type { CSSProperties } from "react";
-import type { ToastMessage } from "../types";
+import type { RunningOperation, ToastMessage } from "../types";
 
 export function NotificationMenu({
   messages,
+  runningOps,
   style,
   onDismiss,
   onClearAll,
 }: {
   messages: ToastMessage[];
+  runningOps: RunningOperation[];
   style?: CSSProperties;
   onDismiss: (messageId: number) => void;
   onClearAll: () => void;
@@ -27,6 +29,24 @@ export function NotificationMenu({
           </button>
         )}
       </header>
+      {runningOps.length > 0 && (
+        <ul className="notification-running" aria-label="Operations in progress">
+          {runningOps.map((operation) => (
+            <li key={operation.id}>
+              <span className="notification-running-spinner" aria-hidden="true" />
+              <span className="notification-running-label">
+                {operation.label}
+              </span>
+              <time dateTime={operation.startedAt}>
+                {new Date(operation.startedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
       {messages.length === 0 ? (
         <p className="notification-empty">No messages.</p>
       ) : (

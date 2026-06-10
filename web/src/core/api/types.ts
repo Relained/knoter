@@ -199,3 +199,15 @@ export type LlmRewriteRunResult = {
     status: string;
   }>;
 };
+
+export type HtmlWindowTheme = {
+  mode: "dark" | "light";
+  background: string;
+  surface: string;
+  border: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  accent: string;
+  fontFamily: string;
+};

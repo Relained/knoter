@@ -1,5 +1,12 @@
+import { useSyncExternalStore } from "react";
+import { getActiveBase16Theme } from "../../shared/theming/runtime";
 import type { HtmlTab } from "../types";
 import { createSandboxDocument } from "../utils/html";
+
+function subscribeThemeChange(listener: () => void) {
+  window.addEventListener("knoter:themechange", listener);
+  return () => window.removeEventListener("knoter:themechange", listener);
+}
 
 export function HtmlPageView({
   tab,
@@ -18,6 +25,13 @@ export function HtmlPageView({
   onSaveNote?: (editor: "daily" | "simple") => void;
   variant?: "page" | "widget";
 }) {
+  // Sandbox srcDocs bake in theme colors, so rebuild them on theme change.
+  useSyncExternalStore(
+    subscribeThemeChange,
+    getActiveBase16Theme,
+    getActiveBase16Theme,
+  );
+
   if (!tab) {
     return (
       <article className="empty-page">
