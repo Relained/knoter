@@ -19,7 +19,7 @@ export interface SearchOptions {
   after?: string;
   before?: string;
   lang?: string;              // language filter: "cjk", "latin", "mixed", etc.
-  includeArtifacts?: boolean; // artifact chunks are excluded by default
+  includeArtifacts?: boolean; // default search covers llm-wiki artifacts only; true widens to all artifacts
   alpha?: number;             // fusion weight, default 0.80
 }
 
@@ -173,8 +173,7 @@ async function semanticSearch(
       if (!options.includeArtifacts) {
         results = results.filter((r: any) => {
           const noteId = r.fields?.note_id || r.data?.note_id;
-          const noteRow = metaDb.getNote(noteId);
-          return noteRow?.layer !== "artifact";
+          return isDefaultRetrievable(metaDb.getNote(noteId));
         });
       }
 
@@ -293,8 +292,7 @@ async function hybridSearch(
     if (!options.includeArtifacts) {
       semanticResults = semanticResults.filter((r: any) => {
         const noteId = r.fields?.note_id || r.data?.note_id;
-        const noteRow = metaDb.getNote(noteId);
-        return noteRow?.layer !== "artifact";
+        return isDefaultRetrievable(metaDb.getNote(noteId));
       });
     }
 
@@ -349,6 +347,16 @@ async function hybridSearch(
 }
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
+
+/**
+ * Default retrieval policy: non-artifact layers plus llm-wiki artifacts.
+ * Other artifact kinds need an explicit includeArtifacts request. Rows
+ * without metadata stay included, matching the previous layer-only filter.
+ */
+function isDefaultRetrievable(noteRow: { layer?: string; kind?: string | null } | null | undefined): boolean {
+  if (!noteRow) return true;
+  return noteRow.layer !== "artifact" || noteRow.kind === "llm-wiki";
+}
 
 /**
  * Convert FTS result to FusedResult structure.

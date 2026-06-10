@@ -740,6 +740,23 @@ export class MetaDB {
       .all(vaultId, layer, limit, offset) as NoteRow[];
   }
 
+  listNotesByKind(
+    vaultId: string,
+    layer: DocumentLayer,
+    kind: string,
+    limit = 50,
+    offset = 0,
+  ): NoteRow[] {
+    return this.db
+      .query(
+        `SELECT * FROM notes
+         WHERE vault_id = ? AND layer = ? AND kind = ?
+         ORDER BY doc_date DESC, file_path
+         LIMIT ? OFFSET ?`,
+      )
+      .all(vaultId, layer, kind, limit, offset) as NoteRow[];
+  }
+
   listNotesByDate(
     vaultId: string,
     docDate: string,
@@ -1103,7 +1120,11 @@ export class MetaDB {
   ): FtsResult[] {
     const ftsQuery = buildFtsQuery(query);
     if (!ftsQuery) return [];
-    const artifactClause = includeArtifacts ? "" : "AND n.layer != 'artifact'";
+    // Default retrieval targets non-artifact chunks plus llm-wiki artifacts;
+    // includeArtifacts widens to every artifact kind.
+    const artifactClause = includeArtifacts
+      ? ""
+      : "AND (n.layer != 'artifact' OR n.kind = 'llm-wiki')";
 
     const ftsRows = vaultId
       ? (

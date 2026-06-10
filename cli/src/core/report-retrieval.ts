@@ -116,6 +116,8 @@ function searchReportScopedFts(
   if (!ftsQuery) return [];
 
   const layerClause = buildReportLayerClause(layer, includeArtifacts);
+  // llm-wiki artifacts are the durable knowledge base, so they are exempt
+  // from the per-date evidence scoping.
   const rows = metaDb.db
     .query(
       `SELECT c.id AS chunkId, c.note_id AS noteId, c.content, f.rank
@@ -124,7 +126,7 @@ function searchReportScopedFts(
        JOIN notes n ON c.note_id = n.id
        WHERE chunks_fts MATCH ?
          AND n.vault_id = ?
-         AND n.doc_date = ?
+         AND (n.doc_date = ? OR (n.layer = 'artifact' AND n.kind = 'llm-wiki'))
          AND n.vector_sync_status = 'synced'
          ${layerClause}
        ORDER BY f.rank
@@ -143,15 +145,19 @@ function searchReportScopedFts(
   }));
 }
 
+// Default retrieval covers the requested layer plus llm-wiki artifacts (the
+// durable knowledge base); includeArtifacts widens to every artifact kind.
 function buildReportLayerClause(layer: ReportLayer, includeArtifacts: boolean): string {
   if (layer === "artifact") {
-    return includeArtifacts ? "AND n.layer = 'artifact'" : "AND 1 = 0";
+    return includeArtifacts
+      ? "AND n.layer = 'artifact'"
+      : "AND n.layer = 'artifact' AND n.kind = 'llm-wiki'";
   }
   if (layer === "all") {
-    return includeArtifacts ? "" : "AND n.layer != 'artifact'";
+    return includeArtifacts ? "" : "AND (n.layer != 'artifact' OR n.kind = 'llm-wiki')";
   }
   if (includeArtifacts) {
     return `AND (n.layer = '${layer}' OR n.layer = 'artifact')`;
   }
-  return `AND n.layer = '${layer}'`;
+  return `AND (n.layer = '${layer}' OR (n.layer = 'artifact' AND n.kind = 'llm-wiki'))`;
 }
