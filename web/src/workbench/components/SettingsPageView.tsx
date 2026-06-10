@@ -4,9 +4,9 @@ import {
   fontFamilyOptions,
   fontSizeBounds,
   getGlobalSettingsSnapshot,
-  sidebarWidthBounds,
   subscribeGlobalSettings,
   updateGlobalSettings,
+  widgetBarWidthBounds,
 } from "../../core/settings/preferences";
 import type { DockPreference, FontFamilyPreference } from "../../core/settings/preferences";
 import {
@@ -67,26 +67,14 @@ export function SettingsPageView({
                   }
                 />
               </dd>
-              <dt>Sidebar width</dt>
+              <dt>Widget bar width</dt>
               <dd>
                 <NumberControl
-                  value={settings.sidebarWidth}
-                  min={sidebarWidthBounds.min}
-                  max={sidebarWidthBounds.max}
-                  onChange={(sidebarWidth) =>
-                    updateGlobalSettings({ sidebarWidth })
-                  }
-                />
-              </dd>
-              <dt>Sidebar collapsed</dt>
-              <dd>
-                <input
-                  type="checkbox"
-                  checked={settings.sidebarCollapsed}
-                  onChange={(event) =>
-                    updateGlobalSettings({
-                      sidebarCollapsed: event.currentTarget.checked,
-                    })
+                  value={settings.widgetBarWidth}
+                  min={widgetBarWidthBounds.min}
+                  max={widgetBarWidthBounds.max}
+                  onChange={(widgetBarWidth) =>
+                    updateGlobalSettings({ widgetBarWidth })
                   }
                 />
               </dd>

@@ -4,8 +4,6 @@ export type DockPreference = "top" | "bottom";
 export type FontStackSettings = Record<FontFamilyPreference, string>;
 
 export type GlobalSettings = {
-  sidebarCollapsed: boolean;
-  sidebarWidth: number;
   base16ThemeId: string;
   iconThemeId: string;
   uiFontFamily: FontFamilyPreference;
@@ -30,12 +28,6 @@ type SettingDefinition<T> = {
 type SettingDefinitions = {
   [Key in keyof GlobalSettings]: SettingDefinition<GlobalSettings[Key]>;
 };
-
-export const sidebarWidthBounds = {
-  min: 168,
-  max: 420,
-  default: 248,
-} as const;
 
 export const widgetBarWidthBounds = {
   min: 240,
@@ -75,8 +67,6 @@ export const defaultFontStacks: FontStackSettings = {
 };
 
 export const defaultGlobalSettings: GlobalSettings = {
-  sidebarCollapsed: false,
-  sidebarWidth: sidebarWidthBounds.default,
   base16ThemeId: "knoter-default-dark",
   iconThemeId: "lucide",
   uiFontFamily: "sans-serif",
@@ -94,13 +84,6 @@ export const globalSettingsConfigFileName = "knoter.config";
 export const globalSettingsChangedEvent = "knoter:global-settings-changed";
 
 const settingDefinitions: SettingDefinitions = {
-  sidebarCollapsed: booleanSetting("sidebarCollapsed", defaultGlobalSettings.sidebarCollapsed),
-  sidebarWidth: numberSetting(
-    "sidebarWidth",
-    sidebarWidthBounds.min,
-    sidebarWidthBounds.max,
-    defaultGlobalSettings.sidebarWidth,
-  ),
   base16ThemeId: textSetting("base16ThemeId", defaultGlobalSettings.base16ThemeId),
   iconThemeId: textSetting("iconThemeId", defaultGlobalSettings.iconThemeId),
   uiFontFamily: enumSetting(
@@ -263,20 +246,6 @@ function parseGlobalSettingsText(text: string): Partial<GlobalSettings> {
     patch[key] = definition.normalize(definition.deserialize(value)) as never;
   }
   return patch;
-}
-
-function booleanSetting(
-  key: keyof GlobalSettings,
-  defaultValue: boolean,
-): SettingDefinition<boolean> {
-  return {
-    key,
-    storageKey: storageKeyFor(key),
-    defaultValue,
-    normalize: (value) => (typeof value === "boolean" ? value : defaultValue),
-    serialize: (value) => String(value),
-    deserialize: (value) => value === "true",
-  };
 }
 
 function numberSetting(
