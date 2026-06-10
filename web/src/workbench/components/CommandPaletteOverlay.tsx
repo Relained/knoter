@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../shared/icons/Icon";
 import { formatChord, type KeybindingMap } from "../commands/keybindings";
 import type {
@@ -10,44 +10,65 @@ import type {
 
 export function CommandPaletteOverlay({
   query,
-  sort,
   items,
   pending,
   keybindings,
   onQuery,
-  onSort,
   onSelect,
   onSubmitPending,
   onCancelPending,
   onClose,
 }: {
   query: string;
-  sort: string;
   items: WorkbenchCommand[];
   pending: PendingCommand | null;
   keybindings: KeybindingMap;
   onQuery: (query: string) => void;
-  onSort: (sort: string) => void;
   onSelect: (command: WorkbenchCommand) => void;
   onSubmitPending: (values: CommandValues) => void;
   onCancelPending: () => void;
   onClose: () => void;
 }) {
-  const firstItem = items[0];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  const activeIndex =
+    items.length === 0 ? -1 : Math.min(selectedIndex, items.length - 1);
+  const activeItem = activeIndex === -1 ? null : items[activeIndex];
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         if (pending) onCancelPending();
         else onClose();
+        return;
       }
-      if (event.key === "Enter" && !pending && firstItem) {
-        onSelect(firstItem);
+      if (pending) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (items.length === 0) return;
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setSelectedIndex(
+          (activeIndex + step + items.length) % items.length,
+        );
+        return;
+      }
+      if (event.key === "Enter" && activeItem) {
+        onSelect(activeItem);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [firstItem, pending, onCancelPending, onClose, onSelect]);
+  }, [items, activeIndex, activeItem, pending, onCancelPending, onClose, onSelect]);
+
+  useEffect(() => {
+    resultsRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, items]);
 
   return (
     <div
@@ -87,12 +108,15 @@ export function CommandPaletteOverlay({
               aria-label="Search commands"
               autoFocus
             />
-            <div className="command-results" role="listbox">
-              {items.map((item) => (
+            <div className="command-results" role="listbox" ref={resultsRef}>
+              {items.map((item, index) => (
                 <button
+                  className={index === activeIndex ? "is-selected" : ""}
                   type="button"
                   role="option"
+                  aria-selected={index === activeIndex}
                   onClick={() => onSelect(item)}
+                  onMouseEnter={() => setSelectedIndex(index)}
                   key={item.id}
                 >
                   <span>
@@ -113,18 +137,6 @@ export function CommandPaletteOverlay({
                 </button>
               ))}
             </div>
-            <footer>
-              <span>Sort by</span>
-              <select
-                value={sort}
-                onChange={(event) => onSort(event.currentTarget.value)}
-                aria-label="Sort command results"
-              >
-                <option value="relevance">Relevance</option>
-                <option value="title">Title</option>
-                <option value="type">Type</option>
-              </select>
-            </footer>
           </>
         )}
       </section>

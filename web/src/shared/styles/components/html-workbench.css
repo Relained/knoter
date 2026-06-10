@@ -458,7 +458,10 @@
     text-align: left;
 }
 
-.command-results button:hover {
+/* Hover moves the selection (mouse sync), so highlight tracks
+   .is-selected instead of :hover. */
+.command-results button.is-selected {
+    border-color: var(--border-subtle);
     background: var(--accent-selected-soft);
 }
 

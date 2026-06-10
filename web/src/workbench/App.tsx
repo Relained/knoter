@@ -19,6 +19,11 @@ import {
   resolveChordCommand,
   subscribeKeybindings,
 } from "./commands/keybindings";
+import {
+  loadCommandMru,
+  sortCommandsByMru,
+  touchCommandMru,
+} from "./commands/mru";
 import { buildWorkbenchCommands } from "./commands/registry";
 import { builtinViews, initialSourceDraft, initialTabs } from "./fixtures";
 import { sourceToHtml } from "./utils/html";
@@ -68,7 +73,8 @@ export function App() {
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
-  const [commandSort, setCommandSort] = useState("relevance");
+  const [recentCommandIds, setRecentCommandIds] =
+    useState<string[]>(loadCommandMru);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(
     null,
   );
@@ -157,12 +163,8 @@ export function App() {
       if (!query) return true;
       return `${command.title} ${command.detail}`.toLowerCase().includes(query);
     });
-    if (commandSort === "title")
-      return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
-    if (commandSort === "type")
-      return [...filtered].sort((a, b) => a.detail.localeCompare(b.detail));
-    return filtered;
-  }, [commandQuery, commandSort, commands]);
+    return sortCommandsByMru(filtered, recentCommandIds);
+  }, [commandQuery, commands, recentCommandIds]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -253,6 +255,7 @@ export function App() {
 
   function selectCommand(command: WorkbenchCommand, preset: CommandValues = {}) {
     setOpenTool(null);
+    setRecentCommandIds(touchCommandMru(command.id));
     if (command.options && command.options.length > 0) {
       setPendingCommand({ command, values: preset });
       setCommandOpen(true);
@@ -482,12 +485,10 @@ export function App() {
       {commandOpen && (
         <CommandPaletteOverlay
           query={commandQuery}
-          sort={commandSort}
           items={filteredCommands}
           pending={pendingCommand}
           keybindings={keybindings}
           onQuery={setCommandQuery}
-          onSort={setCommandSort}
           onSelect={selectCommand}
           onSubmitPending={submitPendingCommand}
           onCancelPending={() => setPendingCommand(null)}
