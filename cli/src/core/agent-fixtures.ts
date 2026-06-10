@@ -47,7 +47,7 @@ type ScenarioKind =
 
 const TEMPLATE_PATH = fileURLToPath(new URL("../../../docs/template.md", import.meta.url));
 const REWRITE_AGENT = "deterministic-test-agent";
-const REWRITE_PROMPT_HASH = "artifact-workflow-v3-test-fixture";
+const REWRITE_PROMPT_HASH = "artifact-workflow-v4-test-fixture";
 
 export async function installAgentScenarioFixtures(
   input: InstallAgentScenarioFixturesInput,
@@ -234,6 +234,20 @@ interface ArtifactFixture {
 
 function buildArtifacts(sources: SourceEvidence[]): ArtifactFixture[] {
   return [
+    {
+      relPath: "artifacts/llm-wiki.md",
+      content: renderArtifact({
+        title: "LLM Wiki",
+        kind: "llm-wiki",
+        templateId: "llm-wiki",
+        sections: [
+          ["Overview", "- testdata 시나리오 vault의 장기 지식 베이스 fixture. 기본 검색/추론 레이어다."],
+          ["Topics", "- 식단/운동/Task/Study/프로젝트 시나리오 evidence가 testdata source에서 유입된다."],
+          ["Recent Updates", "- fixture-install: deterministic agent fixture가 위키를 설치했다."],
+          ["Sources", sourcesList(sources, "mixed")],
+        ],
+      }),
+    },
     {
       relPath: "artifacts/diet/diet-dashboard.md",
       content: renderArtifact({

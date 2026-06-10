@@ -96,10 +96,13 @@ HTTP API만 의존한다. TEI 실행/중지 같은 service lifecycle은 향후 p
 app layer 책임이며 현재 React/Vite renderer에는 구현되어 있지 않다.
 
 LLM 호출과 prompt 조립은 `kn llm` namespace에만 둔다. 현재 구현된
-`kn llm rewrite --source <path>`는 Codex CLI를 격리된 agent workspace에서
-호출해 `rewritten.md`와 template 기반 `artifacts/**/*.md`를 작성하게 한 뒤,
-그 결과 Markdown을 active vault로 import하고 인덱싱한다. 시나리오/출력 계약은
-`docs/template.md`를 따른다.
+`kn llm rewrite --source <path>`는 Codex/Claude CLI를 격리된 agent
+workspace에서 호출해 `artifacts/llm-wiki.md` 갱신과 template 기반
+시나리오 `artifacts/**/*.md`를 작성하게 한 뒤(기존 vault artifact는
+workspace에 시딩되어 in-place 갱신), 그 결과 Markdown을 active vault로
+import하고 인덱싱한다. 에이전트가 legacy `rewritten.md`를 쓰면 호환
+경로로 import만 한다. 시나리오/출력 계약은 `docs/template.md`(v4,
+artifact-first)를 따른다.
 
 `kn service status --check`는 현재 vault에 설정된 embedding endpoint를
 점검하는 별도 service surface다. `kn vault status --check-providers`도

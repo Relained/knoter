@@ -1,13 +1,13 @@
 ---
 id: artifact-workflow
 name: knoter Artifact Workflow
-version: 3
+version: 4
 kind: artifact-set
 locale: ko-KR
 requiredSections:
   - Contract
   - Agent Procedure
-  - Rewritten Source Prompt
+  - Wiki Update Prompt
   - Scenario Templates
   - Output Contracts
   - Retrieval Notes
@@ -17,22 +17,25 @@ requiredSections:
 
 > Bundled fallback template. Vaults should override it with `.kn/template.md`.
 > External LLM agents combine this template with `kn report context` JSON and
-> explicit `kn`/MCP retrieval before writing rewritten notes or user-visible
-> artifacts. `knoter` stores, validates, indexes, and retrieves documents; it
-> does not generate prose in normal `kn` commands.
+> explicit `kn`/MCP retrieval before writing user-visible artifacts.
+> `knoter` stores, validates, indexes, and retrieves documents; it does not
+> generate prose in normal `kn` commands.
 
 ## Contract
 
-Use source files, rewritten notes, artifacts, and retrieval results as evidence.
+Use source files, existing artifacts, and retrieval results as evidence.
 
 Document layers:
 
 - `source`: raw user files. These are evidence only and are not chunked or
   vector-indexed.
-- `rewritten`: first-pass external-agent rewrite of a source document. This is
-  the primary cleaned retrieval layer.
-- `artifact`: durable user-facing documents generated or maintained from
-  rewritten notes, template instructions, and retrieval.
+- `artifact`: durable agent-maintained documents under `artifacts/`. The
+  `kind: llm-wiki` artifact is the long-term knowledge base and the default
+  retrieval layer; scenario artifacts (dashboards, trackers, boards) hold
+  temporary or task-shaped knowledge.
+- `rewritten` (legacy): first-pass rewrites from the old pipeline. Existing
+  rewritten notes stay indexed and default-searchable, but new work must not
+  author rewritten notes.
 
 Rules:
 
@@ -41,8 +44,10 @@ Rules:
 - Use explicit `kind` only when the source/template supports it.
 - Keep counts, dates, task states, streak values, names, and file paths.
 - Prefer updating durable artifacts over creating duplicate documents.
-- Before creating an artifact, search existing rewritten notes and, when needed,
-  search artifacts with `includeArtifacts`.
+- Integrate durable, public, permanent knowledge into the llm-wiki; route
+  temporary or task-shaped evidence to scenario artifacts.
+- Before creating an artifact, search the llm-wiki and, when needed, search
+  all artifacts with `includeArtifacts`.
 
 Required context fields from `kn report context`:
 
@@ -60,54 +65,53 @@ Required context fields from `kn report context`:
 
 1. Read this template and the target-date context bundle.
 2. Inspect target source files from `sourceInventory`.
-3. For each target source that needs cleanup, run the Rewritten Source Prompt
-   below with the source content and source path.
-4. Save the result under `rewritten/YYYY-MM-DD/...` with valid rewritten
-   frontmatter.
-5. Search rewritten notes and relevant existing artifacts before artifact
-   planning. Use zvec/semantic search when keyword search is too narrow.
-6. Choose one or more Scenario Templates below based on the evidence.
-7. For each scenario, create or update the durable artifact under `artifacts/`.
-8. Include source paths or chunk ids in claims that depend on specific evidence.
+3. Search the llm-wiki and relevant existing artifacts before planning
+   updates. Use zvec/semantic search when keyword search is too narrow.
+4. Run the Wiki Update Prompt below to integrate durable knowledge from the
+   source into `artifacts/llm-wiki.md`.
+5. Choose one or more Scenario Templates below based on the evidence.
+6. For each scenario, create or update the durable artifact under `artifacts/`.
+7. Include source paths or chunk ids in claims that depend on specific evidence.
 
-## Rewritten Source Prompt
+## Wiki Update Prompt
 
-Use this prompt when converting a raw source note into a rewritten note.
+Use this prompt when integrating a source note into the llm-wiki knowledge
+base.
 
 ```text
-You are the knoter rewrite agent.
+You are the knoter knowledge agent.
 
 Input:
 - source_path: {{source_path}}
 - target_date: {{date}}
+- current_wiki:
+{{wiki_content}}
 - source_content:
 {{source_content}}
 
 Task:
-1. Rewrite the source into a clean Markdown note.
-2. Preserve all factual content: dates, names, counts, task checkboxes, streaks,
-   meals, workouts, study topics, project notes, and links.
-3. Organize loose lines under clear headings.
-4. Do not add facts that are not in the source. You may add short labels or
-   grouping headings when they clarify the source.
-5. Keep unfinished tasks as unchecked checkboxes and completed tasks as checked
-   checkboxes.
-6. If the source contains study material, structure it as knowledge notes with
-   definitions, key points, examples, and review questions.
-7. If the source contains daily planning or reflection, separate observations,
-   tasks, mood/reflection, and next actions.
+1. Identify durable, public, permanent knowledge in the source: project facts,
+   long-term constraints, decisions, definitions, and recurring patterns.
+2. Integrate that knowledge into the existing wiki structure. Update topic
+   sections in place; create a new topic section only when no existing section
+   fits.
+3. Add one dated line to the Recent Updates section:
+   `{{date}}: <what changed and why>`.
+4. Do not copy temporary, task-shaped, or private content into the wiki; route
+   it to scenario artifacts instead.
+5. Do not add facts that are not in the source or the existing wiki.
+6. Preserve existing wiki content that is unrelated to this update.
 
 Output:
-- Markdown only.
+- Markdown only, the full updated wiki document.
 - Include this frontmatter:
 ---
-title: "<human title>"
-layer: rewritten
-kind: "<daily|study|project|reflection|mixed>"
-doc_date: {{date}}
+title: "LLM Wiki"
+layer: artifact
+kind: llm-wiki
+source_note_id: "{{source_note_id}}"
 source_path: "{{source_path}}"
-rewrite_agent: "<agent-name-or-runtime>"
-rewrite_prompt_hash: "<stable prompt/version hash>"
+artifact_template_id: llm-wiki
 ---
 ```
 
@@ -122,8 +126,8 @@ Purpose: daily meal tracking, diet advice, and streak continuity.
 
 Evidence to use:
 
-- rewritten daily notes with `# 식단`, meal lines, snacks, drinks, or diet
-  streaks
+- daily notes (source evidence or legacy rewritten notes) with `# 식단`,
+  meal lines, snacks, drinks, or diet streaks
 - previous diet artifacts when extending streaks
 - semantic search for `식단`, `아침`, `점심`, `저녁`, `디저트`, `밥`, `다이어트`
 
@@ -167,8 +171,8 @@ Purpose: workout volume tracking and workout streak continuity.
 
 Evidence to use:
 
-- rewritten daily notes with `# 운동`, `운동 N일차`, home training, running, or
-  route notes
+- daily notes (source evidence or legacy rewritten notes) with `# 운동`,
+  `운동 N일차`, home training, running, or route notes
 - previous workout artifacts when extending streaks
 - semantic search for `운동`, `홈트`, `뛰었음`, `streak`
 
@@ -212,8 +216,8 @@ Purpose: maintain a durable task board from daily notes.
 
 Evidence to use:
 
-- rewritten notes with `- [ ]`, `- [x]`, project notes, TODO sections, and
-  repeated unfinished items
+- daily notes (source evidence or legacy rewritten notes) with `- [ ]`,
+  `- [x]`, project notes, TODO sections, and repeated unfinished items
 - previous task artifacts with include-artifacts retrieval
 - semantic search for recurring tasks such as `캡디`, `녹강`, `알고리즘`,
   `정처기`, `백업`, `공유기`
@@ -252,19 +256,19 @@ Output sketch:
 
 ### Study 시나리오
 
-Purpose: convert raw study drafts into organized rewritten knowledge notes.
+Purpose: organize raw study drafts into durable knowledge artifacts.
 
 Evidence to use:
 
 - source notes about 자료구조, NLP, algorithms, Transformer, BERT, heaps,
   trees, references, or class notes
-- semantic search over existing rewritten study notes to avoid duplicate pages
+- semantic search over the llm-wiki and existing study artifacts to avoid
+  duplicate pages
 
-Primary output: `rewritten/YYYY-MM-DD/study.md`
+Artifact: `artifacts/study/study-index.md` (durable definitions and concepts
+also belong in the llm-wiki)
 
-Optional artifact: `artifacts/study/study-index.md`
-
-Required rewritten sections:
+Required sections:
 
 - `# {{study_title}}`
 - `## 정제된 핵심`
@@ -279,8 +283,9 @@ Purpose: track project progress, decisions, blockers, and next actions.
 
 Evidence to use:
 
-- rewritten notes mentioning `캡디`, backend, harness, MCP, CLI, knoter, LLM
-  agent, code analysis, or implementation decisions
+- notes (source evidence or legacy rewritten notes) mentioning `캡디`,
+  backend, harness, MCP, CLI, knoter, LLM agent, code analysis, or
+  implementation decisions
 - existing project artifacts with include-artifacts retrieval
 - semantic search for project terms before updating
 
@@ -326,8 +331,9 @@ Purpose: track study progress against target counts and pacing.
 
 Evidence to use:
 
-- rewritten notes with progress expressions such as `52 / 205`, `74/206`,
-  `최소 20섹션`, `정처기`, exam-day notes, and planned study amounts
+- notes (source evidence or legacy rewritten notes) with progress
+  expressions such as `52 / 205`, `74/206`, `최소 20섹션`, `정처기`,
+  exam-day notes, and planned study amounts
 - previous progress artifacts when extending the timeline
 
 Artifact: `artifacts/progress/exam-progress.md`
@@ -371,8 +377,9 @@ execution.
 
 Evidence to use:
 
-- rewritten notes containing product ideas, Minecraft build ideas, automix/music
-  ideas, infrastructure ideas, writing topics, or speculative plans
+- notes (source evidence or legacy rewritten notes) containing product
+  ideas, Minecraft build ideas, automix/music ideas, infrastructure ideas,
+  writing topics, or speculative plans
 - existing idea artifacts before adding duplicates
 
 Artifact: `artifacts/ideas/ideas-backlog.md`
@@ -410,8 +417,9 @@ without turning them into medical or psychological claims.
 
 Evidence to use:
 
-- rewritten notes with reflective prose, repeated `싶다` goals, motivation,
-  frustration, diary entries, or life observations
+- notes (source evidence or legacy rewritten notes) with reflective prose,
+  repeated `싶다` goals, motivation, frustration, diary entries, or life
+  observations
 - continuity over the previous 7 days
 - semantic search for similar reflection artifacts before updating
 
@@ -449,7 +457,26 @@ Output sketch:
 
 ## Output Contracts
 
-### Rewritten Note Frontmatter
+### Artifact Frontmatter
+
+```yaml
+---
+title: "<human title>"
+date: <target-date-or-document-date>
+layer: artifact
+kind: "<llm-wiki or artifact family>"
+source_note_id: "<source note id>"
+source_path: "<source path>"
+artifact_template_id: <scenario id, llm-wiki, or artifact-workflow>
+artifact_operation: "create" # create | update
+---
+```
+
+### Legacy Rewritten Note Frontmatter
+
+Old vaults contain rewritten notes with the frontmatter below. They stay
+indexed and searchable, but do not author new rewritten notes; the contract
+is artifact-first.
 
 ```yaml
 ---
@@ -460,20 +487,6 @@ doc_date: <source-date>
 source_path: "<source path>"
 rewrite_agent: "<agent-name-or-runtime>"
 rewrite_prompt_hash: "<stable prompt/version hash>"
----
-```
-
-### Artifact Frontmatter
-
-```yaml
----
-title: "<human title>"
-date: <target-date-or-document-date>
-layer: artifact
-kind: "<artifact family>"
-source_path: "<primary rewritten path or existing artifact path>"
-artifact_template_id: artifact-workflow
-artifact_operation: "create" # create | update
 ---
 ```
 
@@ -495,11 +508,13 @@ These are signal records, not global document type inference.
 
 Default backend is SQLite FTS5 + zvec hybrid.
 
-- Use rewritten notes as the primary retrieval layer.
-- Source files are path evidence and should be opened only when rewriting or
-  checking raw context.
-- Use artifact-inclusive retrieval before extending durable dashboards.
+- Use the llm-wiki artifact as the primary retrieval layer; legacy rewritten
+  notes stay indexed and remain part of default search.
+- Source files are path evidence and should be opened only when integrating
+  or checking raw context.
+- Default search covers non-artifact layers plus `kind: llm-wiki` artifacts;
+  set include-artifacts to widen to every artifact kind before extending
+  durable dashboards.
 - Use semantic/zvec search for loose concepts such as `좋은 질문`,
   `세계관`, `운`, `자동믹스`, `캡디`, or `Transformer`.
-- Artifacts are excluded from default search unless include-artifacts is set.
 - PageIndex is a future optional backend, not required for this template.
