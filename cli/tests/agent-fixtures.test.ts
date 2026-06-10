@@ -69,7 +69,7 @@ describe("agent scenario fixtures", () => {
 
         expect(rewritten.every((note) => note.source_path?.startsWith("sources/"))).toBe(true);
         expect(rewritten.every((note) => note.rewrite_agent === "deterministic-test-agent")).toBe(true);
-        expect(rewritten.every((note) => note.rewrite_prompt_hash === "artifact-workflow-v4-test-fixture")).toBe(true);
+        expect(rewritten.every((note) => note.rewrite_prompt_hash === "artifact-workflow-v5-test-fixture")).toBe(true);
         expect(artifacts.every((note) => !!note.artifact_template_id)).toBe(true);
 
         expect(metaDb.searchFts("공부", 10, VAULT_NAME).length).toBeGreaterThan(0);

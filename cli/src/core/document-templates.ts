@@ -26,6 +26,10 @@ export interface DocumentTemplateSummary {
   title: string | null;
   description: string | null;
   hasHtml: boolean;
+  /** Whether `kn template scaffold` writes this template's starter artifact. */
+  scaffold: boolean;
+  /** Durable vault path the template's artifact lives at. */
+  artifactPath: string;
 }
 
 export interface DocumentTemplate extends DocumentTemplateSummary {
@@ -55,6 +59,14 @@ const TEMPLATE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 export async function listDocumentTemplates(
   vaultOpt?: string,
 ): Promise<DocumentTemplateSummary[]> {
+  const vaultRoot = await resolveOptionalVaultRoot(vaultOpt);
+  return listDocumentTemplatesForRoot(vaultRoot);
+}
+
+/** Same as listDocumentTemplates, but with an explicit (or absent) vault root. */
+export async function listDocumentTemplatesForRoot(
+  vaultRoot: string | null,
+): Promise<DocumentTemplateSummary[]> {
   const entries = new Map<string, { source: DocumentTemplateSource; path: string }>();
 
   for (const name of scanTemplateNames(BUNDLED_TEMPLATES_DIR)) {
@@ -64,7 +76,7 @@ export async function listDocumentTemplates(
     });
   }
 
-  const vaultDir = await resolveVaultTemplatesDir(vaultOpt);
+  const vaultDir = vaultRoot ? join(vaultRoot, ".kn", "templates") : null;
   if (vaultDir) {
     for (const name of scanTemplateNames(vaultDir)) {
       entries.set(name, { source: "vault", path: join(vaultDir, `${name}.md`) });
@@ -89,8 +101,8 @@ export async function getDocumentTemplate(
     );
   }
 
-  const vaultDir = await resolveVaultTemplatesDir(vaultOpt);
-  const vaultPath = vaultDir ? join(vaultDir, `${name}.md`) : null;
+  const vaultRoot = await resolveOptionalVaultRoot(vaultOpt);
+  const vaultPath = vaultRoot ? join(vaultRoot, ".kn", "templates", `${name}.md`) : null;
   const bundledPath = join(BUNDLED_TEMPLATES_DIR, `${name}.md`);
 
   let source: DocumentTemplateSource;
@@ -122,19 +134,22 @@ export async function getDocumentTemplate(
 }
 
 /**
- * Writes one starter artifact document per available template into
- * `<vaultRoot>/artifacts/<name>.md`. Existing documents are skipped unless
- * `force` is set. Indexing is left to `kn add`/`kn sync`.
+ * Writes one starter artifact document per scaffold-enabled template
+ * (frontmatter `scaffold: true`) into its declared `artifactPath`. Scenario
+ * templates without the flag are agent-maintained and are not scaffolded.
+ * Existing documents are skipped unless `force` is set. Indexing is left to
+ * `kn add`/`kn sync`.
  */
 export async function scaffoldDocumentTemplates(
   vaultRoot: string,
   options: { force?: boolean; vaultOpt?: string } = {},
 ): Promise<ScaffoldResult> {
   const result: ScaffoldResult = { created: [], skipped: [] };
-  const templates = await listDocumentTemplates(options.vaultOpt);
+  const templates = await listDocumentTemplatesForRoot(vaultRoot);
 
   for (const template of templates) {
-    const relPath = join("artifacts", `${template.name}.md`);
+    if (!template.scaffold) continue;
+    const relPath = template.artifactPath;
     const targetPath = join(vaultRoot, relPath);
     if (existsSync(targetPath) && !options.force) {
       result.skipped.push({ name: template.name, path: relPath, reason: "exists" });
@@ -163,20 +178,33 @@ async function buildSummary(
     title: optionalString(metadata.name) ?? optionalString(metadata.title),
     description: optionalString(metadata.description),
     hasHtml: existsSync(path.replace(/\.md$/, ".html")),
+    scaffold: metadata.scaffold === true,
+    artifactPath: resolveArtifactPath(name, metadata.artifactPath),
   };
 }
 
-async function resolveVaultTemplatesDir(vaultOpt?: string): Promise<string | null> {
-  let vaultRoot: string | undefined;
+function resolveArtifactPath(name: string, raw: unknown): string {
+  const fallback = `artifacts/${name}.md`;
+  const value = optionalString(raw);
+  if (!value) return fallback;
+  const normalized = value.replace(/\\/g, "/");
+  const valid =
+    normalized.startsWith("artifacts/") &&
+    normalized.endsWith(".md") &&
+    !normalized.includes("..") &&
+    !normalized.includes("//");
+  return valid ? normalized : fallback;
+}
+
+async function resolveOptionalVaultRoot(vaultOpt?: string): Promise<string | null> {
   if (vaultOpt) {
-    vaultRoot = await resolveVaultRoot(vaultOpt);
-  } else {
-    const config = await loadGlobalConfig();
-    if (config.activeVault) {
-      vaultRoot = await resolveVaultRoot();
-    }
+    return resolveVaultRoot(vaultOpt);
   }
-  return vaultRoot ? join(vaultRoot, ".kn", "templates") : null;
+  const config = await loadGlobalConfig();
+  if (config.activeVault) {
+    return resolveVaultRoot();
+  }
+  return null;
 }
 
 function scanTemplateNames(dir: string): string[] {

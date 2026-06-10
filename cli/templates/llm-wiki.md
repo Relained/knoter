@@ -3,6 +3,8 @@ id: llm-wiki
 name: LLM Wiki
 layer: artifact
 kind: llm-wiki
+scaffold: true
+artifactPath: artifacts/llm-wiki.md
 description: Durable public knowledge base maintained by agents from rewritten sources.
 ---
 

@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { addMarkdownNoteToVault } from "./add-note";
 import { loadVaultConfig, type VaultConfig } from "./config";
+import { listDocumentTemplatesForRoot } from "./document-templates";
 import { KnError, ErrorCode } from "./errors";
 import { buildRewriteContextBundle } from "./rewrite-context";
 import type { EmbeddingProvider } from "../pipeline/embedder";
@@ -116,6 +117,7 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
     const workspace = input.workspace ?? join(input.vaultRoot, ".kn", "agent-runs", randomUUID());
     mkdirSync(workspace, { recursive: true });
     const seededArtifacts = await seedWorkspaceArtifacts(input.vaultRoot, workspace);
+    const seededTemplates = await seedWorkspaceTemplates(input.vaultRoot, workspace);
 
     const prompt = buildRewritePrompt({
       agent,
@@ -125,6 +127,7 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
       artifactOutputDir: "artifacts",
       wikiPath: "artifacts/llm-wiki.md",
       seededArtifacts,
+      seededTemplates,
     });
 
     const runner = input.runner ?? (agent === "claude" ? runClaudeCliAgent : runCodexCliAgent);
@@ -254,34 +257,41 @@ export function buildRewritePrompt(input: {
   artifactOutputDir: string;
   wikiPath: string;
   seededArtifacts: string[];
+  seededTemplates: string[];
 }): string {
   const agentName = input.agent === "claude" ? "Claude" : "Codex";
   const seededList =
     input.seededArtifacts.length > 0
       ? input.seededArtifacts.map((path) => `  - ${path}`).join("\n")
       : "  - (none)";
+  const templateList =
+    input.seededTemplates.length > 0
+      ? input.seededTemplates.map((path) => `  - ${path}`).join("\n")
+      : "  - (none)";
   return [
     `You are ${agentName} acting as knoter's external knowledge agent.`,
     "Task: read the source evidence and update the vault's durable artifacts — the llm-wiki knowledge base plus any template-justified scenario artifacts.",
     "",
     "Hard requirements:",
-    "- Use only facts present in the source evidence, the seeded artifacts, and the template. Do not invent tasks, counts, dates, meals, workouts, or project status.",
+    "- Use only facts present in the source evidence, the seeded artifacts, and the templates. Do not invent tasks, counts, dates, meals, workouts, or project status.",
     `- Update the llm-wiki knowledge base at ${input.wikiPath}: integrate durable, public, permanent knowledge from the source and add a dated line to its Recent Updates section. Edit the seeded wiki in place instead of starting over.`,
-    "- Read the Template Markdown Scenario Templates and choose scenario artifact families yourself.",
-    "- Write artifact files only under the artifact output directory below, using durable scenario paths from the template such as artifacts/diet/diet-dashboard.md, artifacts/workout/workout-dashboard.md, artifacts/tasks/task-priority.md, artifacts/study/study-index.md, artifacts/projects/capdi-project-status.md, artifacts/progress/exam-progress.md, artifacts/ideas/ideas-backlog.md, or artifacts/reflection/reflection-log.md.",
-    "- Do not create per-source or per-day artifact paths like artifacts/YYYY-MM-DD/<source>-artifact.md unless the template explicitly requires that durable path.",
+    "- Read the per-artifact scenario templates seeded under the templates directory below and choose scenario artifact families yourself.",
+    "- Write artifact files only under the artifact output directory below, at the durable artifactPath each scenario template declares in its frontmatter.",
+    "- Do not create per-source or per-day artifact paths like artifacts/YYYY-MM-DD/<source>-artifact.md unless a template explicitly requires that durable path.",
     "- If the source supports no scenario artifact, the llm-wiki update is still required.",
     "- Do not write rewritten.md or any file outside the artifact output directory; the rewritten layer is legacy.",
     "- Every artifact file must include YAML frontmatter with layer: artifact.",
     `- In the llm-wiki frontmatter, set kind: llm-wiki.`,
     `- In artifact frontmatter, set source_note_id: ${input.sourceNote.id}.`,
     `- In artifact frontmatter, set source_path: ${input.sourceNote.file_path}.`,
-    "- In artifact frontmatter, set artifact_template_id to the scenario template id, llm-wiki for the wiki, or artifact-workflow when the template does not define a narrower id.",
+    "- In artifact frontmatter, set artifact_template_id to the scenario template's templateId, llm-wiki for the wiki, or artifact-workflow when no template defines a narrower id.",
     "- Preserve task checkbox state exactly when tasks exist.",
     "- Mark uncertainty as inference instead of fact.",
     "- Include source paths in a Sources/Evidence section.",
     "",
     `Artifact output directory: ${input.artifactOutputDir}`,
+    "Scenario templates seeded into the workspace (read before choosing):",
+    templateList,
     "Existing artifacts seeded into the workspace (edit in place):",
     seededList,
     "Vault artifact paths after import: same relative paths you write under the artifact output directory.",
@@ -427,6 +437,24 @@ async function runAgentCommand(
 function defaultRewrittenPath(sourceNote: NoteRow): string {
   const date = sourceNote.doc_date ?? "undated";
   return `rewritten/${date}/${basename(sourceNote.file_path)}`;
+}
+
+/**
+ * Mirrors the effective per-artifact document templates (bundled defaults
+ * plus vault overrides) into the workspace `templates/` directory so the
+ * agent can read scenario contracts without CLI access.
+ */
+async function seedWorkspaceTemplates(vaultRoot: string, workspace: string): Promise<string[]> {
+  const templates = await listDocumentTemplatesForRoot(vaultRoot);
+  const seeded: string[] = [];
+  for (const template of templates) {
+    const relPath = `templates/${template.name}.md`;
+    const target = join(workspace, relPath);
+    mkdirSync(dirname(target), { recursive: true });
+    await Bun.write(target, await Bun.file(template.path).text());
+    seeded.push(relPath);
+  }
+  return seeded.sort();
 }
 
 /**

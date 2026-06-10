@@ -3,6 +3,8 @@ id: calendar
 name: Calendar
 layer: artifact
 kind: calendar
+scaffold: true
+artifactPath: artifacts/calendar.md
 description: Date-anchored events, deadlines, and agent refresh points.
 ---
 

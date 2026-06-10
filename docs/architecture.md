@@ -101,8 +101,10 @@ workspace에서 호출해 `artifacts/llm-wiki.md` 갱신과 template 기반
 시나리오 `artifacts/**/*.md`를 작성하게 한 뒤(기존 vault artifact는
 workspace에 시딩되어 in-place 갱신), 그 결과 Markdown을 active vault로
 import하고 인덱싱한다. 에이전트가 legacy `rewritten.md`를 쓰면 호환
-경로로 import만 한다. 시나리오/출력 계약은 `docs/template.md`(v4,
-artifact-first)를 따른다.
+경로로 import만 한다. 핵심 계약은 `docs/template.md`(v5, artifact-first)를
+따르고, 시나리오별 계약은 artifact당 1개의 per-artifact 템플릿 파일
+(`cli/templates/`, vault 오버라이드 `.kn/templates/`)로 분리되어 있다 —
+`kn llm rewrite`가 워크스페이스 `templates/`로 시딩한다.
 
 `kn service status --check`는 현재 vault에 설정된 embedding endpoint를
 점검하는 별도 service surface다. `kn vault status --check-providers`도
