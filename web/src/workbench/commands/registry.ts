@@ -539,8 +539,11 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         try {
           ctx.pushStatus(`Agent rewrite running (${agent}): ${source} — this can take minutes.`);
           const result = await api.llm.rewrite({ source, agent });
+          const artifactPaths = result.artifacts.map((artifact) => artifact.path);
           ctx.pushStatus(
-            `Rewrite complete (${result.agent}): ${result.rewrittenPath}, ${result.artifacts.length} artifact(s).`,
+            `Rewrite complete (${result.agent}): ${result.artifacts.length} artifact(s) updated${
+              artifactPaths.length > 0 ? ` — ${artifactPaths.join(", ")}` : ""
+            }.`,
           );
           await ctx.refreshVaultData();
         } finally {
