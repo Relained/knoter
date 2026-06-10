@@ -2,6 +2,7 @@ import {
   Bell,
   CalendarDays,
   CheckSquare,
+  Database,
   Dock,
   FilePlus2,
   FileStack,
@@ -11,6 +12,7 @@ import {
   Search,
   Settings,
   Square,
+  TriangleAlert,
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -30,6 +32,8 @@ export const lucideIconRegistry = {
   "widget.unpin": PinOff,
   "window.dock": Dock,
   "window.close": X,
+  "status.vault": Database,
+  "status.warning": TriangleAlert,
   fallback: Square
 } satisfies Record<string, LucideIcon>;
 

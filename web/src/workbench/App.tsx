@@ -40,6 +40,7 @@ import { OverlayBar } from "./components/OverlayMenuBar";
 import { OverlayTabs } from "./components/OverlayTapBar";
 import { SettingsPageView } from "./components/SettingsPageView";
 import { SourceModal } from "./components/SourceModal";
+import { StatusChip } from "./components/StatusChip";
 import { WidgetBar } from "./components/WidgetBar";
 import type {
   CommandValues,
@@ -474,6 +475,13 @@ export function App() {
           isSharedDock={false}
           onOpenTab={openTab}
           onCloseTab={closeTab}
+        />
+
+        <StatusChip
+          connected={api !== null}
+          vault={activeVault}
+          documentCount={explorerItems.length}
+          onOpenStatus={() => executeCommand("vault.status")}
         />
 
         {transientToast && (

@@ -1221,6 +1221,44 @@
     }
 }
 
+/* Persistent vault status chip in the main view's bottom-right corner;
+   the toast and menu bar own the bottom-left. */
+.workbench-status-chip {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 70;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    max-width: min(320px, calc(100% - 96px));
+    padding: 0 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: var(--surface-command);
+    box-shadow: var(--shadow-floating);
+    font-size: 12px;
+}
+
+.workbench-status-chip span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workbench-status-chip:hover {
+    color: var(--text-primary);
+    background: var(--surface-command);
+}
+
+.workbench-status-chip.is-warning {
+    border-color: var(--accent-selected-strong);
+    color: var(--accent-primary);
+}
+
 @media (max-width: 720px) {
     .overlay-bar,
     .overlay-tabs-bar {
@@ -1255,6 +1293,11 @@
         left: 56px;
         bottom: 10px;
         max-width: min(320px, calc(100vw - 76px));
+    }
+
+    .workbench-status-chip {
+        right: 10px;
+        bottom: 10px;
     }
 
     .settings-section dl {
