@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../shared/icons/Icon";
 import { formatChord, type KeybindingMap } from "../commands/keybindings";
+import { useDialogDismiss } from "../hooks/useDialogDismiss";
 import type {
   CommandOption,
   CommandValues,
@@ -34,6 +35,8 @@ export function CommandPaletteOverlay({
   const activeIndex =
     items.length === 0 ? -1 : Math.min(selectedIndex, items.length - 1);
   const activeItem = activeIndex === -1 ? null : items[activeIndex];
+  // Escape steps back out of the option form first, then closes.
+  const dismiss = useDialogDismiss(pending ? onCancelPending : onClose);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -41,11 +44,6 @@ export function CommandPaletteOverlay({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        if (pending) onCancelPending();
-        else onClose();
-        return;
-      }
       if (pending) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -62,7 +60,7 @@ export function CommandPaletteOverlay({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [items, activeIndex, activeItem, pending, onCancelPending, onClose, onSelect]);
+  }, [items, activeIndex, activeItem, pending, onSelect]);
 
   useEffect(() => {
     resultsRef.current
@@ -73,9 +71,7 @@ export function CommandPaletteOverlay({
   return (
     <div
       className="command-overlay"
-      onPointerDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onPointerDown={dismiss.onBackdropPointerDown}
     >
       <section
         className="workbench-command-palette"

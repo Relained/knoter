@@ -9,6 +9,7 @@ import {
   widgetBarWidthBounds,
 } from "../../core/settings/preferences";
 import type { DockPreference, FontFamilyPreference } from "../../core/settings/preferences";
+import { useDialogDismiss } from "../hooks/useDialogDismiss";
 import {
   chordFromEvent,
   formatChord,
@@ -34,13 +35,12 @@ export function SettingsPageView({
     getGlobalSettingsSnapshot,
     getGlobalSettingsSnapshot,
   );
+  const dismiss = useDialogDismiss(onClose);
 
   return (
     <div
       className="settings-page-backdrop"
-      onPointerDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onPointerDown={dismiss.onBackdropPointerDown}
     >
       <section
         className="settings-page"
