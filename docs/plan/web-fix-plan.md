@@ -11,26 +11,26 @@
 
 | # | 결함 | 수정 방법 | 파일 |
 | --- | --- | --- | --- |
-| ⬜ 1-1 | SourceModal 레이아웃 CSS 부재 — flex row에 끼어들어 화면 깨짐 | `.source-modal-backdrop`에 `position: fixed; inset: 0` + 백드롭, `.source-modal` 박스/헤더/파일드롭/세그먼트 스타일을 `.settings-page` 패턴으로 작성 | `html-workbench.css` |
-| ⬜ 1-2 | 탭 0개일 때 빈 pill 잔존 | 주석 처리된 `if (tabs.length === 0) return null;` 활성화 | `OverlayTapBar.tsx:22` |
+| ✅ 1-1 | SourceModal 레이아웃 CSS 부재 — flex row에 끼어들어 화면 깨짐 | `.source-modal-backdrop`에 `position: fixed; inset: 0` + 백드롭, `.source-modal` 박스/헤더/파일드롭/세그먼트 스타일을 `.settings-page` 패턴으로 작성 | `html-workbench.css` |
+| ✅ 1-2 | 탭 0개일 때 빈 pill 잔존 | 주석 처리된 `if (tabs.length === 0) return null;` 활성화 | `OverlayTapBar.tsx:22` |
 | ✅ 1-3 | 토스트(z-80)가 열린 툴 메뉴(z-75)를 덮음 + 팝업이 바의 `overflow: hidden`에 클리핑되어 아예 안 보임 | 팝업을 슬롯 rect 기준 `position: fixed`(z-84)로 재작성 — 클리핑 면역, 토스트 위·팔레트 아래 레이어 | `OverlayMenuBar.tsx`, `html-workbench.css` |
 | ✅ 1-4 | 죽은 설정 노출 (Keybinding profile) | 실제 단축키 시스템 + 설정 UI로 교체 (이번 구현) | `SettingsPageView.tsx`, `preferences.ts` |
-| ⬜ 1-5 | 죽은 설정 노출 (Sidebar width/collapsed) | 설정 행 제거 + `preferences.ts`에서 `sidebarWidth`/`sidebarCollapsed` 정의 삭제. 대신 `widgetBarWidth` 노출 | `SettingsPageView.tsx`, `preferences.ts` |
+| ✅ 1-5 | 죽은 설정 노출 (Sidebar width/collapsed) | 설정 행 제거 + `preferences.ts`에서 `sidebarWidth`/`sidebarCollapsed` 정의 삭제. 대신 `widgetBarWidth` 노출 | `SettingsPageView.tsx`, `preferences.ts` |
 
 ## Phase 2 — 인터랙션 관습 (발표 전 권장)
 
 | # | 결함 | 수정 방법 | 규모 |
 | --- | --- | --- | --- |
 | ✅ 2-1 | Escape가 팔레트를 여는 키 / 단축키 시스템 부재 | 단축키-명령 연결 시스템 구현: chord 캡처/정규화, commandId→chord 저장소(기본값+충돌 해소), App 디스패처, 설정 UI 레코더, 팔레트 힌트. Escape는 닫기 전용으로 환원, 팔레트는 `Mod+K` (이번 구현) | M |
-| ⬜ 2-2 | 팔레트 키보드 내비게이션 부재 | `selectedIndex` 상태 + ↑↓ 이동 + 선택 하이라이트 + Enter는 선택 항목 실행, 마우스 hover 시 선택 동기화. "Sort by" 푸터 제거하고 사용 빈도(MRU) 정렬 내장 | M |
+| ✅ 2-2 | 팔레트 키보드 내비게이션 부재 | `selectedIndex` 상태 + ↑↓ 이동(순환) + 선택 하이라이트 + Enter는 선택 항목 실행, 마우스 hover 시 선택 동기화. "Sort by" 푸터 제거하고 MRU 정렬 내장(`commands/mru.ts`, localStorage 영속) | M |
 | ✅ 2-3 | 메뉴/팝업 열림·닫힘 모델 충돌 — hover가 먼저 열고 클릭 토글이 닫아서 "버튼을 눌러도 확장창이 안 뜨는" 증상, 알림 팝업 hover-out 닫힘 | 클릭으로 열기 + 이미 열려 있을 때만 hover로 메뉴 전환(메뉴바 관습), 닫기는 바깥 pointerdown/Esc/window blur(iframe 클릭 대응)로 통일. 바 전체 `onMouseLeave` 닫기 제거 | 완료 |
-| ⬜ 2-4 | 모달 dismissal 불일치 (설정/소스 모달에 Esc 없음) | 공용 `useDialogDismiss` 훅(Esc + 백드롭)으로 세 다이얼로그 통일 | S |
+| ✅ 2-4 | 모달 dismissal 불일치 (설정/소스 모달에 Esc 없음) | 공용 `useDialogDismiss` 훅(Esc + 백드롭)으로 세 다이얼로그 통일. 팔레트는 옵션 폼에서 한 단계 뒤로 후 닫힘 | S |
 
 ## Phase 3 — 테마/시각 일관성
 
 | # | 결함 | 수정 방법 | 규모 |
 | --- | --- | --- | --- |
-| ⬜ 3-1 | sandbox 문서가 테마/폰트 하드코딩 (`createSandboxDocument`, 외부 창) | base16 런타임에서 현재 팔레트(배경/전경/액센트)와 fontStacks를 읽어 sandbox 문서 `<style>`에 CSS 변수로 주입. 외부 창은 IPC 입력에 테마 스냅샷 동봉 | M |
+| ✅ 3-1 | sandbox 문서가 테마/폰트 하드코딩 (`createSandboxDocument`, 외부 창) | `getSandboxTheme()`이 base16 런타임 + fontStacks에서 `HtmlWindowTheme` 스냅샷을 만들어 sandbox 문서 `<style>`에 주입, `knoter:themechange` 시 srcDoc 재생성. `html:openWindow` IPC에 옵션 테마 스냅샷 추가(메인 프로세스에서 hex/폰트 검증) | M |
 | ⬜ 3-2 | 토큰 우회 하드코딩 색 (`rgb(255 255 255 / 0.08)`, 주황 radial-gradient) | 하드코딩 값을 시맨틱 토큰으로 치환, 장식 그라디언트 제거(agents.md 자체 규칙 위반) | S |
 | ⬜ 3-3 | radius 스케일 비일관 (6/7/8/9/10/13/999px 혼재) | `--radius-sm/md/lg/pill` 토큰 4단계로 통일 | S |
 
@@ -38,8 +38,8 @@
 
 | # | 결함 | 수정 방법 | 규모 |
 | --- | --- | --- | --- |
-| ⬜ 4-1 | 장기 작업(llm rewrite 300s, sync 120s) 진행 표시 부재 | 진행 중 작업 상태(`runningOps`)를 App이 보유, 벨 아이콘에 스피너 오버레이 + 알림 팝업 상단에 진행 중 항목 고정 표시. 토스트는 시작/완료만 | M |
-| ⬜ 4-2 | 상시 상태 표시 부재 (vault 이름·연결 상태가 토스트로만 스침) | 메뉴바 하단 또는 탭 바 끝에 소형 상태 칩(vault 이름, 문서 수, 미연결 경고). `activeVault` 상태는 이미 로드됨 | M |
+| ✅ 4-1 | 장기 작업(llm rewrite 300s, sync 120s) 진행 표시 부재 | `runningOps`를 App이 보유(`beginOperation`/`endOperation` 컨텍스트), sync/source.add/report.context/llm.rewrite에 적용. 벨 아이콘 스피너 링 + 알림 팝업 상단 진행 중 항목 고정. 토스트는 시작/완료만 | M |
+| ✅ 4-2 | 상시 상태 표시 부재 (vault 이름·연결 상태가 토스트로만 스침) | 메인 뷰 우측 하단 상태 칩(`StatusChip`): vault 이름·문서 수, 미연결/vault 없음 경고. 클릭 시 `vault.status` 명령 실행 | M |
 | ⬜ 4-3 | 안읽음 뱃지가 본 메시지도 카운트, 토글만 해도 리셋 | 토스트가 화면에 떠 있는 동안 표시된 메시지는 카운트 제외, 리셋은 팝업이 "열릴" 때만 | S |
 | ⬜ 4-4 | 탭 전환 시 iframe 재생성으로 스크롤 유실 | 탭별 iframe을 유지하고 `display`로 전환(keep-alive), 탭 수 상한과 메모리 트레이드오프 명시 | M |
 
@@ -61,8 +61,12 @@
 
 ## 권장 순서
 
-1. **Phase 1 전부** (반나절 내, 발표 데모 안정화)
-2. **2-2, 2-3** (팔레트/팝업 — 단축키 시스템(2-1 완료)과 묶이는 인터랙션 마감)
-3. **4-1, 4-2** (장기 작업·상시 상태 — llm rewrite 데모 신뢰성)
-4. **3-1** (테마 관통 — 라이트 테마 데모가 필요할 때)
-5. Phase 5와 나머지는 발표 후.
+1. ✅ **Phase 1 전부** (반나절 내, 발표 데모 안정화)
+2. ✅ **2-2, 2-3** (팔레트/팝업 — 단축키 시스템(2-1 완료)과 묶이는 인터랙션 마감) + 2-4
+3. ✅ **4-1, 4-2** (장기 작업·상시 상태 — llm rewrite 데모 신뢰성)
+4. ✅ **3-1** (테마 관통 — 라이트 테마 데모가 필요할 때)
+5. Phase 5와 나머지(3-2, 3-3, 4-3, 4-4)는 발표 후.
+
+발표 전 권장 범위는 전부 구현됨(2026-06-10, `webs/design-defect-fixes`).
+수동 GUI 스모크 패스(`npm run dev`)는 아직 수행되지 않음 — 검증은
+`npm run check` + `node --check electron/main.mjs`까지.
