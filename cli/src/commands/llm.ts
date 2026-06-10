@@ -13,11 +13,12 @@ export function registerLlmCommand(program: Command): void {
 
   llmCmd
     .command("rewrite")
-    .description("Call Codex to create rewritten and artifact notes from a source note")
+    .description("Call an external agent (Codex or Claude CLI) to create rewritten and artifact notes from a source note")
     .requiredOption("--source <path>", "Vault-relative source note path")
-    .option("--agent <codex>", "External agent runtime", "codex")
+    .option("--agent <agent>", "External agent runtime: codex or claude", "codex")
     .option("--codex-bin <path>", "Codex CLI binary", process.env.KN_CODEX_BIN || "codex")
-    .option("--timeout-ms <n>", "Codex CLI timeout in milliseconds", "240000")
+    .option("--claude-bin <path>", "Claude Code CLI binary", process.env.KN_CLAUDE_BIN || "claude")
+    .option("--timeout-ms <n>", "Agent CLI timeout in milliseconds", "240000")
     .option("--rewritten-path <path>", "Vault-relative rewritten output path")
     .option("--workspace <path>", "Agent working directory")
     .option("--test-embeddings", "Use deterministic local embeddings for live agent smoke tests")
@@ -32,16 +33,17 @@ export function registerLlmCommand(program: Command): void {
         const vaultRoot = await resolveVaultRoot(vaultOpt);
         const vaultName = (await resolveVaultName(vaultOpt)) ?? "default";
         const timeoutMs = parsePositiveInteger(options.timeoutMs, "--timeout-ms");
-        if (options.agent !== "codex") {
-          throw new KnError(ErrorCode.CONFIG_INVALID, "Only --agent codex is currently supported.");
+        if (options.agent !== "codex" && options.agent !== "claude") {
+          throw new KnError(ErrorCode.CONFIG_INVALID, "Only --agent codex or --agent claude is supported.");
         }
 
         const result = await runLlmRewrite({
           vaultRoot,
           vaultName,
           sourcePath: options.source,
-          agent: "codex",
+          agent: options.agent,
           codexBin: options.codexBin,
+          claudeBin: options.claudeBin,
           timeoutMs,
           rewrittenPath: options.rewrittenPath,
           workspace: options.workspace,
