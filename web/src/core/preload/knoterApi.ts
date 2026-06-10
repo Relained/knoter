@@ -8,6 +8,10 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
       switch: (vaultId) => invoke("vault:switch", { vaultId }),
       list: () => invoke("vault:list", undefined),
       status: () => invoke("vault:status", undefined),
+      create: (input) => invoke("vault:create", input),
+    },
+    dialog: {
+      pickDirectory: (input) => invoke("dialog:pickDirectory", input),
     },
     explorer: {
       list: (input) => invoke("explorer:list", input),
@@ -26,6 +30,7 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
     },
     source: {
       addFromPicker: (input) => invoke("source:addFromPicker", input),
+      addFromFolder: (input) => invoke("source:addFromFolder", input),
     },
     note: {
       save: (input) => invoke("note:save", input),
@@ -33,6 +38,7 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
     template: {
       get: () => invoke("template:get", undefined),
       list: () => invoke("template:list", undefined),
+      scaffold: () => invoke("template:scaffold", undefined),
     },
     tag: {
       list: () => invoke("tag:list", undefined),

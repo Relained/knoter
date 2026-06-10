@@ -15,7 +15,8 @@ import {
   validateNoteFileName,
   validateOptionalString,
   validateTagAction,
-  validateTags
+  validateTags,
+  validateVaultName
 } from "./cli-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -162,10 +163,14 @@ function installIpcHandlers() {
       errors: Array.isArray(data.errors) ? data.errors : []
     };
   });
+  ipcMain.handle("vault:create", async (_event, input) => createVaultFromInput(input));
+  ipcMain.handle("dialog:pickDirectory", async (_event, input) => pickDirectory(input));
   ipcMain.handle("source:addFromPicker", async (_event, input) => addSourcesFromPicker(input));
+  ipcMain.handle("source:addFromFolder", async (_event, input) => addSourcesFromFolder(input));
   ipcMain.handle("note:save", async (_event, input) => saveNoteToVault(input));
   ipcMain.handle("template:get", async () => loadTemplateInfo("get"));
   ipcMain.handle("template:list", async () => loadTemplateInfo("list"));
+  ipcMain.handle("template:scaffold", async () => scaffoldTemplateDocuments());
   ipcMain.handle("tag:list", async () => {
     const envelope = await runCli(["tag", "list"]);
     return envelope.data?.tags ?? [];
@@ -207,6 +212,66 @@ function installIpcHandlers() {
       }))
     };
   });
+}
+
+async function createVaultFromInput(input) {
+  const name = validateVaultName(input?.name);
+  const directory = validateNonEmptyString(input?.directory, "Vault location");
+  const vaultPath = join(directory, name);
+  await runCli(["vault", "create", name, "--path", vaultPath]);
+  await runCli(["vault", "switch", name]);
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error(`Vault was created but could not be activated: ${name}`);
+  return active;
+}
+
+async function pickDirectory(input) {
+  const title = validateOptionalString(input?.title, "Dialog title") || "Choose Folder";
+  const picked = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    title,
+    properties: ["openDirectory", "createDirectory"]
+  });
+  if (picked.canceled || picked.filePaths.length === 0) {
+    return { canceled: true, path: null };
+  }
+  return { canceled: false, path: picked.filePaths[0] };
+}
+
+async function addSourcesFromFolder(input) {
+  const folder = validateNonEmptyString(input?.path, "Source folder path");
+  const tags = validateTags(input?.tags);
+  const args = ["add", folder, "--recursive"];
+  for (const tag of tags) args.push("--tag", tag);
+  // Bulk folder indexing can embed many chunks; use the long agent timeout.
+  const envelope = await runCli(args, { timeoutMs: cliAgentTimeoutMs });
+  const data = envelope.data ?? {};
+  return {
+    filesProcessed: data.filesProcessed ?? 0,
+    filesAdded: data.filesAdded ?? 0,
+    filesUpdated: data.filesUpdated ?? 0,
+    filesSkipped: data.filesSkipped ?? 0,
+    details: (data.details ?? []).map((detail) => ({
+      filePath: detail.filePath ?? "",
+      status: detail.status ?? "unknown",
+      chunkCount: detail.chunkCount ?? 0
+    }))
+  };
+}
+
+async function scaffoldTemplateDocuments() {
+  const envelope = await runCli(["template", "scaffold"]);
+  const data = envelope.data ?? {};
+  return {
+    created: (data.created ?? []).map((entry) => ({
+      name: entry.name ?? "",
+      path: entry.path ?? ""
+    })),
+    skipped: (data.skipped ?? []).map((entry) => ({
+      name: entry.name ?? "",
+      path: entry.path ?? "",
+      reason: entry.reason ?? ""
+    }))
+  };
 }
 
 async function addSourcesFromPicker(input) {
