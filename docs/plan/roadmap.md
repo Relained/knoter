@@ -81,11 +81,12 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
      `docs/design/web-commands.md`.
    - [ ] Decide settings persistence: expose the JSONC config-file bridge from
      preload or commit to localStorage-only for now.
-   - [ ] Design-defect fixes from the large-app GUI comparison review — status
-     in `docs/plan/web-fix-plan.md`. Pre-demo scope is implemented (Phase 1
-     layout bugs, palette keyboard navigation + MRU, dialog dismissal, theme
-     passthrough, long-op progress, status chip); remaining: Phase 5 a11y,
-     post-demo items (3-2/3-3/4-3/4-4), and the manual GUI smoke pass.
+   - [x] Design-defect fixes from the large-app GUI comparison review — all
+     16 defects in `docs/plan/web-fix-plan.md` are implemented (layout bugs,
+     palette keyboard navigation + MRU, dialog dismissal + focus trap, theme
+     passthrough, token cleanup, long-op progress, status chip, unread badge
+     semantics, tab keep-alive, ARIA patterns). The manual GUI smoke pass is
+     still outstanding (tracked with the other smoke-pass items above).
 
 2. Source / Artifact model migration
    - [ ] Add Source metadata fields: `media_type`, `privacy`, `time_scope`,
