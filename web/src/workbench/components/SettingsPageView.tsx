@@ -19,7 +19,7 @@ import {
 } from "../commands/keybindings";
 import type { WorkbenchCommand } from "../types";
 
-const dynamicCommandPrefixes = ["open.doc.", "open.tab.", "pin."];
+const dynamicCommandPrefixes = ["open.doc.", "open.tab.", "pin.", "template.open."];
 
 export function SettingsPageView({
   commands,

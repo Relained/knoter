@@ -163,6 +163,26 @@ export type TemplateInfo = {
     version?: number;
     kind?: string;
   } | null;
+  /** Per-artifact document templates; present on template:list responses. */
+  templates?: DocumentTemplateSummary[];
+};
+
+export type DocumentTemplateSummary = {
+  name: string;
+  source: "bundled" | "vault";
+  path: string;
+  kind: string | null;
+  title: string | null;
+  description: string | null;
+  hasHtml: boolean;
+  scaffold: boolean;
+  artifactPath: string;
+};
+
+export type DocumentTemplate = DocumentTemplateSummary & {
+  content: string;
+  metadata: Record<string, unknown> | null;
+  html: string | null;
 };
 
 export type TagInfo = {

@@ -3,6 +3,7 @@ import type {
   AddFolderResult,
   AddSourcesInput,
   AddSourcesResult,
+  DocumentTemplate,
   ExplorerItem,
   ExplorerListInput,
   ExplorerReadResult,
@@ -49,6 +50,7 @@ export type IpcRequestMap = {
   "note:save": NoteSaveInput;
   "template:get": void;
   "template:list": void;
+  "template:getDocument": { name: string };
   "template:scaffold": void;
   "tag:list": void;
   "tag:update": TagUpdateInput;
@@ -76,6 +78,7 @@ export type IpcResponseMap = {
   "note:save": NoteSaveResult;
   "template:get": TemplateInfo;
   "template:list": TemplateInfo;
+  "template:getDocument": DocumentTemplate;
   "template:scaffold": TemplateScaffoldResult;
   "tag:list": TagInfo[];
   "tag:update": Record<string, unknown>;

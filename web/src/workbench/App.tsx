@@ -6,7 +6,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ExplorerItem, VaultSummary } from "../core/api/types";
+import type {
+  DocumentTemplateSummary,
+  ExplorerItem,
+  VaultSummary,
+} from "../core/api/types";
 import {
   getGlobalSettingsSnapshot,
   subscribeGlobalSettings,
@@ -93,6 +97,9 @@ export function App() {
   const [simpleNote, setSimpleNote] = useState("");
   const [widgets, setWidgets] = useState<WorkbenchWidget[]>(loadStoredWidgets);
   const [explorerItems, setExplorerItems] = useState<ExplorerItem[]>([]);
+  const [documentTemplates, setDocumentTemplates] = useState<
+    DocumentTemplateSummary[]
+  >([]);
   const [activeVault, setActiveVault] = useState<VaultSummary | null>(null);
   const [runningOps, setRunningOps] = useState<RunningOperation[]>([]);
   const nextOperationId = useRef(1);
@@ -150,12 +157,14 @@ export function App() {
 
   const refreshVaultData = useCallback(async () => {
     if (!api) return;
-    const [vault, items] = await Promise.all([
+    const [vault, items, templateInfo] = await Promise.all([
       api.vault.getActive(),
       api.explorer.list({ layers: [...explorerLayers] }),
+      api.template.list(),
     ]);
     setActiveVault(vault);
     setExplorerItems(items);
+    setDocumentTemplates(templateInfo.templates ?? []);
   }, [api]);
 
   const keybindings = useSyncExternalStore(
@@ -171,6 +180,7 @@ export function App() {
         tabs,
         activeTab,
         explorerItems,
+        documentTemplates,
         dailyNote,
         simpleNote,
         upsertTab,
@@ -201,6 +211,7 @@ export function App() {
       tabs,
       activeTab,
       explorerItems,
+      documentTemplates,
       widgets,
       dailyNote,
       simpleNote,
@@ -245,9 +256,11 @@ export function App() {
       try {
         const vault = await api.vault.getActive();
         const items = await api.explorer.list({ layers: [...explorerLayers] });
+        const templateInfo = await api.template.list();
         if (canceled) return;
         setActiveVault(vault);
         setExplorerItems(items);
+        setDocumentTemplates(templateInfo.templates ?? []);
         pushStatus(
           vault
             ? `Vault connected: ${vault.name} (${items.length} documents).`

@@ -1,5 +1,7 @@
 import type { KnotenApiClient } from "../../core/api/graphApi";
 import type {
+  DocumentTemplate,
+  DocumentTemplateSummary,
   ExplorerItem,
   SearchResult,
   TagInfo,
@@ -21,6 +23,7 @@ export type CommandContext = {
   tabs: HtmlTab[];
   activeTab: HtmlTab | null;
   explorerItems: ExplorerItem[];
+  documentTemplates: DocumentTemplateSummary[];
   dailyNote: string;
   simpleNote: string;
   upsertTab: (tab: HtmlTab) => void;
@@ -52,6 +55,7 @@ export function buildWorkbenchCommands(ctx: CommandContext): WorkbenchCommand[] 
     ...pinCommands(ctx),
     ...openTabCommands(ctx),
     ...explorerDocumentCommands(ctx),
+    ...documentTemplateCommands(ctx),
   ];
 }
 
@@ -390,9 +394,11 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           title: "Templates",
           kind: "artifact",
           label: "Template",
-          html: templateHtml(template),
+          html: templateListHtml(template),
         });
-        ctx.pushStatus(`Template source: ${template.source} (${template.path}).`);
+        ctx.pushStatus(
+          `Loaded ${template.templates?.length ?? 0} document template(s) (workflow contract: ${template.source}).`,
+        );
       },
     },
     {
@@ -693,6 +699,28 @@ function openTabCommands(ctx: CommandContext): WorkbenchCommand[] {
   }));
 }
 
+function documentTemplateCommands(ctx: CommandContext): WorkbenchCommand[] {
+  return ctx.documentTemplates.map((template) => ({
+    id: `template.open.${template.name}`,
+    title: `Template: ${template.title ?? template.name}`,
+    detail: `${template.source} template`,
+    icon: "artifact.list",
+    run: async () => {
+      const api = requireApi(ctx);
+      if (!api) return;
+      const doc = await api.template.getDocument({ name: template.name });
+      ctx.upsertTab({
+        id: `template:${doc.name}`,
+        title: doc.title ?? doc.name,
+        kind: "artifact",
+        label: "Template",
+        html: documentTemplateHtml(doc),
+      });
+      ctx.pushStatus(`Template loaded: ${doc.name} (${doc.source}).`);
+    },
+  }));
+}
+
 function explorerDocumentCommands(ctx: CommandContext): WorkbenchCommand[] {
   return ctx.explorerItems.map((item) => ({
     id: `open.doc.${item.path}`,
@@ -857,6 +885,68 @@ function templateHtml(template: TemplateInfo): string {
       <h1>${escapeHtml(name)}</h1>
       <p>source: ${escapeHtml(template.source)} · <code>${escapeHtml(template.path)}</code></p>
       ${markdownToHtml(template.content)}
+    </article>
+  `;
+}
+
+function templateListHtml(template: TemplateInfo): string {
+  const templates = template.templates ?? [];
+  const rows = templates
+    .map(
+      (entry) => `
+        <tr>
+          <td><strong>${escapeHtml(entry.title ?? entry.name)}</strong><br /><code>${escapeHtml(entry.name)}</code></td>
+          <td>${escapeHtml(entry.kind ?? "-")}</td>
+          <td>${escapeHtml(entry.source)}${entry.scaffold ? " · scaffold" : ""}</td>
+          <td><code>${escapeHtml(entry.artifactPath)}</code></td>
+          <td>${escapeHtml(entry.description ?? "")}</td>
+        </tr>`,
+    )
+    .join("");
+  return `
+    <article>
+      <p class="eyebrow">TEMPLATES</p>
+      <h1>Document Templates</h1>
+      <p>${templates.length} per-artifact template(s). Open one from the command palette ("Template: ...").
+         Vault overrides live at <code>.kn/templates/&lt;name&gt;.md</code>.</p>
+      <table>
+        <thead>
+          <tr><th>Template</th><th>Kind</th><th>Source</th><th>Artifact path</th><th>Description</th></tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="5">No document templates found.</td></tr>'}</tbody>
+      </table>
+      <section>
+        <h2>Workflow contract</h2>
+        <p>${escapeHtml(template.metadata?.name ?? "knoter Artifact Workflow")} ·
+           ${escapeHtml(template.source)} · <code>${escapeHtml(template.path)}</code> —
+           open it with the "Open Effective Template" command.</p>
+      </section>
+    </article>
+  `;
+}
+
+function documentTemplateHtml(doc: DocumentTemplate): string {
+  const facts = [
+    ["name", doc.name],
+    ["kind", doc.kind ?? "-"],
+    ["source", doc.source],
+    ["artifact path", doc.artifactPath],
+    ["scaffold", doc.scaffold ? "yes" : "no"],
+  ]
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd><code>${escapeHtml(value)}</code></dd>`)
+    .join("");
+  // doc.html is the bundled default display template; it flows through the
+  // same sandbox sanitize path as every artifact tab.
+  const htmlPreview = doc.html
+    ? `<section><h2>Default HTML preview</h2>${doc.html}</section>`
+    : "";
+  return `
+    <article>
+      <p class="eyebrow">TEMPLATE</p>
+      <h1>${escapeHtml(doc.title ?? doc.name)}</h1>
+      <dl>${facts}</dl>
+      ${markdownToHtml(doc.content)}
+      ${htmlPreview}
     </article>
   `;
 }

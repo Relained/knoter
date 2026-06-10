@@ -79,6 +79,9 @@ export function createSandboxDocument(
       dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; }
       dt { color: ${theme.textMuted}; }
       dd { margin: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { padding: 6px 10px; border: 1px solid ${theme.border}; text-align: left; vertical-align: top; }
+      th { color: ${theme.textMuted}; background: ${theme.surface}; }
     </style>
   </head>
   <body>${sanitizeArtifactHtml(html)}</body>

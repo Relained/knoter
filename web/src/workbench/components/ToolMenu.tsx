@@ -13,6 +13,7 @@ const toolMenuEntries: Partial<Record<ToolKey, ToolMenuEntry[]>> = {
     { label: "Pin Widget: Calendar", commandId: "pin.calendar" },
     { label: "Pin Widget: Todo", commandId: "pin.todo" },
     { label: "Create New Artifact Template", commandId: "template.create" },
+    { label: "List Templates", commandId: "template.list" },
     { label: "Open Effective Template", commandId: "template.get" },
     { label: "Run Agent Rewrite", commandId: "llm.rewrite" },
     { label: "Build Report Context", commandId: "report.context" },
