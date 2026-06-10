@@ -35,5 +35,9 @@ button:hover,
 button:focus-visible {
   border-color: var(--border-subtle);
   background: var(--surface-hover);
-  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent-focus-ring);
+  outline-offset: 1px;
 }
