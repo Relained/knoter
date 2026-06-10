@@ -51,12 +51,13 @@ export async function buildRewriteContextBundle(input: {
     sources,
     instructions: [
       "Preserve source traceability to each source note id/path.",
-      "Produce rewritten-source markdown with frontmatter layer: rewritten.",
+      "Update durable artifacts: the llm-wiki knowledge base (kind: llm-wiki) plus template-justified scenario artifacts, all with frontmatter layer: artifact.",
+      "Prefer updating existing artifacts over creating duplicates.",
       "Keep explicit kind only when justified by source evidence.",
       "Normalize headings, task markers, workout metrics, and source references.",
       "Do not invent facts not present in source evidence.",
     ],
-    targetLayer: "rewritten",
+    targetLayer: "artifact",
     sourcePolicy: "Source content is evidence only and is not indexed by knoter.",
   };
 }

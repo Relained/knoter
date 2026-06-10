@@ -107,7 +107,9 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
      (search + report retrieval; other artifact kinds stay behind
      `--include-artifacts`).
    - [ ] Migrate `rewritten` storage/search behavior to legacy alias or remove it
-     after fixture and report-context updates.
+     after fixture and report-context updates. Progress: `kn llm rewrite` no
+     longer authors rewritten notes (artifact-first contract, template v4);
+     existing rewritten storage/indexing remains as the legacy alias.
 
 3. Web cache rebuild
    - [ ] Rebuild project-local web cache from CLI/vault source data
@@ -120,6 +122,9 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
 
 5. `kn llm` follow-up
    - [x] `kn llm rewrite` with Codex CLI, isolated workspace, vault import.
+   - [x] Artifact-first rewrite contract: agent updates `artifacts/llm-wiki.md`
+     plus scenario artifacts (vault artifacts seeded into the workspace);
+     legacy `rewritten.md` output is imported for compatibility only.
    - [ ] Evaluate additional explicit workflows (artifact refresh/update) only
      when explicitly needed; keep normal commands prose-free.
 

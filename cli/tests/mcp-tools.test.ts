@@ -259,7 +259,7 @@ describe("mcp payload helpers", () => {
       });
       const sources = payload.sources as Array<any>;
       expect(payload.date).toBe(TARGET_DATE);
-      expect(payload.targetLayer).toBe("rewritten");
+      expect(payload.targetLayer).toBe("artifact");
       expect(sources).toHaveLength(1);
       expect(sources[0].filePath).toBe("sources/2026-05-08/raw-note.md");
       expect(sources[0].content).toBe("# Source\n\n- ");

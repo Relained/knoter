@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { addMarkdownNoteToVault } from "./add-note";
@@ -32,17 +32,19 @@ export interface LlmRewriteInput {
 
 export interface LlmRewriteResult {
   sourcePath: string;
-  rewrittenPath: string;
+  /** Legacy rewritten import path; null when the agent produced artifacts only. */
+  rewrittenPath: string | null;
   workspace: string;
   agent: LlmAgent;
   lastMessage: string;
   stdoutTail: string;
   stderrTail: string;
+  /** Legacy rewritten import result; null when the agent produced artifacts only. */
   rewritten: {
     noteId: string;
     status: "added" | "updated" | "skipped";
     chunkCount: number;
-  };
+  } | null;
   artifacts: Array<{
     path: string;
     noteId: string;
@@ -62,7 +64,8 @@ export interface LlmRewriteRunnerInput {
 }
 
 export interface LlmRewriteRunnerResult {
-  rewrittenContent: string;
+  /** Legacy rewritten.md content when the agent wrote one; null otherwise. */
+  rewrittenContent: string | null;
   artifactFiles: LlmArtifactOutput[];
   lastMessage: string;
   stdout: string;
@@ -109,18 +112,19 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
       maxChars: 20_000,
     });
 
-    const rewrittenPath = input.rewrittenPath ?? defaultRewrittenPath(sourceNote);
+    const legacyRewrittenPath = input.rewrittenPath ?? defaultRewrittenPath(sourceNote);
     const workspace = input.workspace ?? join(input.vaultRoot, ".kn", "agent-runs", randomUUID());
     mkdirSync(workspace, { recursive: true });
+    const seededArtifacts = await seedWorkspaceArtifacts(input.vaultRoot, workspace);
 
     const prompt = buildRewritePrompt({
       agent,
       context: rewriteContext,
       templateContent,
       sourceNote,
-      rewrittenVaultPath: rewrittenPath,
-      rewrittenOutputPath: "rewritten.md",
       artifactOutputDir: "artifacts",
+      wikiPath: "artifacts/llm-wiki.md",
+      seededArtifacts,
     });
 
     const runner = input.runner ?? (agent === "claude" ? runClaudeCliAgent : runCodexCliAgent);
@@ -137,20 +141,31 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
       agent,
       agentBin,
     });
+    if (agentResult.artifactFiles.length === 0) {
+      throw new KnError(
+        ErrorCode.UNKNOWN,
+        "Agent produced no artifact outputs. The contract requires at least one artifacts/**/*.md (llm-wiki update or scenario artifact).",
+      );
+    }
+
     const vectorCollection = openOrCreateVectorCollection(input.vaultRoot, vaultConfig);
-    let rewritten: Awaited<ReturnType<typeof addMarkdownNoteToVault>>;
+    let rewritten: Awaited<ReturnType<typeof addMarkdownNoteToVault>> | null = null;
     const artifacts: LlmRewriteResult["artifacts"] = [];
     try {
-      rewritten = await addMarkdownNoteToVault({
-        vaultRoot: input.vaultRoot,
-        vaultName: input.vaultName,
-        relPath: rewrittenPath,
-        content: agentResult.rewrittenContent,
-        force: input.force,
-        vaultConfig,
-        embedProvider: resolveEmbedProvider(input, vaultConfig),
-        vectorCollection,
-      });
+      // Legacy compatibility: import a rewritten note only when the agent
+      // still authored one; the artifact-first contract no longer asks for it.
+      if (agentResult.rewrittenContent !== null) {
+        rewritten = await addMarkdownNoteToVault({
+          vaultRoot: input.vaultRoot,
+          vaultName: input.vaultName,
+          relPath: legacyRewrittenPath,
+          content: agentResult.rewrittenContent,
+          force: input.force,
+          vaultConfig,
+          embedProvider: resolveEmbedProvider(input, vaultConfig),
+          vectorCollection,
+        });
+      }
 
       for (const artifactOutput of agentResult.artifactFiles) {
         const result = await addMarkdownNoteToVault({
@@ -176,17 +191,19 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
 
     return {
       sourcePath: sourceNote.file_path,
-      rewrittenPath,
+      rewrittenPath: rewritten ? legacyRewrittenPath : null,
       workspace,
       agent,
       lastMessage: agentResult.lastMessage,
       stdoutTail: tail(agentResult.stdout),
       stderrTail: tail(agentResult.stderr),
-      rewritten: {
-        noteId: rewritten.noteId,
-        status: rewritten.status,
-        chunkCount: rewritten.chunkCount,
-      },
+      rewritten: rewritten
+        ? {
+            noteId: rewritten.noteId,
+            status: rewritten.status,
+            chunkCount: rewritten.chunkCount,
+          }
+        : null,
       artifacts,
     };
   } finally {
@@ -234,37 +251,39 @@ export function buildRewritePrompt(input: {
   context: Record<string, unknown>;
   templateContent: string;
   sourceNote: NoteRow;
-  rewrittenVaultPath: string;
-  rewrittenOutputPath: string;
   artifactOutputDir: string;
+  wikiPath: string;
+  seededArtifacts: string[];
 }): string {
   const agentName = input.agent === "claude" ? "Claude" : "Codex";
+  const seededList =
+    input.seededArtifacts.length > 0
+      ? input.seededArtifacts.map((path) => `  - ${path}`).join("\n")
+      : "  - (none)";
   return [
-    `You are ${agentName} acting as knoter's external rewrite and artifact agent.`,
-    "Task: produce a chunk-friendly rewritten-source Markdown file, then decide which durable artifact files should be created or updated from the template.",
+    `You are ${agentName} acting as knoter's external knowledge agent.`,
+    "Task: read the source evidence and update the vault's durable artifacts — the llm-wiki knowledge base plus any template-justified scenario artifacts.",
     "",
     "Hard requirements:",
-    "- Use only facts present in the source evidence and template. Do not invent tasks, counts, dates, meals, workouts, or project status.",
-    "- Write the rewritten note only to the exact rewritten output path below.",
-    "- Read the Template Markdown Scenario Templates and choose artifact families yourself.",
+    "- Use only facts present in the source evidence, the seeded artifacts, and the template. Do not invent tasks, counts, dates, meals, workouts, or project status.",
+    `- Update the llm-wiki knowledge base at ${input.wikiPath}: integrate durable, public, permanent knowledge from the source and add a dated line to its Recent Updates section. Edit the seeded wiki in place instead of starting over.`,
+    "- Read the Template Markdown Scenario Templates and choose scenario artifact families yourself.",
     "- Write artifact files only under the artifact output directory below, using durable scenario paths from the template such as artifacts/diet/diet-dashboard.md, artifacts/workout/workout-dashboard.md, artifacts/tasks/task-priority.md, artifacts/study/study-index.md, artifacts/projects/capdi-project-status.md, artifacts/progress/exam-progress.md, artifacts/ideas/ideas-backlog.md, or artifacts/reflection/reflection-log.md.",
     "- Do not create per-source or per-day artifact paths like artifacts/YYYY-MM-DD/<source>-artifact.md unless the template explicitly requires that durable path.",
-    "- If the source does not support any artifact scenario, create no artifact files.",
-    "- The rewritten file must include YAML frontmatter with layer: rewritten.",
-    "- Every artifact file you create must include YAML frontmatter with layer: artifact.",
-    `- In rewritten frontmatter, set source_note_id: ${input.sourceNote.id}.`,
-    `- In rewritten frontmatter, set source_path: ${input.sourceNote.file_path}.`,
-    `- In rewritten frontmatter, set rewrite_agent: ${input.agent}-cli.`,
-    `- In rewritten frontmatter, set rewrite_prompt_hash: ${input.agent}-cli-v1.`,
-    `- In artifact frontmatter, set source_path: ${input.rewrittenVaultPath}.`,
-    "- In artifact frontmatter, set artifact_template_id to the scenario template id or artifact-workflow when the template does not define a narrower id.",
+    "- If the source supports no scenario artifact, the llm-wiki update is still required.",
+    "- Do not write rewritten.md or any file outside the artifact output directory; the rewritten layer is legacy.",
+    "- Every artifact file must include YAML frontmatter with layer: artifact.",
+    `- In the llm-wiki frontmatter, set kind: llm-wiki.`,
+    `- In artifact frontmatter, set source_note_id: ${input.sourceNote.id}.`,
+    `- In artifact frontmatter, set source_path: ${input.sourceNote.file_path}.`,
+    "- In artifact frontmatter, set artifact_template_id to the scenario template id, llm-wiki for the wiki, or artifact-workflow when the template does not define a narrower id.",
     "- Preserve task checkbox state exactly when tasks exist.",
     "- Mark uncertainty as inference instead of fact.",
     "- Include source paths in a Sources/Evidence section.",
     "",
-    `Rewritten output path: ${input.rewrittenOutputPath}`,
     `Artifact output directory: ${input.artifactOutputDir}`,
-    `Vault rewritten path after import: ${input.rewrittenVaultPath}`,
+    "Existing artifacts seeded into the workspace (edit in place):",
+    seededList,
     "Vault artifact paths after import: same relative paths you write under the artifact output directory.",
     "",
     "Template Markdown:",
@@ -294,11 +313,12 @@ export async function runCodexCliAgent(input: LlmRewriteRunnerInput): Promise<Ll
 
   const { stdout, stderr } = await runAgentCommand("Codex CLI", command, {
     timeoutMs: input.timeoutMs,
-    rewrittenPath: paths.rewrittenPath,
   });
 
   return {
-    rewrittenContent: await Bun.file(paths.rewrittenPath).text(),
+    rewrittenContent: existsSync(paths.rewrittenPath)
+      ? await Bun.file(paths.rewrittenPath).text()
+      : null,
     artifactFiles: await readArtifactOutputs(input.workspace, paths.artifactRoot),
     lastMessage: existsSync(paths.lastMessagePath) ? await Bun.file(paths.lastMessagePath).text() : "",
     stdout,
@@ -327,11 +347,12 @@ export async function runClaudeCliAgent(input: LlmRewriteRunnerInput): Promise<L
   const { stdout, stderr } = await runAgentCommand("Claude CLI", command, {
     cwd: input.workspace,
     timeoutMs: input.timeoutMs,
-    rewrittenPath: paths.rewrittenPath,
   });
 
   return {
-    rewrittenContent: await Bun.file(paths.rewrittenPath).text(),
+    rewrittenContent: existsSync(paths.rewrittenPath)
+      ? await Bun.file(paths.rewrittenPath).text()
+      : null,
     artifactFiles: await readArtifactOutputs(input.workspace, paths.artifactRoot),
     lastMessage: stdout.trim(),
     stdout,
@@ -368,7 +389,7 @@ async function prepareAgentWorkspace(input: LlmRewriteRunnerInput): Promise<Agen
 async function runAgentCommand(
   label: string,
   command: string,
-  options: { timeoutMs: number; rewrittenPath: string; cwd?: string },
+  options: { timeoutMs: number; cwd?: string },
 ): Promise<{ stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bash", "-lc", command], {
     cwd: options.cwd,
@@ -396,9 +417,6 @@ async function runAgentCommand(
     if (exitCode !== 0) {
       throw new KnError(ErrorCode.UNKNOWN, `${label} exited with ${exitCode}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
     }
-    if (!existsSync(options.rewrittenPath)) {
-      throw new KnError(ErrorCode.FILE_NOT_FOUND, `${label} did not create expected output: ${options.rewrittenPath}`);
-    }
 
     return { stdout, stderr };
   } finally {
@@ -409,6 +427,25 @@ async function runAgentCommand(
 function defaultRewrittenPath(sourceNote: NoteRow): string {
   const date = sourceNote.doc_date ?? "undated";
   return `rewritten/${date}/${basename(sourceNote.file_path)}`;
+}
+
+/**
+ * Mirrors the vault's current artifacts/**\/*.md into the agent workspace so
+ * the agent updates the durable documents (llm-wiki, scenario dashboards)
+ * in place instead of overwriting them blind.
+ */
+async function seedWorkspaceArtifacts(vaultRoot: string, workspace: string): Promise<string[]> {
+  const files = await listMarkdownFiles(join(vaultRoot, "artifacts"));
+  const seeded: string[] = [];
+  for (const file of files) {
+    const relPath = relative(resolve(vaultRoot), file).replace(/\\/g, "/");
+    if (!relPath.startsWith("artifacts/")) continue;
+    const target = join(workspace, relPath);
+    mkdirSync(dirname(target), { recursive: true });
+    await Bun.write(target, await Bun.file(file).text());
+    seeded.push(relPath);
+  }
+  return seeded.sort();
 }
 
 function shellQuote(value: string): string {

@@ -43,7 +43,7 @@ describe("agent scenario fixtures", () => {
       expect(result.sourcesConsidered).toBeGreaterThanOrEqual(8);
       expect(result.rewritten.added).toBeGreaterThanOrEqual(8);
       expect(result.artifacts.added).toBeGreaterThanOrEqual(8);
-      expect(await Bun.file(result.templatePath).text()).toContain("## Rewritten Source Prompt");
+      expect(await Bun.file(result.templatePath).text()).toContain("## Wiki Update Prompt");
 
       const metaDb = new MetaDB(vaultRoot);
       try {
@@ -52,6 +52,7 @@ describe("agent scenario fixtures", () => {
         expect(rewritten.length).toBeGreaterThanOrEqual(8);
         expect(artifacts.map((note) => note.file_path)).toEqual(
           expect.arrayContaining([
+            "artifacts/llm-wiki.md",
             "artifacts/diet/diet-dashboard.md",
             "artifacts/workout/workout-dashboard.md",
             "artifacts/tasks/task-priority.md",
@@ -60,9 +61,15 @@ describe("agent scenario fixtures", () => {
           ]),
         );
 
+        // The llm-wiki fixture is part of default search; other artifact
+        // kinds still require includeArtifacts.
+        const wikiNote = artifacts.find((note) => note.file_path === "artifacts/llm-wiki.md");
+        const wikiHits = metaDb.searchFts("deterministic", 10, VAULT_NAME);
+        expect(wikiHits.some((row) => row.noteId === wikiNote?.id)).toBe(true);
+
         expect(rewritten.every((note) => note.source_path?.startsWith("sources/"))).toBe(true);
         expect(rewritten.every((note) => note.rewrite_agent === "deterministic-test-agent")).toBe(true);
-        expect(rewritten.every((note) => note.rewrite_prompt_hash === "artifact-workflow-v3-test-fixture")).toBe(true);
+        expect(rewritten.every((note) => note.rewrite_prompt_hash === "artifact-workflow-v4-test-fixture")).toBe(true);
         expect(artifacts.every((note) => !!note.artifact_template_id)).toBe(true);
 
         expect(metaDb.searchFts("공부", 10, VAULT_NAME).length).toBeGreaterThan(0);

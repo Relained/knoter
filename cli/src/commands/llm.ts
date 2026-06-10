@@ -13,16 +13,16 @@ export function registerLlmCommand(program: Command): void {
 
   llmCmd
     .command("rewrite")
-    .description("Call an external agent (Codex or Claude CLI) to create rewritten and artifact notes from a source note")
+    .description("Call an external agent (Codex or Claude CLI) to update llm-wiki and scenario artifacts from a source note")
     .requiredOption("--source <path>", "Vault-relative source note path")
     .option("--agent <agent>", "External agent runtime: codex or claude", "codex")
     .option("--codex-bin <path>", "Codex CLI binary", process.env.KN_CODEX_BIN || "codex")
     .option("--claude-bin <path>", "Claude Code CLI binary", process.env.KN_CLAUDE_BIN || "claude")
     .option("--timeout-ms <n>", "Agent CLI timeout in milliseconds", "240000")
-    .option("--rewritten-path <path>", "Vault-relative rewritten output path")
+    .option("--rewritten-path <path>", "Vault-relative import path for legacy rewritten output")
     .option("--workspace <path>", "Agent working directory")
     .option("--test-embeddings", "Use deterministic local embeddings for live agent smoke tests")
-    .option("--force", "Overwrite existing rewritten/artifact notes")
+    .option("--force", "Overwrite existing artifact/rewritten notes")
     .action(async (options, cmd) => {
       const globalOpts = cmd.optsWithGlobals?.() || {};
       const format = (globalOpts.format || "text") as OutputFormat;

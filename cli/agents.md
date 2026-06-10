@@ -35,11 +35,13 @@ The only LLM-calling surface is the explicit `kn llm` namespace.
 - Rewriting, task/workout/area/metric extraction, and artifact prose generation
   belong to an external LLM agent.
 - `kn llm` is the only namespace allowed to assemble prompts or call an LLM.
-  `kn llm rewrite --source <path>` calls the Codex CLI in an isolated agent
-  workspace to author `rewritten.md` plus template-justified
-  `artifacts/**/*.md`, then imports those files into the active vault
-  (importing indexes chunks, so the embedding endpoint must be reachable unless
-  `--test-embeddings` is passed).
+  `kn llm rewrite --source <path>` calls the Codex/Claude CLI in an isolated
+  agent workspace to update the llm-wiki artifact plus template-justified
+  scenario `artifacts/**/*.md` (existing vault artifacts are seeded into the
+  workspace for in-place updates), then imports those files into the active
+  vault (importing indexes chunks, so the embedding endpoint must be reachable
+  unless `--test-embeddings` is passed). A legacy `rewritten.md` output is
+  still imported for compatibility but is no longer requested.
 - Normal CLI service lifecycle is limited to endpoint status/probing.
   Starting/stopping TEI or packaged-app services is outside product CLI
   behavior. `scripts/test-env.sh tei-start` is a test/dev harness exception.
