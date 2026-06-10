@@ -12,6 +12,7 @@ import {
   Search,
   Settings,
   Square,
+  SquareKanban,
   TriangleAlert,
   X
 } from "lucide-react";
@@ -27,6 +28,7 @@ export const lucideIconRegistry = {
   "settings.open": Settings,
   "object.todo": CheckSquare,
   "object.calendar": CalendarDays,
+  "object.kanban": SquareKanban,
   "notification.bell": Bell,
   "widget.pin": Pin,
   "widget.unpin": PinOff,

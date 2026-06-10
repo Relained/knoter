@@ -5,7 +5,11 @@ const api = {
     getActive: () => ipcRenderer.invoke("vault:getActive"),
     switch: (vaultId) => ipcRenderer.invoke("vault:switch", { vaultId }),
     list: () => ipcRenderer.invoke("vault:list"),
-    status: () => ipcRenderer.invoke("vault:status")
+    status: () => ipcRenderer.invoke("vault:status"),
+    create: (input) => ipcRenderer.invoke("vault:create", input)
+  },
+  dialog: {
+    pickDirectory: (input) => ipcRenderer.invoke("dialog:pickDirectory", input)
   },
   explorer: {
     list: (input) => ipcRenderer.invoke("explorer:list", input),
@@ -23,14 +27,16 @@ const api = {
     run: (input) => ipcRenderer.invoke("sync:run", input)
   },
   source: {
-    addFromPicker: (input) => ipcRenderer.invoke("source:addFromPicker", input)
+    addFromPicker: (input) => ipcRenderer.invoke("source:addFromPicker", input),
+    addFromFolder: (input) => ipcRenderer.invoke("source:addFromFolder", input)
   },
   note: {
     save: (input) => ipcRenderer.invoke("note:save", input)
   },
   template: {
     get: () => ipcRenderer.invoke("template:get"),
-    list: () => ipcRenderer.invoke("template:list")
+    list: () => ipcRenderer.invoke("template:list"),
+    scaffold: () => ipcRenderer.invoke("template:scaffold")
   },
   tag: {
     list: () => ipcRenderer.invoke("tag:list"),

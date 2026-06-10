@@ -100,6 +100,39 @@ templates/</pre>
       </article>
     `
   },
+  kanban: {
+    id: "kanban",
+    title: "Kanban",
+    kind: "artifact",
+    label: "Kanban",
+    html: `
+      <article>
+        <p class="eyebrow">KANBAN</p>
+        <h1>Kanban</h1>
+        <p>Column-based work board. Each item stays on exactly one column.</p>
+        <section>
+          <h2>Backlog</h2>
+          <ul><li>No captured work.</li></ul>
+        </section>
+        <section>
+          <h2>Todo</h2>
+          <ul><li>Nothing scheduled.</li></ul>
+        </section>
+        <section>
+          <h2>In Progress</h2>
+          <ul><li>Nothing underway.</li></ul>
+        </section>
+        <section>
+          <h2>Review</h2>
+          <ul><li>Nothing awaiting review.</li></ul>
+        </section>
+        <section>
+          <h2>Done</h2>
+          <ul><li>No verified work yet.</li></ul>
+        </section>
+      </article>
+    `
+  },
   "daily-note": {
     id: "daily-note",
     title: "Daily Note",

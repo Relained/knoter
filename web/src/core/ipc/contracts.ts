@@ -1,4 +1,6 @@
 import type {
+  AddFolderInput,
+  AddFolderResult,
   AddSourcesInput,
   AddSourcesResult,
   ExplorerItem,
@@ -13,6 +15,7 @@ import type {
   LlmRewriteRunResult,
   NoteSaveInput,
   NoteSaveResult,
+  PickDirectoryResult,
   ReportContextInput,
   SearchInput,
   SearchResult,
@@ -21,6 +24,8 @@ import type {
   TagInfo,
   TagUpdateInput,
   TemplateInfo,
+  TemplateScaffoldResult,
+  VaultCreateInput,
   VaultStatus,
   VaultSummary,
 } from "../api/types";
@@ -30,6 +35,8 @@ export type IpcRequestMap = {
   "vault:switch": { vaultId: string };
   "vault:list": void;
   "vault:status": void;
+  "vault:create": VaultCreateInput;
+  "dialog:pickDirectory": { title?: string };
   "explorer:list": ExplorerListInput;
   "explorer:read": { path: string };
   "explorer:refresh": void;
@@ -38,9 +45,11 @@ export type IpcRequestMap = {
   "search:query": SearchInput;
   "sync:run": SyncRunInput;
   "source:addFromPicker": AddSourcesInput;
+  "source:addFromFolder": AddFolderInput;
   "note:save": NoteSaveInput;
   "template:get": void;
   "template:list": void;
+  "template:scaffold": void;
   "tag:list": void;
   "tag:update": TagUpdateInput;
   "report:context": ReportContextInput;
@@ -53,6 +62,8 @@ export type IpcResponseMap = {
   "vault:switch": VaultSummary;
   "vault:list": VaultSummary[];
   "vault:status": VaultStatus;
+  "vault:create": VaultSummary;
+  "dialog:pickDirectory": PickDirectoryResult;
   "explorer:list": ExplorerItem[];
   "explorer:read": ExplorerReadResult;
   "explorer:refresh": ExplorerRefreshResult;
@@ -61,9 +72,11 @@ export type IpcResponseMap = {
   "search:query": SearchResult[];
   "sync:run": SyncRunResult;
   "source:addFromPicker": AddSourcesResult;
+  "source:addFromFolder": AddFolderResult;
   "note:save": NoteSaveResult;
   "template:get": TemplateInfo;
   "template:list": TemplateInfo;
+  "template:scaffold": TemplateScaffoldResult;
   "tag:list": TagInfo[];
   "tag:update": Record<string, unknown>;
   "report:context": Record<string, unknown>;

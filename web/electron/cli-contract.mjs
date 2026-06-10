@@ -83,6 +83,15 @@ export function validateNoteFileName(value) {
   return fileName.toLowerCase().endsWith(".md") ? fileName : `${fileName}.md`;
 }
 
+export function validateVaultName(value) {
+  const name = validateNonEmptyString(value, "Vault name");
+  if (name.length > 64) throw new Error("Vault name is too long");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
+    throw new Error("Vault name may use letters, digits, dot, dash, and underscore");
+  }
+  return name;
+}
+
 export function buildSyncCliArgs(input) {
   const args = ["sync"];
   if (input?.full === true) args.push("--full");

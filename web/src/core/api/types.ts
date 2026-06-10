@@ -211,3 +211,31 @@ export type HtmlWindowTheme = {
   accent: string;
   fontFamily: string;
 };
+
+export type VaultCreateInput = {
+  name: string;
+  directory: string;
+};
+
+export type PickDirectoryResult = {
+  canceled: boolean;
+  path: string | null;
+};
+
+export type AddFolderInput = {
+  path: string;
+  tags?: string[];
+};
+
+export type AddFolderResult = {
+  filesProcessed: number;
+  filesAdded: number;
+  filesUpdated: number;
+  filesSkipped: number;
+  details: AddedFileDetail[];
+};
+
+export type TemplateScaffoldResult = {
+  created: Array<{ name: string; path: string }>;
+  skipped: Array<{ name: string; path: string; reason: string }>;
+};

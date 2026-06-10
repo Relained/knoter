@@ -1,4 +1,6 @@
 import type {
+  AddFolderInput,
+  AddFolderResult,
   AddSourcesInput,
   AddSourcesResult,
   ExplorerItem,
@@ -14,6 +16,7 @@ import type {
   LlmRewriteRunResult,
   NoteSaveInput,
   NoteSaveResult,
+  PickDirectoryResult,
   ReportContextInput,
   SearchInput,
   SearchResult,
@@ -22,6 +25,8 @@ import type {
   TagInfo,
   TagUpdateInput,
   TemplateInfo,
+  TemplateScaffoldResult,
+  VaultCreateInput,
   VaultStatus,
   VaultSummary
 } from "./types";
@@ -32,6 +37,10 @@ export type KnotenApi = {
     switch(vaultId: string): Promise<VaultSummary>;
     list(): Promise<VaultSummary[]>;
     status(): Promise<VaultStatus>;
+    create(input: VaultCreateInput): Promise<VaultSummary>;
+  };
+  dialog: {
+    pickDirectory(input: { title?: string }): Promise<PickDirectoryResult>;
   };
   explorer: {
     list(input: ExplorerListInput): Promise<ExplorerItem[]>;
@@ -50,6 +59,7 @@ export type KnotenApi = {
   };
   source: {
     addFromPicker(input: AddSourcesInput): Promise<AddSourcesResult>;
+    addFromFolder(input: AddFolderInput): Promise<AddFolderResult>;
   };
   note: {
     save(input: NoteSaveInput): Promise<NoteSaveResult>;
@@ -57,6 +67,7 @@ export type KnotenApi = {
   template: {
     get(): Promise<TemplateInfo>;
     list(): Promise<TemplateInfo>;
+    scaffold(): Promise<TemplateScaffoldResult>;
   };
   tag: {
     list(): Promise<TagInfo[]>;

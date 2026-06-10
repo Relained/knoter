@@ -30,6 +30,8 @@ export type CommandContext = {
   pinWidgetView: (viewId: string) => void;
   pushStatus: (status: string) => void;
   openSourceModal: () => void;
+  openVaultModal: () => void;
+  closeVaultModal: () => void;
   openSettings: () => void;
   openPalette: (query: string) => void;
   refreshVaultData: () => Promise<void>;
@@ -179,6 +181,77 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           html: vaultStatusHtml(status),
         });
         ctx.pushStatus(`Vault ${status.vault}: ${status.noteCount} notes indexed.`);
+      },
+    },
+    {
+      id: "vault.bootstrap",
+      title: "Bootstrap Vault (create + import)",
+      detail: "backend vault",
+      icon: "artifact.list",
+      options: [
+        {
+          key: "name",
+          label: "Vault name",
+          type: "string",
+          required: true,
+          placeholder: "my-vault",
+        },
+        {
+          key: "directory",
+          label: "Parent folder",
+          type: "string",
+          required: true,
+          placeholder: "/absolute/path/to/parent",
+        },
+        {
+          key: "sourceFolder",
+          label: "Source folder",
+          type: "string",
+          placeholder: "folder of .md files to bulk add (optional)",
+        },
+        {
+          key: "scaffold",
+          label: "Create template documents",
+          type: "boolean",
+          defaultValue: true,
+        },
+      ],
+      run: async (values) => {
+        const api = requireApi(ctx);
+        if (!api) return;
+        const name = stringValue(values.name);
+        const directory = stringValue(values.directory);
+        const sourceFolder = stringValue(values.sourceFolder);
+        const scaffold = values.scaffold !== false;
+        ctx.closeVaultModal();
+        const operationId = ctx.beginOperation(`Create vault: ${name}`);
+        try {
+          ctx.pushStatus(`Creating vault: ${name}...`);
+          const vault = await api.vault.create({ name, directory });
+          ctx.pushStatus(`Vault created and activated: ${vault.name}`);
+          if (scaffold) {
+            const scaffolded = await api.template.scaffold();
+            ctx.pushStatus(
+              `Template documents: ${scaffolded.created.length} created, ${scaffolded.skipped.length} skipped.`,
+            );
+          }
+          if (sourceFolder) {
+            ctx.pushStatus(`Adding sources from ${sourceFolder}...`);
+            const added = await api.source.addFromFolder({ path: sourceFolder });
+            ctx.pushStatus(
+              `Sources added: ${added.filesAdded} added, ${added.filesUpdated} updated, ${added.filesSkipped} skipped.`,
+            );
+          }
+          const sync = await api.sync.run({});
+          const errorNote =
+            sync.errors.length > 0 ? `, errors: ${sync.errors.length}` : "";
+          ctx.pushStatus(
+            `Index sync complete: +${sync.added} added, ${sync.updated} updated${errorNote}.`,
+          );
+          await ctx.refreshVaultData();
+        } finally {
+          ctx.endOperation(operationId);
+        }
       },
     },
     {
@@ -494,6 +567,20 @@ function uiCommands(ctx: CommandContext): WorkbenchCommand[] {
       detail: "view",
       icon: "object.todo",
       run: () => openBuiltinView(ctx, "todo"),
+    },
+    {
+      id: "open.kanban",
+      title: "Open Kanban",
+      detail: "view",
+      icon: "object.kanban",
+      run: () => openBuiltinView(ctx, "kanban"),
+    },
+    {
+      id: "vault.modal",
+      title: "New Vault...",
+      detail: "view",
+      icon: "artifact.list",
+      run: () => ctx.openVaultModal(),
     },
     {
       id: "open.daily-note",
