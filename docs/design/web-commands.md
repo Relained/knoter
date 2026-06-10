@@ -53,6 +53,7 @@ type WorkbenchCommand = {
 | `explorer.refresh` | — | explorer 재로드 |
 | `vault.list` / `vault.status` | — | `kn vault list/status` |
 | `vault.switch` | name* | `kn vault switch` |
+| `vault.bootstrap` | name*, directory*, sourceFolder, scaffold(기본 true) | `kn vault create` + `switch` → `kn template scaffold` → `kn add <dir> --recursive` → `kn sync`. Vault 생성 모달의 제출 경로(`skipOptionsForm`) 겸 팔레트 옵션 폼 |
 | `source.add` | tags | 네이티브 파일 피커 → `kn add --tag...` |
 | `note.save` | editor(daily/simple), fileName, tags | 임시 md → `kn add --force` |
 | `template.get` / `template.list` | — | `kn template get/list` |
@@ -91,12 +92,16 @@ UI 명령: `open.calendar/todo/daily-note/simple-note`, `source.modal`,
 `web/src/core/ipc/contracts.ts`가 타입 소스이고, `electron/main.mjs` 핸들러가
 `bun cli/src/cli.ts --format json ...`을 호출한다. 기존 채널에 더해:
 
-`vault:list`, `vault:status`, `sync:run`, `source:addFromPicker`(다이얼로그),
-`note:save`(임시 파일 작성 후 add, 파일명 검증), `template:get`, `template:list`,
-`tag:list`, `tag:update`, `report:context`, `llm:rewrite`.
+`vault:list`, `vault:status`, `vault:create`(`kn vault create` + `switch`,
+vault 이름 검증, 경로 = 선택 폴더/이름), `dialog:pickDirectory`(네이티브 폴더
+피커), `sync:run`, `source:addFromPicker`(다이얼로그),
+`source:addFromFolder`(`kn add <dir> --recursive`, 300s 타임아웃),
+`note:save`(임시 파일 작성 후 add, 파일명 검증), `template:get`,
+`template:list`, `template:scaffold`(기본 템플릿 4종으로 `artifacts/<name>.md`
+스타터 문서 생성), `tag:list`, `tag:update`, `report:context`, `llm:rewrite`.
 
 - `runCli(args, { timeoutMs })`: 기본 30s, 인덱싱 계열(add/sync/report) 120s,
-  `llm:rewrite` 300s.
+  `llm:rewrite`/`source:addFromFolder` 300s.
 - SQLite 락(`database is locked`) 발생 시 600ms 간격으로 최대 2회 재시도 —
   dev 부트스트랩과의 경합 흡수.
 - 입력 검증은 `electron/cli-contract.mjs`: agent/tag action enum, `YYYY-MM-DD`
@@ -133,6 +138,10 @@ UI 명령: `open.calendar/todo/daily-note/simple-note`, `source.modal`,
 5. Vault Status / List Vaults / List Tags / Open Effective Template 탭.
 6. Add Source Files to Vault → 파일 피커 → explorer 반영.
 7. Daily Note 작성 → Save to Vault → 팔레트에서 "Open: daily-note-..." 확인.
+8. (vault 미존재 환경) 시작 시 Create Vault 모달 자동 오픈 → 이름/위치/소스
+   폴더 선택 → Create Vault → 생성/스캐폴드/추가/sync 토스트 4단 확인.
+   임베딩 엔드포인트가 꺼져 있어도 생성·스캐폴드·소스 추가는 성공해야 하며,
+   아티팩트 인덱싱은 이후 sync에서 회복된다.
 8. Build Report Context(date) → JSON 탭.
 9. Run Agent Rewrite(source, agent) — codex/claude CLI 설치 시.
 10. 툴 메뉴 버튼과 팔레트 동일 명령 대조(예: Search 버튼 = search.run 폼).

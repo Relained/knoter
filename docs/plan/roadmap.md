@@ -77,6 +77,11 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
    - [x] Keybinding system: chord→command bindings over the command registry
      with defaults (`Mod+K` palette, `Mod+S` note save, tab cycling), settings
      recorder UI, palette shortcut hints; Escape no longer opens the palette.
+   - [x] Vault onboarding: Create Vault modal (auto-opens when no vault
+     exists) backed by `vault.bootstrap` — `kn vault create` + switch,
+     `kn template scaffold` (bundled llm-wiki/calendar/todo/kanban document
+     templates with default HTML pairs), optional bulk source folder import
+     (`kn add --recursive`), then sync.
    - [ ] Manual GUI smoke pass of the checklist in
      `docs/design/web-commands.md`.
    - [ ] Decide settings persistence: expose the JSONC config-file bridge from

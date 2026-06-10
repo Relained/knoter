@@ -21,6 +21,10 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   (equal-ratio vertical split, drag resize); status messages surface through a
   bell icon in the overlay menu bar plus a 4s transient toast. Design notes:
   `docs/design/widget-bar.md`.
+- When the backend is connected but no vault exists, the Create Vault modal
+  opens automatically (`VaultCreateModal`, also via the "New Vault..."
+  palette command). It submits the `vault.bootstrap` command: create +
+  switch → template scaffold → optional bulk source add → sync.
 - There is no web unit-test or Playwright harness. `npm run check`
   (TypeScript + Vite build) is the only automated verification. Do not claim
   test coverage that does not exist.
@@ -67,14 +71,20 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   APIs inside `src/`; Electron-side changes belong in `electron/` and the
   contracts in `src/core/`.
 - Current IPC surface (preload + main handlers):
-  - `vault.getActive`, `vault.switch`, `vault.list`, `vault.status`
+  - `vault.getActive`, `vault.switch`, `vault.list`, `vault.status`,
+    `vault.create` (kn vault create + switch; validated name, path =
+    picked directory + name)
+  - `dialog.pickDirectory` (native directory picker)
   - `explorer.list`, `explorer.read`, `explorer.refresh`
   - `graph.get`, `graph.refresh` (lightweight Explorer projection; edges are
     currently empty)
   - `search.query`, `sync.run`
-  - `source.addFromPicker` (native dialog → `kn add`), `note.save`
-    (temp file → `kn add`)
-  - `template.get`, `template.list`, `tag.list`, `tag.update`
+  - `source.addFromPicker` (native dialog → `kn add`),
+    `source.addFromFolder` (`kn add <dir> --recursive`, 300s timeout),
+    `note.save` (temp file → `kn add`)
+  - `template.get`, `template.list`, `template.scaffold` (starter
+    artifacts from the bundled document templates), `tag.list`,
+    `tag.update`
   - `report.context`, `llm.rewrite` (codex|claude)
   - `html.openWindow` (optional `theme` snapshot; the main process validates
     hex colors and the font-family charset before interpolating styles)
