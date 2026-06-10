@@ -18,8 +18,7 @@ export function OverlayTabs({
   onOpenTab,
   onCloseTab,
 }: OverlayTabsProps) {
-  // 띄워진 탭이 없을 때 바 자체를 숨기고 싶다면 이 주석을 해제하세요.
-  // if (tabs.length === 0) return null;
+  if (tabs.length === 0) return null;
 
   return (
     <div
