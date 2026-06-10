@@ -50,6 +50,12 @@ export type ToastMessage = {
   createdAt: string;
 };
 
+export type RunningOperation = {
+  id: number;
+  label: string;
+  startedAt: string;
+};
+
 export type CommandOptionType = "string" | "number" | "boolean" | "enum";
 export type CommandOptionValue = string | number | boolean;
 export type CommandValues = Record<string, CommandOptionValue | undefined>;

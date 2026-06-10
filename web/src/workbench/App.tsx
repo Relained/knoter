@@ -45,6 +45,7 @@ import type {
   CommandValues,
   HtmlTab,
   PendingCommand,
+  RunningOperation,
   SourceRecord,
   ToastMessage,
   ToolKey,
@@ -87,6 +88,8 @@ export function App() {
   const [widgets, setWidgets] = useState<WorkbenchWidget[]>(loadStoredWidgets);
   const [explorerItems, setExplorerItems] = useState<ExplorerItem[]>([]);
   const [activeVault, setActiveVault] = useState<VaultSummary | null>(null);
+  const [runningOps, setRunningOps] = useState<RunningOperation[]>([]);
+  const nextOperationId = useRef(1);
   const [toastHistory, setToastHistory] = useState<ToastMessage[]>([
     { id: 1, text: "Ready.", createdAt: new Date().toISOString() },
   ]);
@@ -144,6 +147,8 @@ export function App() {
         endAgentRun: () => {
           agentRunning.current = false;
         },
+        beginOperation,
+        endOperation,
       }),
     [
       api,
@@ -381,6 +386,21 @@ export function App() {
     setActiveTabId(nextTab.id);
   }
 
+  function beginOperation(label: string): number {
+    const id = nextOperationId.current++;
+    setRunningOps((current) => [
+      ...current,
+      { id, label, startedAt: new Date().toISOString() },
+    ]);
+    return id;
+  }
+
+  function endOperation(operationId: number) {
+    setRunningOps((current) =>
+      current.filter((operation) => operation.id !== operationId),
+    );
+  }
+
   function pushStatus(nextStatus: string) {
     const message: ToastMessage = {
       id: Date.now(),
@@ -438,6 +458,7 @@ export function App() {
           openTool={openTool}
           settingsOpen={settingsOpen}
           unreadCount={unreadCount}
+          runningOps={runningOps}
           toastHistory={toastHistory}
           onOpenTool={setOpenTool}
           onToggleNotifications={toggleNotifications}
