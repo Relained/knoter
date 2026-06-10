@@ -6,13 +6,7 @@
     align-items: stretch;
     overflow: hidden;
     color: var(--text-primary);
-    background:
-        radial-gradient(
-            circle at 84% 78%,
-            rgb(255 160 64 / 0.1),
-            transparent 28%
-        ),
-        var(--surface-app);
+    background: var(--surface-app);
 }
 
 /* macOS 히든 타이틀바: 신호등이 상단 탭 줄(중심 y 33)에 내려앉으므로,
@@ -63,7 +57,7 @@
     width: 100%;
     min-height: calc(100vh - 32px);
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--surface-command-input);
 }
 
@@ -132,7 +126,7 @@
     resize: none;
     padding: 16px;
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-card);
     font: var(--font-size-editor) / var(--line-height-editor) var(--font-editor);
@@ -160,7 +154,7 @@
     gap: 5px;
     padding: 6px;
     border: 1px solid var(--border-subtle);
-    border-radius: 13px;
+    border-radius: var(--radius-lg);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
     overflow: hidden;
@@ -196,7 +190,7 @@
 .workbench-command-palette button,
 .source-modal button,
 .settings-page button {
-    border-radius: 7px;
+    border-radius: var(--radius-md);
 }
 
 .overlay-actions-row {
@@ -273,7 +267,7 @@
     min-width: 260px;
     padding: 7px;
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
 }
@@ -297,7 +291,7 @@
     gap: 0;
     padding: 3px;
     border: 1px solid var(--border-subtle);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--surface-command-input);
     box-shadow: var(--shadow-floating);
     overflow-x: auto;
@@ -371,7 +365,7 @@
     padding: 0; /* UA 버튼 패딩이 아이콘 중앙 정렬을 깨뜨리지 않도록 */
     display: grid;
     place-items: center;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: var(--text-muted);
     background: transparent;
 }
@@ -397,7 +391,7 @@
     display: grid;
     place-items: center;
     padding: 18px;
-    background: rgb(0 0 0 / 0.28);
+    background: var(--surface-overlay);
 }
 
 .workbench-command-palette {
@@ -405,7 +399,7 @@
     display: grid;
     overflow: hidden;
     border: 1px solid var(--border-subtle);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
 }
@@ -480,7 +474,7 @@
 .workbench-command-palette select {
     min-height: 30px;
     border: 1px solid var(--border-subtle);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
     background: var(--surface-panel-raised);
 }
@@ -493,7 +487,7 @@
     margin-right: 8px;
     padding: 2px 6px;
     border: 1px solid var(--border-subtle);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     background: var(--surface-panel-raised);
     font-family: inherit;
@@ -518,7 +512,7 @@
     gap: 12px;
     min-height: 30px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     background: var(--surface-command-input);
 }
 
@@ -536,7 +530,7 @@
     min-height: 24px;
     padding: 0 8px;
     border: 1px solid var(--border-subtle);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     background: var(--surface-panel-raised);
     font-size: 11px;
@@ -552,7 +546,7 @@
     min-height: 28px;
     padding: 0 10px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-panel-raised);
 }
@@ -592,7 +586,7 @@
     min-height: 30px;
     padding: 0 8px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command-input);
 }
@@ -625,7 +619,7 @@
     min-height: 30px;
     padding: 0 12px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-panel-raised);
 }
@@ -641,7 +635,7 @@
     display: grid;
     place-items: center;
     padding: 18px;
-    background: rgb(0 0 0 / 0.34);
+    background: var(--surface-overlay);
 }
 
 .source-modal {
@@ -653,7 +647,7 @@
     overflow: auto;
     padding-bottom: 14px;
     border: 1px solid var(--border-subtle);
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
 }
@@ -667,7 +661,7 @@
     gap: 6px;
     padding: 10px;
     border: 1px dashed var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-muted);
     font-size: 12px;
     font-weight: 700;
@@ -692,7 +686,7 @@
     align-items: center;
     overflow: hidden;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command-input);
     font-size: 12px;
@@ -729,7 +723,7 @@
     min-height: 30px;
     padding: 0 8px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command-input);
 }
@@ -741,7 +735,7 @@
     gap: 2px;
     padding: 2px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     background: var(--surface-command-input);
 }
 
@@ -782,7 +776,7 @@
     display: grid;
     place-items: center;
     padding: 18px;
-    background: rgb(0 0 0 / 0.34);
+    background: var(--surface-overlay);
 }
 
 .settings-page {
@@ -792,7 +786,7 @@
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
     border: 1px solid var(--border-subtle);
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
 }
@@ -838,7 +832,7 @@
     width: min(220px, 100%);
     min-height: 30px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command-input);
 }
@@ -854,7 +848,7 @@
     width: min(180px, 100%);
     padding: 2px;
     border: 1px solid var(--border-subtle);
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     background: var(--surface-command-input);
 }
 
@@ -909,7 +903,7 @@
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--surface-card);
 }
 
@@ -974,7 +968,7 @@
     height: 24px;
     display: grid;
     place-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     background: transparent;
 }
@@ -1025,7 +1019,7 @@
     padding: 0 3px;
     display: grid;
     place-items: center;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: var(--surface-app);
     background: var(--accent-primary);
     font-size: 9px;
@@ -1080,7 +1074,7 @@
     align-items: center;
     gap: 10px;
     padding: 7px 8px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command-input);
     font-size: 12px;
@@ -1121,7 +1115,7 @@
     inset: 5px;
     border: 1.5px solid transparent;
     border-top-color: var(--accent-primary);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     pointer-events: none;
     animation: workbench-spin 0.9s linear infinite;
 }
@@ -1140,7 +1134,7 @@
     align-items: center;
     gap: 10px;
     padding: 7px 8px;
-    border-radius: 7px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--accent-selected-soft);
     font-size: 12px;
@@ -1158,7 +1152,7 @@
     height: 12px;
     border: 1.5px solid transparent;
     border-top-color: var(--accent-primary);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     animation: workbench-spin 0.9s linear infinite;
 }
 
@@ -1180,7 +1174,7 @@
     gap: 8px;
     padding: 8px 10px;
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
@@ -1199,7 +1193,7 @@
     height: 24px;
     display: grid;
     place-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     background: transparent;
 }
@@ -1235,7 +1229,7 @@
     max-width: min(320px, calc(100% - 96px));
     padding: 0 10px;
     border: 1px solid var(--border-subtle);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: var(--text-muted);
     background: var(--surface-command);
     box-shadow: var(--shadow-floating);
