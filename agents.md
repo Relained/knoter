@@ -56,28 +56,22 @@ Read the smallest relevant set under `docs/` before larger changes:
 
 ## Git Management
 
-- Branch model: `main <-> dev <-(PR)- topic branches`.
-  - `main`: stable line. It is synchronized from `dev` only (PR or merge);
-    topic work never lands on `main` directly.
-  - `dev`: shared integration base. Every topic branch starts from `dev` and
-    merges back into `dev` through a PR (use a local `--no-ff` merge when
-    working without the remote).
-  - Topic branch prefixes:
-    - `features/<name>`: cross-package product features
-    - `webs/<name>`: web renderer / Electron shell work
-    - `backs/<name>`: CLI / backend work
-    - `refactoring/<name>`: refactors, restructures, doc reorganization
-- Legacy prefixes (`cli/<feature>`, `web/<feature>`, `integration/<feature>`)
-  are retired; do not create new branches with them.
+- Branch model (current): single long-lived branch `dev`.
+  - `dev` is the default branch and the only long-lived branch. There is no
+    `main` for now; a stable/release branch may be reintroduced later.
+  - Topic branches start from `dev` and merge back into `dev` through a PR
+    (use a local `--no-ff` merge when working without the remote).
+  - Topic branch names are free-form. Prefix grouping such as
+    `features/<name>`, `webs/<name>`, `backs/<name>`, `refactoring/<name>` is
+    a useful convention, not a requirement.
 - Do not use branch names under `dev/...` when a local or remote `dev` branch
   exists. Git refs cannot cleanly contain both `dev` and `dev/<name>` at the
   same time.
 - Branch new work from `dev` unless the user explicitly approves a different
   base. Continue on an existing active topic branch when it already matches
   the requested work.
-- Keep CLI and web implementation commits on separate topic branches
-  (`backs/*` vs `webs/*`) unless the change is inherently cross-package
-  (`features/*`).
+- Keep CLI and web implementation commits on separate topic branches unless
+  the change is inherently cross-package.
 - Commit related changes in small, reviewable units after appropriate
   verification. Documentation-only commits usually need a read-through and
   `git diff --check`.

@@ -82,12 +82,13 @@ Removed/replaced:
 - PageIndex is a future PoC, not current retrieval backend.
 - `kn mcp` stdio is the compatibility baseline. HTTP/daemon/stop exists in code
   as experimental surface and needs explicit hardening before being promoted.
-- Branch layout (restructured 2026-06-10): `main <-> dev <-(PR)- topic
-  branches`. `dev` is the integration base; topic branches use
-  `features/<name>`, `webs/<name>`, `backs/<name>`, or `refactoring/<name>`
-  and merge into `dev` via PR; `main` is synchronized from `dev` only.
-  Legacy `cli/*`, `web/*`, `integration/*` branches are retired
-  (`cli/document-graph` is kept until its unmerged commit is triaged).
+- Branch layout (restructured 2026-06-10): single long-lived branch `dev`
+  (default on origin). Topic branches have free-form names (prefix grouping
+  like `features/`, `webs/`, `backs/`, `refactoring/` is optional, not
+  required) and merge into `dev` via PR. There is no `main` branch for now;
+  a stable/release branch may be reintroduced later. Legacy branches were
+  triaged and deleted (`cli/document-graph` was patch-equivalent to the
+  document-graph work already in `dev`).
 - OS-standard config/cache/state/log directory migration is intentionally
   deferred. Current test-generated DB/cache output is kept under project-local
   ignored directories where tests need persistent filesystem artifacts.
