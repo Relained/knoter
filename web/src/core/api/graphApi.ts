@@ -3,6 +3,7 @@ import type {
   AddFolderResult,
   AddSourcesInput,
   AddSourcesResult,
+  DocumentTemplate,
   ExplorerItem,
   ExplorerListInput,
   ExplorerReadInput,
@@ -67,6 +68,7 @@ export type KnotenApi = {
   template: {
     get(): Promise<TemplateInfo>;
     list(): Promise<TemplateInfo>;
+    getDocument(input: { name: string }): Promise<DocumentTemplate>;
     scaffold(): Promise<TemplateScaffoldResult>;
   };
   tag: {

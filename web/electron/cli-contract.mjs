@@ -92,6 +92,15 @@ export function validateVaultName(value) {
   return name;
 }
 
+export function validateTemplateName(value) {
+  const name = validateNonEmptyString(value, "Template name");
+  if (name.length > 64) throw new Error("Template name is too long");
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+    throw new Error("Template name may use lowercase letters, digits, and dashes");
+  }
+  return name;
+}
+
 export function buildSyncCliArgs(input) {
   const args = ["sync"];
   if (input?.full === true) args.push("--full");

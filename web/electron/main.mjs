@@ -16,6 +16,7 @@ import {
   validateOptionalString,
   validateTagAction,
   validateTags,
+  validateTemplateName,
   validateVaultName
 } from "./cli-contract.mjs";
 
@@ -170,6 +171,7 @@ function installIpcHandlers() {
   ipcMain.handle("note:save", async (_event, input) => saveNoteToVault(input));
   ipcMain.handle("template:get", async () => loadTemplateInfo("get"));
   ipcMain.handle("template:list", async () => loadTemplateInfo("list"));
+  ipcMain.handle("template:getDocument", async (_event, input) => loadDocumentTemplate(input));
   ipcMain.handle("template:scaffold", async () => scaffoldTemplateDocuments());
   ipcMain.handle("tag:list", async () => {
     const envelope = await runCli(["tag", "list"]);
@@ -345,7 +347,36 @@ async function loadTemplateInfo(subcommand) {
     source: data.source ?? "unknown",
     path: data.path ?? "",
     content: typeof data.content === "string" ? data.content : "",
-    metadata: data.metadata ?? null
+    metadata: data.metadata ?? null,
+    ...(Array.isArray(data.templates)
+      ? { templates: data.templates.map(toDocumentTemplateSummary) }
+      : {})
+  };
+}
+
+function toDocumentTemplateSummary(entry) {
+  return {
+    name: entry?.name ?? "",
+    source: entry?.source === "vault" ? "vault" : "bundled",
+    path: entry?.path ?? "",
+    kind: entry?.kind ?? null,
+    title: entry?.title ?? null,
+    description: entry?.description ?? null,
+    hasHtml: entry?.hasHtml === true,
+    scaffold: entry?.scaffold === true,
+    artifactPath: entry?.artifactPath ?? ""
+  };
+}
+
+async function loadDocumentTemplate(input) {
+  const name = validateTemplateName(input?.name);
+  const envelope = await runCli(["template", "get", name]);
+  const data = envelope.data ?? {};
+  return {
+    ...toDocumentTemplateSummary(data),
+    content: typeof data.content === "string" ? data.content : "",
+    metadata: data.metadata ?? null,
+    html: typeof data.html === "string" ? data.html : null
   };
 }
 

@@ -82,9 +82,10 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   - `source.addFromPicker` (native dialog → `kn add`),
     `source.addFromFolder` (`kn add <dir> --recursive`, 300s timeout),
     `note.save` (temp file → `kn add`)
-  - `template.get`, `template.list`, `template.scaffold` (starter
-    artifacts from the bundled document templates), `tag.list`,
-    `tag.update`
+  - `template.get`, `template.list` (includes the per-artifact document
+    template summaries), `template.getDocument` (single template with
+    content + default HTML), `template.scaffold` (starter artifacts from
+    the scaffold-enabled templates), `tag.list`, `tag.update`
   - `report.context`, `llm.rewrite` (codex|claude)
   - `html.openWindow` (optional `theme` snapshot; the main process validates
     hex colors and the font-family charset before interpolating styles)

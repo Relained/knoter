@@ -36,6 +36,7 @@ const api = {
   template: {
     get: () => ipcRenderer.invoke("template:get"),
     list: () => ipcRenderer.invoke("template:list"),
+    getDocument: (input) => ipcRenderer.invoke("template:getDocument", input),
     scaffold: () => ipcRenderer.invoke("template:scaffold")
   },
   tag: {

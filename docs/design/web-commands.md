@@ -56,7 +56,8 @@ type WorkbenchCommand = {
 | `vault.bootstrap` | name*, directory*, sourceFolder, scaffold(기본 true) | `kn vault create` + `switch` → `kn template scaffold` → `kn add <dir> --recursive` → `kn sync`. Vault 생성 모달의 제출 경로(`skipOptionsForm`) 겸 팔레트 옵션 폼 |
 | `source.add` | tags | 네이티브 파일 피커 → `kn add --tag...` |
 | `note.save` | editor(daily/simple), fileName, tags | 임시 md → `kn add --force` |
-| `template.get` / `template.list` | — | `kn template get/list` |
+| `template.get` / `template.list` | — | `kn template get/list`. List 탭은 per-artifact 템플릿 12종 테이블(이름/kind/source/artifactPath) 렌더 |
+| `template.open.<name>` (동적) | — | `kn template get <name>` — 팔레트 "Template: ..." 명령, 본문 + 기본 HTML 프리뷰 탭 |
 | `tag.list` | — | `kn tag list` |
 | `tag.add` / `tag.remove` | target*, tags* | `kn tag add/remove` |
 | `report.context` | date*(기본 오늘), includeArtifacts | `kn report context` |
@@ -97,8 +98,10 @@ vault 이름 검증, 경로 = 선택 폴더/이름), `dialog:pickDirectory`(네�
 피커), `sync:run`, `source:addFromPicker`(다이얼로그),
 `source:addFromFolder`(`kn add <dir> --recursive`, 300s 타임아웃),
 `note:save`(임시 파일 작성 후 add, 파일명 검증), `template:get`,
-`template:list`, `template:scaffold`(기본 템플릿 4종으로 `artifacts/<name>.md`
-스타터 문서 생성), `tag:list`, `tag:update`, `report:context`, `llm:rewrite`.
+`template:list`(per-artifact 템플릿 summary 배열 포함),
+`template:getDocument`(이름 검증 후 `kn template get <name>` — content +
+기본 HTML), `template:scaffold`(scaffold 플래그 템플릿으로 스타터 문서
+생성), `tag:list`, `tag:update`, `report:context`, `llm:rewrite`.
 
 - `runCli(args, { timeoutMs })`: 기본 30s, 인덱싱 계열(add/sync/report) 120s,
   `llm:rewrite`/`source:addFromFolder` 300s.

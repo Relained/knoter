@@ -38,6 +38,7 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
     template: {
       get: () => invoke("template:get", undefined),
       list: () => invoke("template:list", undefined),
+      getDocument: (input) => invoke("template:getDocument", input),
       scaffold: () => invoke("template:scaffold", undefined),
     },
     tag: {
