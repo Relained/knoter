@@ -412,7 +412,8 @@
 
 .workbench-command-palette header,
 .workbench-command-palette footer,
-.settings-page header {
+.settings-page header,
+.source-modal-header {
     min-height: 38px;
     display: flex;
     align-items: center;
@@ -631,7 +632,144 @@
 }
 
 .source-modal-backdrop {
+    position: fixed;
+    inset: 0;
     z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgb(0 0 0 / 0.34);
+}
+
+.source-modal {
+    width: min(480px, calc(100vw - 36px));
+    max-height: min(640px, calc(100vh - 36px));
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    overflow: auto;
+    padding-bottom: 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: var(--surface-command);
+    box-shadow: var(--shadow-floating);
+}
+
+.source-modal > :not(.source-modal-header) {
+    margin: 0 14px;
+}
+
+.source-file-drop {
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+    border: 1px dashed var(--border-subtle);
+    border-radius: 7px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.source-file-drop input {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.source-file-list {
+    display: grid;
+    gap: 4px;
+    padding: 0;
+    list-style: none;
+}
+
+.source-file-list li {
+    min-height: 26px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    padding: 0 8px;
+    border-radius: 7px;
+    color: var(--text-primary);
+    background: var(--surface-command-input);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.source-advanced-toggle {
+    justify-self: start;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    background: var(--surface-panel-raised);
+}
+
+.source-advanced-options {
+    display: grid;
+    gap: 10px;
+}
+
+.source-advanced-options label {
+    display: grid;
+    grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.source-advanced-options input,
+.source-advanced-options select {
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    color: var(--text-primary);
+    background: var(--surface-command-input);
+}
+
+.source-segmented-control {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    background: var(--surface-command-input);
+}
+
+.source-segmented-control legend {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.source-segmented-control button {
+    min-height: 26px;
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.source-segmented-control button.is-active {
+    color: var(--text-primary);
+    background: var(--accent-selected);
+}
+
+.source-primary-action {
+    min-height: 32px;
+    color: var(--text-primary);
+    font-weight: 700;
+    background: var(--accent-selected);
+}
+
+.source-primary-action:hover {
+    border-color: var(--accent-selected-strong);
+    background: var(--accent-selected);
 }
 
 .settings-page-backdrop {
