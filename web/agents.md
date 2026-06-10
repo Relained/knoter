@@ -131,9 +131,17 @@ Agent/artifact HTML is untrusted input:
   `getSandboxTheme()` in `src/workbench/utils/html.ts` (active base16 scheme +
   UI font stack) — do not hardcode palette values in generated documents.
 - Dialogs (settings, source modal, command palette) dismiss through the
-  shared `useDialogDismiss` hook (Escape + backdrop pointer-down). Palette
-  results are MRU-ordered (`src/workbench/commands/mru.ts`); ↑/↓ move the
-  selection and hover syncs it.
+  shared `useDialogDismiss` hook (Escape + backdrop pointer-down), which
+  also traps Tab focus inside the dialog and restores the opener on close —
+  attach its `containerRef` to any new dialog. Palette results are
+  MRU-ordered (`src/workbench/commands/mru.ts`); ↑/↓ move the selection and
+  hover syncs it. Tool menus follow the ARIA menu pattern (first item
+  focused on open, arrow-key navigation); the tab strip is a `tablist`.
+- Main-page iframe tabs render inside per-tab `.html-page-scroll`
+  containers; the 8 most recently active stay mounted (hidden) to preserve
+  scroll position — keep new tab kinds inside that structure.
+- Border radii come from the `--radius-sm/md/lg/pill` density tokens;
+  do not introduce literal radius values.
 - Long-running backend commands wrap their work in
   `beginOperation`/`endOperation` (command context) so the bell spinner and
   the notification popup show progress; the bottom-right `StatusChip` shows

@@ -31,6 +31,7 @@ export function SourceModal({
         role="dialog"
         aria-modal="true"
         aria-label="Add Source"
+        ref={dismiss.containerRef}
       >
         <header className="source-modal-header">
           <span>Add Source File</span>

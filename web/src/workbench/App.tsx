@@ -56,6 +56,9 @@ import type {
 
 const transientToastMs = 4_000;
 const explorerLayers = ["source", "rewritten", "artifact", "template"] as const;
+// Keep-alive cap: each kept tab holds a live sandboxed iframe (static
+// srcdoc, no scripts), trading memory for preserved scroll positions.
+const keepAliveTabLimit = 8;
 
 export function App() {
   const api = window.knoterApi ?? null;
@@ -100,10 +103,48 @@ export function App() {
   );
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const agentRunning = useRef(false);
+  // pushStatus is captured by the commands memo, so popup/toast visibility
+  // must be read through refs to avoid stale closures.
+  const notificationsOpenRef = useRef(false);
+  const toastUnseenRef = useRef(false);
 
   const activeTab = activeTabId
     ? (tabs.find((tab) => tab.id === activeTabId) ?? null)
     : null;
+
+  const [recentTabIds, setRecentTabIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    setRecentTabIds((current) =>
+      [activeTabId, ...current.filter((id) => id !== activeTabId)].slice(
+        0,
+        keepAliveTabLimit,
+      ),
+    );
+  }, [activeTabId]);
+
+  // Iframe tabs among the most recently active stay mounted (hidden) so
+  // their scroll positions survive tab switches; editors keep their state
+  // in App and render only while active.
+  const keptTabs = useMemo(() => {
+    const recencyIds = activeTabId
+      ? [activeTabId, ...recentTabIds.filter((id) => id !== activeTabId)]
+      : recentTabIds;
+    const keepIds = new Set(recencyIds.slice(0, keepAliveTabLimit));
+    return tabs.filter(
+      (tab) =>
+        (tab.kind === "artifact" || tab.kind === "source") &&
+        keepIds.has(tab.id),
+    );
+  }, [tabs, activeTabId, recentTabIds]);
+
+  const activeTabIsKept =
+    activeTab !== null && keptTabs.some((tab) => tab.id === activeTab.id);
+
+  useEffect(() => {
+    notificationsOpenRef.current = openTool === "notifications";
+  }, [openTool]);
 
   const refreshVaultData = useCallback(async () => {
     if (!api) return;
@@ -409,20 +450,33 @@ export function App() {
       createdAt: new Date().toISOString(),
     };
     setToastHistory((current) => [message, ...current].slice(0, 20));
-    setUnreadCount((count) => count + 1);
+    // A message counts as unread only if its toast was cut short by the
+    // next message; fully displayed, dismissed, or popup-visible messages
+    // are considered seen.
+    if (toastUnseenRef.current && !notificationsOpenRef.current) {
+      setUnreadCount((count) => count + 1);
+    }
+    toastUnseenRef.current = !notificationsOpenRef.current;
     setTransientToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(
-      () => setTransientToast(null),
-      transientToastMs,
-    );
+    toastTimer.current = setTimeout(() => {
+      toastUnseenRef.current = false;
+      setTransientToast(null);
+    }, transientToastMs);
+  }
+
+  function dismissTransientToast() {
+    toastUnseenRef.current = false;
+    setTransientToast(null);
   }
 
   function toggleNotifications() {
-    setOpenTool((current) =>
-      current === "notifications" ? null : "notifications",
-    );
-    setUnreadCount(0);
+    const opening = openTool !== "notifications";
+    setOpenTool(opening ? "notifications" : null);
+    if (opening) {
+      setUnreadCount(0);
+      toastUnseenRef.current = false;
+    }
   }
 
   function removeToastMessage(messageId: number) {
@@ -445,14 +499,34 @@ export function App() {
           <div className="titlebar-drag-region" aria-hidden="true" />
         )}
         <section className="html-page" aria-label="Main page">
-          <HtmlPageView
-            tab={activeTab}
-            dailyNote={dailyNote}
-            simpleNote={simpleNote}
-            onDailyNote={setDailyNote}
-            onSimpleNote={setSimpleNote}
-            onSaveNote={(editor) => executeCommand("note.save", { editor })}
-          />
+          {keptTabs.map((tab) => (
+            <div
+              className="html-page-scroll"
+              key={tab.id}
+              hidden={tab.id !== activeTabId}
+            >
+              <HtmlPageView
+                tab={tab}
+                dailyNote={dailyNote}
+                simpleNote={simpleNote}
+                onDailyNote={setDailyNote}
+                onSimpleNote={setSimpleNote}
+                onSaveNote={(editor) => executeCommand("note.save", { editor })}
+              />
+            </div>
+          ))}
+          {!activeTabIsKept && (
+            <div className="html-page-scroll">
+              <HtmlPageView
+                tab={activeTab}
+                dailyNote={dailyNote}
+                simpleNote={simpleNote}
+                onDailyNote={setDailyNote}
+                onSimpleNote={setSimpleNote}
+                onSaveNote={(editor) => executeCommand("note.save", { editor })}
+              />
+            </div>
+          )}
         </section>
 
         <OverlayBar
@@ -489,7 +563,7 @@ export function App() {
             <span>{transientToast.text}</span>
             <button
               type="button"
-              onClick={() => setTransientToast(null)}
+              onClick={dismissTransientToast}
               aria-label="Dismiss message"
             >
               x

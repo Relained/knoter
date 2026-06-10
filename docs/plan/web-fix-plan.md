@@ -31,8 +31,8 @@
 | # | 결함 | 수정 방법 | 규모 |
 | --- | --- | --- | --- |
 | ✅ 3-1 | sandbox 문서가 테마/폰트 하드코딩 (`createSandboxDocument`, 외부 창) | `getSandboxTheme()`이 base16 런타임 + fontStacks에서 `HtmlWindowTheme` 스냅샷을 만들어 sandbox 문서 `<style>`에 주입, `knoter:themechange` 시 srcDoc 재생성. `html:openWindow` IPC에 옵션 테마 스냅샷 추가(메인 프로세스에서 hex/폰트 검증) | M |
-| ⬜ 3-2 | 토큰 우회 하드코딩 색 (`rgb(255 255 255 / 0.08)`, 주황 radial-gradient) | 하드코딩 값을 시맨틱 토큰으로 치환, 장식 그라디언트 제거(agents.md 자체 규칙 위반) | S |
-| ⬜ 3-3 | radius 스케일 비일관 (6/7/8/9/10/13/999px 혼재) | `--radius-sm/md/lg/pill` 토큰 4단계로 통일 | S |
+| ✅ 3-2 | 토큰 우회 하드코딩 색 (`rgb(255 255 255 / 0.08)`, 주황 radial-gradient) | 장식 그라디언트 제거, 백드롭 3곳을 `--surface-overlay` 토큰으로 치환 (white 0.08은 이전 정리에서 이미 제거됨) | S |
+| ✅ 3-3 | radius 스케일 비일관 (6/7/8/9/10/13/999px 혼재) | `--radius-sm/md/lg/pill`(6/8/12/999px) density 토큰 4단계로 통일. 1px 라인 라운딩/0 리셋은 리터럴 유지 | S |
 
 ## Phase 4 — 피드백/상태 표시
 
@@ -40,16 +40,16 @@
 | --- | --- | --- | --- |
 | ✅ 4-1 | 장기 작업(llm rewrite 300s, sync 120s) 진행 표시 부재 | `runningOps`를 App이 보유(`beginOperation`/`endOperation` 컨텍스트), sync/source.add/report.context/llm.rewrite에 적용. 벨 아이콘 스피너 링 + 알림 팝업 상단 진행 중 항목 고정. 토스트는 시작/완료만 | M |
 | ✅ 4-2 | 상시 상태 표시 부재 (vault 이름·연결 상태가 토스트로만 스침) | 메인 뷰 우측 하단 상태 칩(`StatusChip`): vault 이름·문서 수, 미연결/vault 없음 경고. 클릭 시 `vault.status` 명령 실행 | M |
-| ⬜ 4-3 | 안읽음 뱃지가 본 메시지도 카운트, 토글만 해도 리셋 | 토스트가 화면에 떠 있는 동안 표시된 메시지는 카운트 제외, 리셋은 팝업이 "열릴" 때만 | S |
-| ⬜ 4-4 | 탭 전환 시 iframe 재생성으로 스크롤 유실 | 탭별 iframe을 유지하고 `display`로 전환(keep-alive), 탭 수 상한과 메모리 트레이드오프 명시 | M |
+| ✅ 4-3 | 안읽음 뱃지가 본 메시지도 카운트, 토글만 해도 리셋 | 4초 완주·수동 닫기·팝업 열림 중 메시지는 "본 것", 다음 메시지에 잘린 토스트만 카운트. 리셋은 팝업이 "열릴" 때만 | S |
+| ✅ 4-4 | 탭 전환 시 iframe 재생성으로 스크롤 유실 | 최근 활성 8개 iframe 탭(artifact/source)을 `hidden`으로 유지(keep-alive), 탭별 `.html-page-scroll` 스크롤 컨테이너 분리. 상한 8 = 스크립트 없는 srcdoc iframe 메모리 트레이드오프 | M |
 
 ## Phase 5 — 접근성
 
 | # | 결함 | 수정 방법 | 규모 |
 | --- | --- | --- | --- |
-| ⬜ 5-1 | `button:focus-visible { outline: none }` — 포커스 식별 불가 | `--focus-ring` 토큰 추가, focus-visible에 2px 아웃라인 복원 | S |
-| ⬜ 5-2 | 다이얼로그 포커스 트랩/복원 부재 | 2-4의 공용 훅에 포커스 트랩 + 닫힐 때 트리거 복원 포함 | M |
-| ⬜ 5-3 | ARIA menu/tablist 패턴 미완성 (화살표 키 없음, tablist 시맨틱 없음) | 메뉴 화살표 내비게이션, 탭 바 `role="tablist"` + `aria-selected`, 잘린 탭 제목 `title` 속성 | M |
+| ✅ 5-1 | `button:focus-visible { outline: none }` — 포커스 식별 불가 | 기존 `--accent-focus-ring` 토큰으로 focus-visible 2px 아웃라인 복원(중복 토큰 추가 대신 재사용) | S |
+| ✅ 5-2 | 다이얼로그 포커스 트랩/복원 부재 | `useDialogDismiss`에 Tab/Shift+Tab 트랩 + 열릴 때 포커스 진입(autoFocus 우선) + 닫힐 때 트리거 복원. 세 다이얼로그에 `containerRef` 연결 | M |
+| ✅ 5-3 | ARIA menu/tablist 패턴 미완성 (화살표 키 없음, tablist 시맨틱 없음) | ToolMenu ↑↓ 순환/Home/End + 열릴 때 첫 항목 포커스·닫힐 때 트리거 복원, 탭 바 `role="tablist"`+`aria-selected`+`title`, 알림 팝업은 잘못된 menu role을 dialog로 교정 | M |
 
 ## 진행 중 추가된 사용자 지시 변경 (계획 외, 완료)
 
@@ -65,8 +65,9 @@
 2. ✅ **2-2, 2-3** (팔레트/팝업 — 단축키 시스템(2-1 완료)과 묶이는 인터랙션 마감) + 2-4
 3. ✅ **4-1, 4-2** (장기 작업·상시 상태 — llm rewrite 데모 신뢰성)
 4. ✅ **3-1** (테마 관통 — 라이트 테마 데모가 필요할 때)
-5. Phase 5와 나머지(3-2, 3-3, 4-3, 4-4)는 발표 후.
+5. ✅ Phase 5와 나머지(3-2, 3-3, 4-3, 4-4)는 발표 후.
 
-발표 전 권장 범위는 전부 구현됨(2026-06-10, `webs/design-defect-fixes`).
-수동 GUI 스모크 패스(`npm run dev`)는 아직 수행되지 않음 — 검증은
-`npm run check` + `node --check electron/main.mjs`까지.
+16개 결함 전부 구현됨(2026-06-10, `webs/design-defect-fixes` +
+`webs/design-defect-post-demo`). 수동 GUI 스모크 패스(`npm run dev`)는
+아직 수행되지 않음 — 검증은 `npm run check` +
+`node --check electron/main.mjs`까지.
