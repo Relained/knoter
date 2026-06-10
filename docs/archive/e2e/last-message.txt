@@ -1,6 +1,0 @@
-Wrote both files:
-
-- [rewritten.md](/tmp/knoter-codex-e2e/rewritten.md)
-- [artifact.md](/tmp/knoter-codex-e2e/artifact.md)
-
-Assumptions: the source note is planning/spec evidence only, so I did not mark any implementation work or workout counts as completed. The artifact frontmatter uses the required `source_path` string even though the local file written here is `rewritten.md`.

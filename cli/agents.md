@@ -1,32 +1,49 @@
 # knoter CLI Agent Guide
 
-Last updated: 2026-05-22
+Last updated: 2026-06-10
 Project: `Documents/knoter/cli`
 Language for this file: English
 
-This is the single active agent instruction file for the CLI package. Claude-specific guidance was merged here; `CLAUDE.md` is no longer maintained.
+This is the single active agent instruction file for the CLI package.
+Claude-specific guidance was merged here; `CLAUDE.md` is no longer maintained.
 
 ## Project Snapshot
 
 `knoter` is a Bun/TypeScript CLI inside a monorepo:
 
-- `cli/`: CLI, MCP server, indexing, search, report/context tooling.
-- `../web/`: React/Vite workspace frontend.
-- `../docs/`: shared architecture, planning, testing, and artifact workflow docs.
+- `cli/`: CLI, MCP server, indexing, search, report/context tooling, and the
+  explicit `kn llm` agent workflow.
+- `../web/`: React/Vite HTML workbench frontend with an Electron dev shell.
+- `../docs/`: shared architecture, codebase, planning, testing, and artifact
+  workflow docs.
 
-The CLI stores vault documents, indexes rewritten/artifact Markdown, exposes search/get/report/template context, and serves MCP tools for external LLM agents. Normal `kn` commands do not generate prose with an LLM; they only call an embedding endpoint when indexing or semantic search requires embeddings.
+The CLI stores vault documents, indexes rewritten/artifact Markdown, exposes
+search/get/report/template context, and serves MCP tools for external LLM
+agents. Normal `kn` commands do not generate prose with an LLM; they only call
+an embedding endpoint when indexing or semantic search requires embeddings.
+The only LLM-calling surface is the explicit `kn llm` namespace.
 
 ## Active Boundaries
 
-- Source documents are metadata/lineage only. They are not chunked, indexed, or included in default search.
-- `rewritten` and `artifact` documents are parsed, chunked, embedded, stored in SQLite FTS, and upserted into zvec.
-- Artifacts are indexed but excluded from default search unless `--include-artifacts` is explicit.
-- Rewriting, task/workout/area/metric extraction, and artifact prose generation belong to an external LLM agent.
-- Future prompt assembly or direct LLM calls must live under a separate `kn llm` namespace.
+- Source documents are metadata/lineage only. They are not chunked, indexed, or
+  included in default search.
+- `rewritten` and `artifact` documents are parsed, chunked, embedded, stored in
+  SQLite FTS, and upserted into zvec.
+- Artifacts are indexed but excluded from default search unless
+  `--include-artifacts` is explicit.
+- Rewriting, task/workout/area/metric extraction, and artifact prose generation
+  belong to an external LLM agent.
+- `kn llm` is the only namespace allowed to assemble prompts or call an LLM.
+  `kn llm rewrite --source <path>` calls the Codex CLI in an isolated agent
+  workspace to author `rewritten.md` plus template-justified
+  `artifacts/**/*.md`, then imports those files into the active vault
+  (importing indexes chunks, so the embedding endpoint must be reachable unless
+  `--test-embeddings` is passed).
 - Normal CLI service lifecycle is limited to endpoint status/probing.
   Starting/stopping TEI or packaged-app services is outside product CLI
   behavior. `scripts/test-env.sh tei-start` is a test/dev harness exception.
-- `kn mcp` stdio is the compatibility baseline. HTTP/daemon mode exists in code but remains experimental.
+- `kn mcp` stdio is the compatibility baseline. HTTP/daemon mode exists in code
+  but remains experimental.
 
 ## Runtime And Tools
 
@@ -45,7 +62,9 @@ Default local endpoints:
 - Embedding API: `http://127.0.0.1:39280`
 - Web dev/preview: `http://127.0.0.1:39281`
 
-Package metadata is not final yet: `package.json` still uses the legacy name `nlpr`, has no `bin.kn`, and has no package-local `check` script. That cleanup is tracked as P1 work.
+Package metadata is not final yet: `package.json` still uses the legacy name
+`nlpr`, has no `bin.kn`, and has no package-local `check` script. That cleanup
+is tracked as P1 work.
 
 ## Code Map
 
@@ -54,16 +73,23 @@ Package metadata is not final yet: `package.json` still uses the legacy name `nl
 | `src/cli.ts` | Commander entrypoint and command registration. |
 | `src/commands/*` | CLI command surfaces and output handling. |
 | `src/commands/mcp.ts` | MCP transport command surface; `stdio` is the baseline and HTTP/daemon options are experimental. |
+| `src/commands/llm.ts` | `kn llm rewrite` command surface (Codex-driven rewrite/artifact authoring). |
 | `src/core/*` | Command-independent business logic shared by CLI/MCP/tests. |
-| `src/core/report-*.ts` | Report context bundle, retrieval, continuity, serialization. |
+| `src/core/report-*.ts` | Report context bundle, retrieval, continuity, serialization, shared types. |
 | `src/core/rewrite-context.ts` | Source-layer rewrite evidence bundle for external agents. |
+| `src/core/llm-rewrite.ts` | Codex workspace setup, prompt assembly, output import for `kn llm rewrite`. |
+| `src/core/agent-fixtures.ts` | Deterministic agent-style rewritten/artifact scenario fixtures for the test vault. |
+| `src/core/logger.ts` | CLI logging helpers. |
 | `src/mcp/server.ts` | MCP tool definitions and transport-agnostic server factory. |
 | `src/pipeline/*` | Markdown parsing, chunking, hashing, embedding, preprocessing. |
-| `src/providers/*` | OpenAI-compatible embedding provider and health checks. |
-| `src/search/*` | Hybrid keyword/semantic retrieval and score fusion. |
-| `src/stores/meta-store.ts` | SQLite metadata, chunks, tags, signals, FTS, PageIndex placeholders. |
+| `src/providers/*` | OpenAI-compatible embedding provider, factory, health checks. |
+| `src/search/*` | Hybrid keyword/semantic retrieval, query parsing, score fusion. |
+| `src/stores/meta-store.ts` | SQLite metadata, chunks, tags, signals, FTS, document graph, PageIndex placeholders. |
 | `src/stores/vec-store.ts` | zvec vector schema, upsert/fetch/query helpers. |
-| `tests/*.test.ts` | CLI behavior, storage, search, MCP, template, and TEI harness tests. |
+| `scripts/agent-fixtures.ts` | Standalone fixture installer (`bun scripts/agent-fixtures.ts --vault <name>`). |
+| `scripts/test-env.sh` | Test vault harness: `tei-start`, `setup`, `ensure`, `demo`, `teardown`, `kn` passthrough. |
+| `scripts/tei-e2e-test.sh` | Live TEI/Codex E2E wrapper. |
+| `tests/*.test.ts` | CLI behavior, storage, search, MCP, template, graph, fixtures, LLM rewrite, and TEI harness tests. |
 
 Read these docs before larger changes:
 
@@ -79,7 +105,7 @@ This project uses SQLite and zvec side by side:
 
 | Layer | Purpose | Store |
 | --- | --- | --- |
-| Metadata source of truth | notes, chunks, tags, signals, FTS, change detection | SQLite via `bun:sqlite` |
+| Metadata source of truth | notes, chunks, tags, signals, FTS, graph projection, change detection | SQLite via `bun:sqlite` |
 | Vector retrieval | dense semantic search data | zvec |
 
 Important invariants:
@@ -90,6 +116,8 @@ Important invariants:
 - Embedding or zvec failure must not leave inconsistent new metadata.
 - SQLite `ON DELETE CASCADE` owns note-to-chunk/tag cleanup.
 - FTS5 uses external content triggers; avoid manual FTS maintenance unless schema behavior changes.
+- `document_graph_edges` rows are a recoverable projection refreshed after
+  successful add/sync/add-note flows; they can be rebuilt from notes/chunks.
 
 ## zvec Notes
 
@@ -117,14 +145,16 @@ Change retrieval policy:
 
 1. Update `src/search/hybrid.ts` for user search.
 2. Update `src/core/report-retrieval.ts` and `src/core/report-continuity.ts` for agent context.
-3. Update report/MCP/search tests.
+3. Update report/MCP/search tests (`tests/search-quality.test.ts` covers ranking behavior).
 
 Change template behavior:
 
 1. Update `../docs/template.md`.
 2. Update `src/core/template-validation.ts` only when validation semantics change.
 3. Update `tests/template-command-behavior.test.ts`.
-4. Document agent-facing implications in `../docs/architecture.md` or `../docs/testing.md`.
+4. Check `kn llm rewrite` prompt assembly (`src/core/llm-rewrite.ts`) and agent
+   fixtures (`src/core/agent-fixtures.ts`) when scenario/output contracts move.
+5. Document agent-facing implications in `../docs/architecture.md` or `../docs/testing.md`.
 
 Add a metadata field:
 

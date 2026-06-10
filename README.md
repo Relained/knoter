@@ -1,13 +1,17 @@
 # knoter
 
-Monorepo layout for the knoter CLI, shared project docs, and web frontend.
+Monorepo for the knoter CLI, shared project docs, and web frontend.
 
 ## Projects
 
-- `cli/`: TypeScript/Bun CLI, MCP server, indexing, search, and report tooling.
+- `cli/`: TypeScript/Bun CLI, MCP server, indexing, search, report tooling, and
+  the explicit `kn llm rewrite` (Codex) workflow.
 - `docs/`: shared architecture, planning, testing, and artifact workflow docs.
-- `web/`: React/Vite workspace frontend with Electron-oriented build guidance
-  and Playwright smoke coverage.
+- `web/`: React/Vite HTML workbench frontend with an Electron development shell
+  and CLI-backed IPC. No web test harness currently exists; `npm run check` is
+  the verification baseline.
+
+Agent guides: root `agents.md` routes to `cli/agents.md` and `web/agents.md`.
 
 ## Local Ports
 
@@ -30,7 +34,6 @@ bun test
 ```sh
 cd web
 npm install
-npx playwright install chromium
-npm test
-npm run test:e2e
+npm run check
+npm run dev   # test vault bootstrap + Vite + Electron shell
 ```

@@ -66,9 +66,9 @@ Explicit LLM rewrite command:
 Web:
 
 - Vite dev and preview use `http://127.0.0.1:39281`.
-- Playwright E2E uses the same port and starts `npm run dev` through
-  `webServer` in `web/playwright.config.js`, which starts or reuses Vite and
-  launches the Electron development shell.
+- Web unit and Playwright E2E harnesses are currently removed. Use
+  `npm run check` for web TypeScript/build verification until tests are
+  reintroduced.
 
 ## Commands
 
@@ -106,16 +106,18 @@ scripts/test-env.sh setup
 scripts/test-env.sh ensure
 scripts/test-env.sh demo
 scripts/test-env.sh teardown
+scripts/test-env.sh kn <args...>   # run kn against the test KN_HOME
 ```
 
 `scripts/test-env.sh ensure` is the idempotent development path. It creates or
 selects the `testvault` vault under `cli/.test-vault`, runs
 `kn add "$KN_TESTDATA_ROOT" --recursive --vault testvault`, then installs
 deterministic rewritten/artifact fixtures from the indexed source notes. The
-fixture step copies `docs/template.md` into `.kn/template.md`, writes
-agent-style rewritten notes with source lineage, and creates durable artifacts
-for diet, workout, task, study, reflection, project, progress, and idea
-scenarios.
+fixture step (`src/core/agent-fixtures.ts`, also runnable standalone via
+`bun scripts/agent-fixtures.ts --vault <name>`) copies `docs/template.md` into
+`.kn/template.md`, writes agent-style rewritten notes with source lineage, and
+creates durable artifacts for diet, workout, task, study, reflection, project,
+progress, and idea scenarios.
 
 For macOS Metal acceleration, run local TEI in one terminal:
 
@@ -165,9 +167,7 @@ Web verification:
 
 ```bash
 cd web
-npx playwright install chromium
-npm test
-npm run test:e2e
+npm run check
 ```
 
 `npm run dev` first attempts `cli/scripts/test-env.sh ensure` and passes the
@@ -176,9 +176,8 @@ including source, rewritten, and artifact layers. Set
 `KNOTER_DEV_TEST_VAULT=0` to skip this bootstrap, or
 `KNOTER_DEV_TEST_VAULT=1` to make bootstrap failure stop dev startup.
 
-`npm run test:e2e` launches Chromium against `http://127.0.0.1:39281` and checks
-the workspace shell, command palette, Settings floating window, split pane, and
-floating window creation without console/page errors.
+Do not claim web unit or Playwright E2E coverage while the web test harness is
+removed.
 
 ## Template Delivery To Agents
 

@@ -1,6 +1,6 @@
 # knoter Root Agent Guide
 
-Last updated: 2026-05-22
+Last updated: 2026-06-10
 Project: `Documents/knoter`
 Language for this file: English
 
@@ -12,8 +12,8 @@ own areas and must be read before changing code in those areas.
 
 Before doing package-specific work, read the matching guide:
 
-- Web/frontend work: `web/agents.md`
-- CLI/MCP/indexing/search work: `cli/agents.md`
+- CLI/MCP/indexing/search/LLM-rewrite work: `cli/agents.md`
+- Web/frontend/Electron work: `web/agents.md`
 
 If a task touches both packages, read both guides before planning or editing.
 When package guides conflict, follow the guide for the files being changed. For
@@ -24,10 +24,24 @@ explicitly approves a different direction.
 
 | Path | Role |
 | --- | --- |
-| `web/` | React/Vite workspace frontend and UI tests. |
-| `cli/` | Bun/TypeScript CLI, MCP server, indexing, retrieval, and storage. |
-| `docs/` | Shared architecture, planning, testing, and template documentation. |
+| `cli/` | Bun/TypeScript CLI, MCP server, indexing, retrieval, storage, and the explicit `kn llm` agent workflow. |
+| `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI-backed IPC. |
+| `docs/` | Shared architecture, codebase, planning, testing, and template documentation. |
+| `testdata/` | Markdown fixture corpus for live tests and the local test vault (`KN_TESTDATA_ROOT`). |
 | `README.md` | Root project overview. |
+
+## Shared Documentation
+
+Read the smallest relevant set under `docs/` before larger changes:
+
+- `docs/architecture.md` — product model and boundary source of truth.
+- `docs/codebase.md` — code reading entry point for both packages.
+- `docs/testing.md` — test commands and `.env` environment catalog.
+- `docs/plan.md` — current state and next work.
+- `docs/template.md` — the artifact workflow contract delivered to external
+  agents at runtime through `kn template get` / `kn report context`. It is
+  validated content, not prose documentation; changing it changes agent
+  behavior and template tests.
 
 ## Shared Rules
 
@@ -42,20 +56,28 @@ explicitly approves a different direction.
 
 ## Git Management
 
-- Keep `dev` as the shared integration base for agent-facing repository
-  guidance and cross-package planning docs.
-- Use package-scoped feature branches for implementation work:
-  - Web work: `web/<feature>`
-  - CLI work: `cli/<feature>`
-  - Cross-package integration work: `integration/<feature>`
+- Branch model: `main <-> dev <-(PR)- topic branches`.
+  - `main`: stable line. It is synchronized from `dev` only (PR or merge);
+    topic work never lands on `main` directly.
+  - `dev`: shared integration base. Every topic branch starts from `dev` and
+    merges back into `dev` through a PR (use a local `--no-ff` merge when
+    working without the remote).
+  - Topic branch prefixes:
+    - `features/<name>`: cross-package product features
+    - `webs/<name>`: web renderer / Electron shell work
+    - `backs/<name>`: CLI / backend work
+    - `refactoring/<name>`: refactors, restructures, doc reorganization
+- Legacy prefixes (`cli/<feature>`, `web/<feature>`, `integration/<feature>`)
+  are retired; do not create new branches with them.
 - Do not use branch names under `dev/...` when a local or remote `dev` branch
   exists. Git refs cannot cleanly contain both `dev` and `dev/<name>` at the
   same time.
-- Branch new package implementation work from `dev` unless the user explicitly
-  approves a different base. Continue on an existing active package branch when
-  it already matches the requested work.
-- Keep CLI and web implementation commits on separate package branches until an
-  integration branch is explicitly needed.
+- Branch new work from `dev` unless the user explicitly approves a different
+  base. Continue on an existing active topic branch when it already matches
+  the requested work.
+- Keep CLI and web implementation commits on separate topic branches
+  (`backs/*` vs `webs/*`) unless the change is inherently cross-package
+  (`features/*`).
 - Commit related changes in small, reviewable units after appropriate
   verification. Documentation-only commits usually need a read-through and
   `git diff --check`.
@@ -70,15 +92,11 @@ explicitly approves a different direction.
 
 ## Verification Routing
 
-For web-affecting changes, use the baseline in `web/agents.md` and shared
-testing guidance in `docs/testing.md`.
-
-For CLI-affecting changes, use the baseline in `cli/agents.md` and shared
-testing guidance in `docs/testing.md`.
-
-For documentation-only changes, a read-through and `git diff --check` are
-usually sufficient unless the edited document defines executable commands or
-contracts.
+- CLI-affecting changes: baseline in `cli/agents.md` plus `docs/testing.md`.
+- Web-affecting changes: baseline in `web/agents.md` plus `docs/testing.md`.
+- Documentation-only changes: a read-through and `git diff --check` are usually
+  sufficient unless the edited document defines executable commands or
+  contracts (`docs/template.md` changes need the template tests in `cli/`).
 
 ## Agent Workflow
 
