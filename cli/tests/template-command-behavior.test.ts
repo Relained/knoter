@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { randomTestPath } from "./helpers/test-paths";
 
 async function runCli(args: string[], env: Record<string, string>): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -441,6 +441,136 @@ describe("template command behavior", () => {
       })
     );
     expect(envelope.data.content).not.toContain("# knoter Daily Report Template");
+
+    rmSync(knHome, { recursive: true, force: true });
+    rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  test("template get with name returns bundled document template with html", async () => {
+    const knHome = randomHome();
+
+    const result = await runCli(["--format", "json", "template", "get", "llm-wiki"], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    const envelope = JSON.parse(result.stdout);
+
+    expect(envelope).toEqual(
+      expect.objectContaining({ ok: true, command: "template get" })
+    );
+    expect(envelope.data).toEqual(
+      expect.objectContaining({
+        name: "llm-wiki",
+        source: "bundled",
+        kind: "llm-wiki",
+        path: expect.stringContaining(join("templates", "llm-wiki.md")),
+        content: expect.stringContaining("# LLM Wiki"),
+        html: expect.stringContaining("<article>"),
+      })
+    );
+
+    rmSync(knHome, { recursive: true, force: true });
+  });
+
+  test("template get with name prefers vault override under .kn/templates", async () => {
+    const knHome = randomHome();
+    const { vaultRoot } = await createActiveVault(knHome, "primary", "# workflow");
+    const overrideDir = join(vaultRoot, ".kn", "templates");
+    mkdirSync(overrideDir, { recursive: true });
+    await Bun.write(
+      join(overrideDir, "todo.md"),
+      ["---", "kind: todo", "name: Vault Todo", "---", "", "# Vault Todo Skeleton"].join("\n")
+    );
+
+    const result = await runCli(["--format", "json", "template", "get", "todo"], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.data).toEqual(
+      expect.objectContaining({
+        name: "todo",
+        source: "vault",
+        content: expect.stringContaining("# Vault Todo Skeleton"),
+        html: null,
+      })
+    );
+
+    rmSync(knHome, { recursive: true, force: true });
+    rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  test("template get with unknown name fails with error envelope", async () => {
+    const knHome = randomHome();
+
+    const result = await runCli(
+      ["--format", "json", "template", "get", "no-such-template"],
+      { KN_HOME: knHome }
+    );
+
+    expect(result.code).not.toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.ok).toBe(false);
+
+    rmSync(knHome, { recursive: true, force: true });
+  });
+
+  test("template list includes bundled document templates with legacy fields", async () => {
+    const knHome = randomHome();
+
+    const result = await runCli(["--format", "json", "template", "list"], {
+      KN_HOME: knHome,
+    });
+
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+
+    expect(envelope.data).toEqual(
+      expect.objectContaining({
+        source: "fallback",
+        path: expect.stringContaining("docs/template.md"),
+      })
+    );
+    const names = envelope.data.templates.map(
+      (template: { name: string }) => template.name
+    );
+    expect(names).toEqual(
+      expect.arrayContaining(["llm-wiki", "calendar", "todo", "kanban"])
+    );
+    for (const template of envelope.data.templates) {
+      expect(template).toEqual(
+        expect.objectContaining({ source: "bundled", hasHtml: true })
+      );
+    }
+
+    rmSync(knHome, { recursive: true, force: true });
+  });
+
+  test("template scaffold writes starter artifacts and skips existing on rerun", async () => {
+    const knHome = randomHome();
+    const { vaultRoot } = await createActiveVault(knHome, "primary", "# workflow");
+
+    const first = await runCli(["--format", "json", "template", "scaffold"], {
+      KN_HOME: knHome,
+    });
+    expect(first.code).toBe(0);
+    const firstEnvelope = JSON.parse(first.stdout);
+    const createdNames = firstEnvelope.data.created
+      .map((entry: { name: string }) => entry.name)
+      .sort();
+    expect(createdNames).toEqual(["calendar", "kanban", "llm-wiki", "todo"]);
+    expect(existsSync(join(vaultRoot, "artifacts", "kanban.md"))).toBe(true);
+
+    const second = await runCli(["--format", "json", "template", "scaffold"], {
+      KN_HOME: knHome,
+    });
+    expect(second.code).toBe(0);
+    const secondEnvelope = JSON.parse(second.stdout);
+    expect(secondEnvelope.data.created).toEqual([]);
+    expect(secondEnvelope.data.skipped.length).toBe(4);
 
     rmSync(knHome, { recursive: true, force: true });
     rmSync(vaultRoot, { recursive: true, force: true });

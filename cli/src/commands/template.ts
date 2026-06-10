@@ -8,6 +8,12 @@ import {
   type TemplateSource,
 } from "../core/template";
 import {
+  getDocumentTemplate,
+  listDocumentTemplates,
+  scaffoldDocumentTemplates,
+} from "../core/document-templates";
+import { resolveVaultRoot } from "../core/config";
+import {
   buildUnableToValidateResult,
   validateTemplateContract,
   type TemplateValidationResult,
@@ -22,9 +28,11 @@ export function registerTemplateCommand(program: Command): void {
     .description("Manage vault-local templates");
 
   templateCmd
-    .command("get")
-    .description("Get effective template (vault-local with fallback)")
-    .action(async (_, cmd) => {
+    .command("get [name]")
+    .description(
+      "Get effective workflow template, or a named document template (llm-wiki, calendar, todo, kanban, ...)",
+    )
+    .action(async (name, _, cmd) => {
       const globalOpts = cmd.optsWithGlobals?.() || {};
       const format = (globalOpts.format || "text") as OutputFormat;
       setVerbose(!!globalOpts.verbose);
@@ -32,7 +40,9 @@ export function registerTemplateCommand(program: Command): void {
 
       try {
         const vaultName = await resolveVaultName(vaultOpt);
-        const template = await getEffectiveTemplate(vaultOpt);
+        const template = name
+          ? await getDocumentTemplate(name, vaultOpt)
+          : await getEffectiveTemplate(vaultOpt);
         const response = success("template get", template, vaultName);
 
         render(response, format);
@@ -47,7 +57,7 @@ export function registerTemplateCommand(program: Command): void {
 
   templateCmd
     .command("list")
-    .description("List effective template (vault-local with fallback)")
+    .description("List effective workflow template and named document templates")
     .action(async (_, cmd) => {
       const globalOpts = cmd.optsWithGlobals?.() || {};
       const format = (globalOpts.format || "text") as OutputFormat;
@@ -57,7 +67,12 @@ export function registerTemplateCommand(program: Command): void {
       try {
         const vaultName = await resolveVaultName(vaultOpt);
         const template = await getEffectiveTemplate(vaultOpt);
-        const response = success("template list", template, vaultName);
+        const templates = await listDocumentTemplates(vaultOpt);
+        const response = success(
+          "template list",
+          { ...template, templates },
+          vaultName,
+        );
 
         render(response, format);
       } catch (err) {
@@ -65,6 +80,37 @@ export function registerTemplateCommand(program: Command): void {
         const msg = err instanceof Error ? err.message : String(err);
         const code = err instanceof KnError ? err.code : ErrorCode.UNKNOWN;
         render(error("template list", code, msg), fmt);
+        process.exit(err instanceof KnError ? err.exitCode : 1);
+      }
+    });
+
+  templateCmd
+    .command("scaffold")
+    .description(
+      "Write starter artifact documents (artifacts/<name>.md) from document templates",
+    )
+    .option("--force", "Overwrite existing artifact documents")
+    .action(async (options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+      const vaultOpt = globalOpts.vault;
+
+      try {
+        const vaultName = await resolveVaultName(vaultOpt);
+        const vaultRoot = await resolveVaultRoot(vaultOpt);
+        const result = await scaffoldDocumentTemplates(vaultRoot, {
+          force: !!options.force,
+          vaultOpt,
+        });
+        const response = success("template scaffold", result, vaultName);
+
+        render(response, format);
+      } catch (err) {
+        const fmt = (cmd.optsWithGlobals?.()?.format || "text") as OutputFormat;
+        const msg = err instanceof Error ? err.message : String(err);
+        const code = err instanceof KnError ? err.code : ErrorCode.UNKNOWN;
+        render(error("template scaffold", code, msg), fmt);
         process.exit(err instanceof KnError ? err.exitCode : 1);
       }
     });

@@ -34,6 +34,7 @@ describe("CLI help surface", () => {
     expect(result.stdout).toContain("Usage: kn template");
     expect(result.stdout).toContain("get");
     expect(result.stdout).toContain("validate");
+    expect(result.stdout).toContain("scaffold");
   });
 
   test("template get and validate subcommands expose usage", async () => {
