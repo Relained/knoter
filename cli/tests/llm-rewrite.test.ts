@@ -42,10 +42,17 @@ describe("llm rewrite", () => {
         expect(input.prompt).toContain("kind: llm-wiki");
         expect(input.prompt).toContain(SOURCE_REL_PATH);
         expect(input.prompt).toContain("Do not write rewritten.md");
-        // The vault wiki is seeded into the workspace for in-place updates.
+        // The vault wiki is seeded into the workspace for in-place updates,
+        // and the per-artifact scenario templates are seeded under templates/.
         expect(input.prompt).toContain("Existing artifacts seeded into the workspace");
+        expect(input.prompt).toContain("Scenario templates seeded into the workspace");
+        expect(input.prompt).toContain("templates/diet-dashboard.md");
         const seededWiki = await Bun.file(join(input.workspace, "artifacts", "llm-wiki.md")).text();
         expect(seededWiki).toContain("# LLM Wiki");
+        const seededTemplate = await Bun.file(
+          join(input.workspace, "templates", "diet-dashboard.md"),
+        ).text();
+        expect(seededTemplate).toContain("artifactPath: artifacts/diet/diet-dashboard.md");
         return {
           rewrittenContent: null,
           artifactFiles: [

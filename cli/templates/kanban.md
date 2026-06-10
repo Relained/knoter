@@ -3,6 +3,8 @@ id: kanban
 name: Kanban
 layer: artifact
 kind: kanban
+scaffold: true
+artifactPath: artifacts/kanban.md
 description: Column-based work board tracking task flow across stages.
 ---
 

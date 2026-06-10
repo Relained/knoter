@@ -534,17 +534,49 @@ describe("template command behavior", () => {
         path: expect.stringContaining("docs/template.md"),
       })
     );
-    const names = envelope.data.templates.map(
-      (template: { name: string }) => template.name
-    );
+    const templates = envelope.data.templates as Array<{
+      name: string;
+      source: string;
+      hasHtml: boolean;
+      scaffold: boolean;
+      artifactPath: string;
+    }>;
+    const names = templates.map((template) => template.name);
     expect(names).toEqual(
-      expect.arrayContaining(["llm-wiki", "calendar", "todo", "kanban"])
+      expect.arrayContaining([
+        "llm-wiki",
+        "calendar",
+        "todo",
+        "kanban",
+        "diet-dashboard",
+        "workout-dashboard",
+        "task-priority",
+        "study-index",
+        "project-status",
+        "exam-progress",
+        "ideas-backlog",
+        "reflection-log",
+      ])
     );
-    for (const template of envelope.data.templates) {
+    for (const template of templates) {
+      expect(template.source).toBe("bundled");
+    }
+    // Only the four defaults ship html pairs and scaffold flags; scenario
+    // templates are agent-maintained.
+    for (const name of ["llm-wiki", "calendar", "todo", "kanban"]) {
+      const template = templates.find((t) => t.name === name);
       expect(template).toEqual(
-        expect.objectContaining({ source: "bundled", hasHtml: true })
+        expect.objectContaining({ hasHtml: true, scaffold: true })
       );
     }
+    const scenario = templates.find((t) => t.name === "diet-dashboard");
+    expect(scenario).toEqual(
+      expect.objectContaining({
+        hasHtml: false,
+        scaffold: false,
+        artifactPath: "artifacts/diet/diet-dashboard.md",
+      })
+    );
 
     rmSync(knHome, { recursive: true, force: true });
   });

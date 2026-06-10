@@ -108,8 +108,9 @@ in `docs/plan/progress.md`; the workbench design-defect fix plan lives in
      `--include-artifacts`).
    - [ ] Migrate `rewritten` storage/search behavior to legacy alias or remove it
      after fixture and report-context updates. Progress: `kn llm rewrite` no
-     longer authors rewritten notes (artifact-first contract, template v4);
-     existing rewritten storage/indexing remains as the legacy alias.
+     longer authors rewritten notes (artifact-first contract, template v5
+     with per-artifact scenario template files); existing rewritten
+     storage/indexing remains as the legacy alias.
 
 3. Web cache rebuild
    - [ ] Rebuild project-local web cache from CLI/vault source data

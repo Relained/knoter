@@ -47,7 +47,7 @@ type ScenarioKind =
 
 const TEMPLATE_PATH = fileURLToPath(new URL("../../../docs/template.md", import.meta.url));
 const REWRITE_AGENT = "deterministic-test-agent";
-const REWRITE_PROMPT_HASH = "artifact-workflow-v4-test-fixture";
+const REWRITE_PROMPT_HASH = "artifact-workflow-v5-test-fixture";
 
 export async function installAgentScenarioFixtures(
   input: InstallAgentScenarioFixturesInput,

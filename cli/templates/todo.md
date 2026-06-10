@@ -3,6 +3,8 @@ id: todo
 name: Todo
 layer: artifact
 kind: todo
+scaffold: true
+artifactPath: artifacts/todo.md
 description: Short-lived action items collected from sources and daily notes.
 ---
 
