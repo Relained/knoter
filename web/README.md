@@ -1,102 +1,36 @@
-# Knoter Web
+# knoter web
 
-React + TypeScript renderer frontend template for a dense Electron workspace application.
+HTML-first workbench frontend for knoter: React 18 + TypeScript + Vite 5, with
+an Electron development shell whose IPC handlers call the CLI in `../cli`.
 
-## Features
+## Quick Commands
 
-- Obsidian-style sidebar, main viewer, tabs, and split panes
-- Pane splitting uses a tiling-window tree: leaf panes are replaced by horizontal or vertical split containers
-- The single Split Pane command chooses horizontal split for wide panes and vertical split for tall panes
-- Command palette first workflow with `Ctrl+K` / `Cmd+K`
-- Draggable and resizable floating windows above the app surface
-- Screens can be docked in the main workspace or opened as floating windows
-- Drag edge-position icons to preview and snap toolbars or the app menu to top, right, bottom, or left
-- Color scheme tokens are isolated in `src/styles/tokens/`
-- Shared motion curves and durations are isolated in `src/styles/tokens/motion.css`
-- Workspace state is restored from `localStorage`
-- UI icons are routed through `src/icons/` semantic icon ids
-- Interface and editor typography can be configured separately, including family choice, size, and custom family stacks
-- Notes are editable Markdown objects with editor, preview, and split modes
-- Todo, Tasks, and Calendar workspace objects keep editable per-object state
-- Workspace objects can appear inside Markdown via object blocks such as `[[object:Todo]]`
-- Graph 3D is currently a template preview object; the real graph engine is deferred
-- Search is integrated into the sidebar and command palette rather than modeled as a pane object
-
-## State Persistence
-
-The renderer saves panes, tabs, split mode, menu position, floating windows, focused floating window, z-order, and workspace object states under `knoter.workspace-state.v1:<scope>`.
-
-Workspace object state is keyed by `WorkspaceObjectKey`, so multiple panes or floating windows showing the same object share the same underlying state. Current editable object states include:
-
-- `Note`: Markdown content and view mode
-- `Todo`: checklist items
-- `Tasks`: lane-based task board items
-- `Calendar`: dated events
-
-The default scope is `default`. Pass `?workspace=...` or `?vault=...` in the renderer URL to isolate saved state per workspace.
-
-For a packaged Electron app, keep this contract and replace the `localStorage` calls in `src/state/persistence.ts` with an IPC-backed file store when you need cross-device sync or explicit vault-level state files.
-
-## Structure
-
-- `src/domain/`: workspace data and object factories
-- `src/state/`: persistence and state normalization
-- `src/utils/`: shared geometry helpers
-- `src/components/`: renderer UI components
-- `src/icons/`: semantic icon registry and renderer
-- `src/styles/tokens/`: Base16, semantic, component, motion, density, and typography tokens
-- `src/styles/components/`: component-level CSS modules
-- `src/styles/index.css`: ordered style entrypoint
-
-## Tiling Model
-
-The workspace follows the core i3/tmux rule: split the focused pane, not the whole workspace. A split replaces one leaf pane with a split container whose children are panes or nested split containers.
-
-- `horizontal`: new pane is placed next to the focused pane
-- `vertical`: new pane is placed below the focused pane
-- Empty panes are kept only when they are the sole remaining pane; otherwise closing the last tab removes the pane
-- Closing a pane collapses single-child split containers
-
-## Run
-
-Install dependencies, then run the Vite dev server:
-
-```sh
+```bash
 npm install
-npm run dev
+npm run check   # tsc --noEmit && vite build — verification baseline
+npm run dev     # test vault bootstrap + Vite on 127.0.0.1:39281 + Electron shell
 ```
 
-The dev and preview servers are pinned to `http://127.0.0.1:39281` with
-`strictPort`, so port conflicts fail loudly instead of moving to another port.
-`npm run dev` also attempts to prepare the CLI test vault by running
-`../cli/scripts/test-env.sh ensure` before Electron starts. When
-`KN_TESTDATA_ROOT` exists, this creates/selects `testvault`, indexes the fixture
-Markdown corpus, and passes the test `KN_HOME` to Electron so the IPC bridge
-loads that vault. Set `KNOTER_DEV_TEST_VAULT=0` to skip the bootstrap.
+`npm run dev` runs `../cli/scripts/test-env.sh ensure` first and points
+`KN_HOME` at `../cli/.test-kn-home` so the Electron IPC bridge sees the test
+vault. Set `KNOTER_DEV_TEST_VAULT=0` to skip the bootstrap, or `=1` to make
+bootstrap failure stop dev startup.
 
-## Verify
+There is currently no web unit-test or E2E harness; `npm run check` is the only
+automated verification.
 
-```sh
-npm run check
-npx playwright install chromium
-npm test
-npm run test:e2e
-```
+## Layout
 
-`npm run test:e2e` uses Playwright to start the Vite dev server on `39281` and
-drive Chromium through a smoke path covering the workspace shell, command
-palette, Settings, split pane, floating windows, and console/page error checks.
-Install the Chromium browser binary once with `npx playwright install chromium`
-on clean machines or CI images that do not already cache Playwright browsers.
+- `src/workbench/`: workbench UI — HTML page tabs, overlay bars, command
+  palette, source modal, settings page.
+- `src/core/`: typed renderer API, IPC contracts, preload adapter shape,
+  global settings runtime.
+- `src/shared/`: semantic icons, Base16 theming, token/component CSS.
+- `electron/`: Electron main process, preload bridge, CLI-backed IPC handlers.
+- `scripts/dev-electron.mjs`: `npm run dev` orchestration.
 
-In Electron development, point your `BrowserWindow` at the Vite dev URL:
+## Docs
 
-```js
-mainWindow.loadURL("http://127.0.0.1:39281");
-```
-
-For production packaging, build the renderer and load the generated file:
-
-```js
-mainWindow.loadFile("dist/index.html");
-```
+- `agents.md` (agent work guide for this package)
+- `../docs/architecture.md`, `../docs/codebase.md`, `../docs/testing.md`,
+  `../docs/plan.md`

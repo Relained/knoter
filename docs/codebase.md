@@ -8,18 +8,18 @@
 `knoter`는 Bun 기반 TypeScript CLI와 React/Vite web renderer를 함께 둔
 모노레포다. 일반 `kn` 명령은 LLM prose 생성을 하지 않고,
 저장/검색/검증/context bundle만 담당한다. 외부 LLM agent는 MCP 또는 CLI
-출력으로 template/context를 읽고 rewritten/artifact Markdown을 작성한다.
+출력으로 template/context를 읽고 source 기반 artifact를 작성하거나 갱신한다.
+유일한 LLM 호출 surface는 명시적 `kn llm` namespace이며, 현재
+`kn llm rewrite`가 Codex CLI로 rewritten/artifact 노트를 작성해 import한다.
 
 주요 데이터 흐름:
 
 1. `source` Markdown 또는 raw capture가 vault에 들어온다.
-2. `source`는 SQLite metadata/lineage만 저장하고 chunk/vector index에는 넣지 않는다.
-3. 외부 agent가 `kn_rewrite_context` 또는 `kn report context`를 읽고
-   `rewritten` Markdown을 작성한다.
-4. `rewritten`과 `artifact`는 parser -> chunker -> embedder -> SQLite FTS +
-   zvec vector store로 인덱싱된다.
-5. 검색은 SQLite FTS5 keyword와 zvec semantic 결과를 hybrid fusion한다.
-6. artifact는 기본 검색에서 제외하고 `--include-artifacts`일 때만 포함한다.
+2. `source`는 원본 보존과 metadata/extraction projection을 우선한다.
+3. 외부 agent가 source evidence와 context를 읽고 artifact를 작성/갱신한다.
+4. Target default retrieval은 `artifact.kind: llm-wiki`다.
+5. 현재 CLI는 마이그레이션 전까지 legacy `rewritten`을 기본 indexed knowledge로
+   사용하고, artifact는 `--include-artifacts`에서만 포함한다.
 
 ## Entry Points
 
@@ -37,23 +37,22 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | `src/pipeline/*.ts` | Markdown parse/chunk/hash/embed/preprocess pipeline. |
 | `src/search/*.ts` | keyword/semantic/hybrid retrieval와 score fusion. |
 | `src/providers/*.ts` | OpenAI-compatible embedding provider와 health check. |
-| `tests/*.test.ts` | behavior, storage, search, MCP, TEI integration harness. |
-| `src/main.tsx` under `web/` | React renderer root, workspace shell composition. |
-| `src/domain/workspace.ts` under `web/` | pane/tab/floating object factories and workspace constants. |
-| `src/state/*.ts` under `web/` | web workspace reducer and localStorage persistence. |
-| `src/api/*`, `src/ipc/*`, `src/preload/*` under `web/` | typed web API, IPC contracts, and preload adapter boundaries. |
-| `electron/*` under `web/` | Electron development shell and mock-backed IPC handlers. |
-| `src/renderers/*.tsx` under `web/` | Note/Settings/Todo/Tasks/Calendar renderers and Graph 3D template preview. |
-| `tests/*.test.cjs` under `web/` | web unit/regression tests run by `npm test`. |
-| `tests/e2e/*.spec.js` under `web/` | Playwright browser smoke tests run by `npm run test:e2e`. |
-| `docs/*.md` under repo root | active design docs. Archive는 `docs/archive/` 아래. |
+| `tests/*.test.ts` | behavior, storage, search, MCP, graph, fixtures, LLM rewrite, TEI integration harness. |
+| `src/main.tsx` under `web/` | React renderer mount and runtime bootstrap. |
+| `src/workbench/*` under `web/` | HTML workbench UI: tabs, overlay bars, palette, modals, HTML utilities. |
+| `src/core/api/*`, `src/core/ipc/*`, `src/core/preload/*` under `web/` | typed web API, IPC contracts, and preload adapter boundaries. |
+| `src/core/settings/*` under `web/` | global settings runtime (JSONC model, localStorage persistence). |
+| `src/shared/icons/*`, `src/shared/theming/*` under `web/` | semantic icons and Base16 theme runtime. |
+| `src/shared/styles/components/html-workbench.css` under `web/` | active workbench layout and interaction styles. |
+| `electron/*` under `web/` | Electron development shell, CLI-backed IPC handlers, preload bridge. |
+| `docs/*.md` under repo root | active design docs. 레거시 문서는 삭제됨(git 히스토리 참조). |
 
 ## Command Modules
 
 | File | Command | Notes |
 | --- | --- | --- |
 | `src/commands/vault.ts` | `kn vault` | vault 생성/상태/embedding API endpoint 저장. |
-| `src/commands/add.ts` | `kn add` | 파일 ingest. source는 metadata-only, rewritten/artifact는 indexing. |
+| `src/commands/add.ts` | `kn add` | 파일 ingest. source는 metadata-only, legacy rewritten/artifact는 indexing. |
 | `src/commands/sync.ts` | `kn sync` | vault 파일과 metadata/vector store 동기화, pending recovery. |
 | `src/commands/search.ts` | `kn search` | keyword/semantic/hybrid search CLI wrapper. |
 | `src/commands/get.ts` | `kn get`, `kn get batch` | path/suffix/substring/id 기반 note 조회와 batch 조회. |
@@ -62,6 +61,7 @@ CLI paths in this table are relative to `cli/`. Web paths are relative to
 | `src/commands/report.ts` | `kn report context` | 외부 agent용 JSON context bundle 생성. |
 | `src/commands/mcp.ts` | `kn mcp` | MCP server 실행. `stdio`가 기본이고 HTTP/daemon은 experimental. |
 | `src/commands/service.ts` | `kn service status` | 외부 embedding service endpoint 점검. |
+| `src/commands/llm.ts` | `kn llm rewrite` | Codex CLI로 source -> rewritten/artifact 작성 후 vault import. 유일한 LLM 호출 surface. |
 
 Currently exposed MCP tools in `src/mcp/server.ts`:
 
@@ -71,7 +71,7 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 | `kn_get` | 단일 note content/metadata 조회. |
 | `kn_get_batch` | 여러 path 또는 note id 일괄 조회. |
 | `kn_vault_status` | note/chunk/tag/pending count와 embedding model 조회. |
-| `kn_add_note` | rewritten/artifact Markdown 저장 및 인덱싱. |
+| `kn_add_note` | legacy rewritten/artifact Markdown 저장 및 인덱싱. |
 | `kn_template_get` | effective template payload 조회. |
 | `kn_report_context` | artifact/report agent용 context bundle 생성. |
 | `kn_rewrite_context` | source-layer rewrite agent용 evidence bundle 생성. |
@@ -81,8 +81,8 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 | File | 역할 |
 | --- | --- |
 | `src/core/config.ts` | global/vault config load/save, active vault resolution. |
-| `src/core/add-note.ts` | MCP/shared add-note path. rewritten/artifact 저장+indexing rollback 포함. |
-| `src/core/rewrite-context.ts` | source -> rewritten 외부 agent용 context bundle. |
+| `src/core/add-note.ts` | MCP/shared add-note path. legacy rewritten/artifact 저장+indexing rollback 포함. |
+| `src/core/rewrite-context.ts` | legacy source -> rewritten 외부 agent용 context bundle. |
 | `src/core/report-context.ts` | report/artifact workflow context bundle 조립. |
 | `src/core/report-retrieval.ts` | date/tasks/workouts/areas retrieval group SQL. |
 | `src/core/report-continuity.ts` | 이전 7일 continuity context. |
@@ -91,8 +91,11 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 | `src/core/note-lineage.ts` | frontmatter lineage field normalization shared by add/sync/add-note paths. |
 | `src/core/template.ts` | effective template resolution: vault `.kn/template.md` then `docs/template.md`. |
 | `src/core/template-validation.ts` | template contract validation. LLM 호출 없음. |
+| `src/core/llm-rewrite.ts` | `kn llm rewrite`용 Codex workspace 구성, prompt 조립, 출력 import/인덱싱. |
+| `src/core/agent-fixtures.ts` | test vault용 deterministic agent-style rewritten/artifact scenario fixture 설치. |
 | `src/core/lock.ts` | vault operation lock. |
 | `src/core/output.ts` | JSON/text output envelope helpers. |
+| `src/core/logger.ts` | CLI logging helpers. |
 | `src/core/errors.ts` | typed CLI errors and exit codes. |
 
 ## Storage Model
@@ -117,9 +120,10 @@ Currently exposed MCP tools in `src/mcp/server.ts`:
 
 Important invariant:
 
-- source notes have no chunks and no vectors
-- rewritten/artifact notes must have chunks and vectors when `vector_sync_status = synced`
-- artifact rows exist in indexes but are excluded by default retrieval/search policy
+- source notes currently have no chunks and no vectors
+- legacy rewritten/artifact notes must have chunks and vectors when `vector_sync_status = synced`
+- artifact rows exist in indexes but are currently excluded by default retrieval/search policy
+- target default retrieval will move to `artifact.kind: llm-wiki`
 - document graph rows are projections and can be rebuilt from notes/chunks
 
 ## Pipeline
@@ -132,7 +136,7 @@ Important invariant:
 | `src/pipeline/hasher.ts` | file/content hash helpers. |
 | `src/pipeline/preprocessor.ts` | optional preprocessing command hook. |
 
-Index-time flow for rewritten/artifact:
+Current index-time flow for legacy rewritten/artifact:
 
 ```text
 Markdown -> parseNote -> chunkDocument -> formatForEmbedding
@@ -153,6 +157,8 @@ Rollback expectation:
 - `semantic`: query embedding through configured provider, then zvec query
 - `hybrid`: keyword + semantic, linear fusion, adjacent chunk merge
 - artifact exclusion is enforced unless `includeArtifacts` is true
+- target search should default to `artifact.kind: llm-wiki` once kind-filtered
+  artifact retrieval is implemented
 
 `src/search/query-builder.ts` contains query option parsing helpers.
 `src/search/fusion.ts` contains active fusion/strong-signal utilities.
@@ -180,11 +186,17 @@ High-signal files:
 | --- | --- |
 | `tests/meta-store.test.ts` | SQLite schema, FTS, layers, signals, PageIndex metadata. |
 | `tests/add-note.test.ts` | shared add-note rollback and lineage behavior. |
+| `tests/parser.test.ts` | Markdown/frontmatter parsing and layer/kind/lineage extraction. |
+| `tests/document-graph.test.ts` | document graph projection build/refresh behavior. |
 | `tests/template-command-behavior.test.ts` | template CLI, fallback/vault precedence, validation. |
 | `tests/report-context.test.ts` | report context bundle, layer/date/artifact retrieval policy. |
 | `tests/mcp-tools.test.ts` | MCP tool registration and payload shape. |
+| `tests/command-help.test.ts` | CLI command surface and help output. |
 | `tests/korean.test.ts` | CJK FTS fallback and deterministic Korean semantic fixtures. |
+| `tests/search-quality.test.ts` | hybrid score normalization, fusion alpha, hybrid-min option resolution. |
 | `tests/vec-store.test.ts` | zvec schema/query/fusion helper behavior. |
+| `tests/agent-fixtures.test.ts` | agent scenario fixture installation into the test vault. |
+| `tests/llm-rewrite.test.ts` | `kn llm rewrite` workspace/prompt/import behavior with an injected fake runner. |
 | `tests/tei-integration.test.ts` | live TEI/Codex E2E when `.env` enables endpoint values. |
 
 Baseline:
@@ -208,8 +220,7 @@ Web:
 
 ```bash
 cd ../web
-npm test
-npm run test:e2e
+npm run check
 ```
 
 Default local ports:
@@ -251,7 +262,8 @@ Change template contract:
 ## Known Boundaries
 
 - No general LLM call in normal `kn` commands except embedding provider calls.
-- `kn llm` is the future namespace for prompt assembly or explicit LLM calls.
+- `kn llm` is the only namespace for prompt assembly or explicit LLM calls.
+  `kn llm rewrite` (Codex CLI) is the current implementation.
 - `cli/package.json` still has package name `nlpr` and no `bin.kn`; packaging is
   intentionally listed as P1 work in `docs/plan.md`.
 - `cli/package.json` also has no package-local `check` script and keeps
@@ -261,8 +273,6 @@ Change template contract:
   a test/dev harness exception, not product service lifecycle.
 - Cluster analysis is outside the CLI. A future app/frontend layer can access
   zvec directly for that surface.
-- Web Graph 3D is currently a template preview/state placeholder, not a
-  Three.js-backed graph engine.
 - `KN_TESTDATA_ROOT` points live E2E and local bootstrap scripts at a gitignored
   fixture corpus, so private or large test data can stay outside tracked files.
 - `scripts/test-env.sh setup` and the live TEI corpus E2E both include every

@@ -61,14 +61,17 @@ part of the corpus.
 - `kn report context`
 - `kn mcp` (`stdio` default; HTTP/daemon mode is present but experimental)
 - `kn service status`
+- `kn llm rewrite` (explicit Codex-driven rewrite/artifact authoring; the only
+  command that calls an LLM)
 
 ## Docs
 
 Start with:
 
+- `agents.md` (agent work guide for this package)
 - `../docs/README.md`
 - `../docs/architecture.md`
 - `../docs/plan.md`
 - `../docs/template.md`
 
-Legacy notes are under `../docs/archive/`.
+Legacy design notes were deleted; recover them from git history if needed.
