@@ -41,6 +41,7 @@ import { OverlayTabs } from "./components/OverlayTapBar";
 import { SettingsPageView } from "./components/SettingsPageView";
 import { SourceModal } from "./components/SourceModal";
 import { StatusChip } from "./components/StatusChip";
+import { VaultCreateModal } from "./components/VaultCreateModal";
 import { WidgetBar } from "./components/WidgetBar";
 import type {
   CommandValues,
@@ -84,6 +85,7 @@ export function App() {
     null,
   );
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
+  const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sourceDraft, setSourceDraft] = useState(initialSourceDraft);
   const [sources, setSources] = useState<SourceRecord[]>([]);
@@ -178,6 +180,8 @@ export function App() {
         pinWidgetView,
         pushStatus,
         openSourceModal: () => setSourceModalOpen(true),
+        openVaultModal: () => setVaultModalOpen(true),
+        closeVaultModal: () => setVaultModalOpen(false),
         openSettings: () => setSettingsOpen(true),
         openPalette,
         refreshVaultData,
@@ -249,6 +253,10 @@ export function App() {
             ? `Vault connected: ${vault.name} (${items.length} documents).`
             : "Backend connected, but no active vault was found.",
         );
+        if (!vault) {
+          const vaults = await api.vault.list();
+          if (!canceled && vaults.length === 0) setVaultModalOpen(true);
+        }
       } catch (error) {
         if (!canceled) {
           pushStatus(`Vault connection failed: ${errorMessage(error)}`);
@@ -291,19 +299,29 @@ export function App() {
     setPendingCommand(null);
   }
 
-  function executeCommand(commandId: string, preset: CommandValues = {}) {
+  function executeCommand(
+    commandId: string,
+    preset: CommandValues = {},
+    options: { skipOptionsForm?: boolean } = {},
+  ) {
     const command = commands.find((item) => item.id === commandId);
     if (!command) {
       pushStatus(`Unknown command: ${commandId}`);
       return;
     }
-    selectCommand(command, preset);
+    selectCommand(command, preset, options);
   }
 
-  function selectCommand(command: WorkbenchCommand, preset: CommandValues = {}) {
+  function selectCommand(
+    command: WorkbenchCommand,
+    preset: CommandValues = {},
+    { skipOptionsForm = false }: { skipOptionsForm?: boolean } = {},
+  ) {
     setOpenTool(null);
     setRecentCommandIds(touchCommandMru(command.id));
-    if (command.options && command.options.length > 0) {
+    // Dialogs that already collected the option values (e.g. the vault
+    // modal) skip the palette option form and run directly.
+    if (!skipOptionsForm && command.options && command.options.length > 0) {
       setPendingCommand({ command, values: preset });
       setCommandOpen(true);
       return;
@@ -605,6 +623,30 @@ export function App() {
           onChange={setSourceDraft}
           onQueue={queueSource}
           onClose={() => setSourceModalOpen(false)}
+        />
+      )}
+
+      {vaultModalOpen && (
+        <VaultCreateModal
+          hasBackend={api !== null}
+          onPickDirectory={async (title) => {
+            if (!api) return null;
+            const picked = await api.dialog.pickDirectory({ title });
+            return picked.canceled ? null : picked.path;
+          }}
+          onSubmit={(input) =>
+            executeCommand(
+              "vault.bootstrap",
+              {
+                name: input.name,
+                directory: input.directory,
+                sourceFolder: input.sourceFolder ?? "",
+                scaffold: input.scaffold,
+              },
+              { skipOptionsForm: true },
+            )
+          }
+          onClose={() => setVaultModalOpen(false)}
         />
       )}
 

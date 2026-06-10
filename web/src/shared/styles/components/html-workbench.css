@@ -201,6 +201,7 @@
 .overlay-tool-menu button,
 .workbench-command-palette button,
 .source-modal button,
+.vault-modal button,
 .settings-page button {
     border-radius: var(--radius-md);
 }
@@ -419,7 +420,8 @@
 .workbench-command-palette header,
 .workbench-command-palette footer,
 .settings-page header,
-.source-modal-header {
+.source-modal-header,
+.vault-modal-header {
     min-height: 38px;
     display: flex;
     align-items: center;
@@ -777,6 +779,120 @@
 }
 
 .source-primary-action:hover {
+    border-color: var(--accent-selected-strong);
+    background: var(--accent-selected);
+}
+
+.vault-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: var(--surface-overlay);
+}
+
+.vault-modal {
+    width: min(520px, calc(100vw - 36px));
+    max-height: min(640px, calc(100vh - 36px));
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    overflow: auto;
+    padding-bottom: 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-command);
+    box-shadow: var(--shadow-floating);
+}
+
+.vault-modal > :not(.vault-modal-header) {
+    margin: 0 14px;
+}
+
+.vault-modal-field {
+    display: grid;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.vault-modal-field input[type="text"],
+.vault-modal-field input:not([type]) {
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    background: var(--surface-command-input);
+}
+
+.vault-modal-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vault-modal-path code {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: var(--surface-command-input);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vault-modal-path button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    background: var(--surface-panel-raised);
+}
+
+.vault-modal-hint {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.vault-modal-error {
+    color: var(--accent-primary);
+    font-size: 11px;
+}
+
+.vault-modal-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.vault-modal-check input {
+    width: 16px;
+    height: 16px;
+}
+
+.vault-modal-primary {
+    min-height: 32px;
+    color: var(--text-primary);
+    font-weight: 700;
+    background: var(--accent-selected);
+}
+
+.vault-modal-primary:disabled {
+    opacity: 0.45;
+}
+
+.vault-modal-primary:hover:not(:disabled) {
     border-color: var(--accent-selected-strong);
     background: var(--accent-selected);
 }
