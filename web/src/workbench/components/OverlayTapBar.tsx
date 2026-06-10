@@ -25,9 +25,8 @@ export function OverlayTabs({
       className={`overlay-tabs-bar overlay-tabs-${tabDock} ${
         isSharedDock ? "is-shared-dock" : ""
       }`}
-      aria-label="Open tabs"
     >
-      <div className="overlay-tabs-container">
+      <div className="overlay-tabs-container" role="tablist" aria-label="Open tabs">
         {tabs.map((tab) => (
           <div
             className={`overlay-tab ${tab.id === activeTabId ? "is-active" : ""}`}
@@ -36,6 +35,9 @@ export function OverlayTabs({
             <button
               className="overlay-tab-select"
               type="button"
+              role="tab"
+              aria-selected={tab.id === activeTabId}
+              title={tab.title}
               onClick={() => onOpenTab(tab.id)}
             >
               <span className="overlay-tab-title">{tab.title}</span>

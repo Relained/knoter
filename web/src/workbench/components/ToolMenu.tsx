@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { ToolKey } from "../types";
 
 type ToolMenuEntry = {
@@ -48,9 +49,47 @@ export function ToolMenu({
   const items = toolMenuEntries[tool] ?? [
     { label: "Open Settings", commandId: "settings.open" },
   ];
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Menu convention: opening focuses the first item; closing returns focus
+  // to the trigger unless something else (e.g. an outside click) took it.
+  useEffect(() => {
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    menuItems(menuRef.current)[0]?.focus();
+    return () => {
+      if (document.activeElement === document.body) opener?.focus();
+    };
+  }, [tool]);
+
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const buttons = menuItems(menuRef.current);
+    if (buttons.length === 0) return;
+    event.preventDefault();
+    const current = buttons.indexOf(document.activeElement as HTMLElement);
+    let nextIndex: number;
+    if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = buttons.length - 1;
+    else if (current === -1)
+      nextIndex = event.key === "ArrowDown" ? 0 : buttons.length - 1;
+    else {
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      nextIndex = (current + step + buttons.length) % buttons.length;
+    }
+    buttons[nextIndex].focus();
+  }
 
   return (
-    <div className="overlay-tool-menu" role="menu" style={style}>
+    <div
+      className="overlay-tool-menu"
+      role="menu"
+      style={style}
+      ref={menuRef}
+      onKeyDown={onKeyDown}
+    >
       {items.map((item) => (
         <button
           type="button"
@@ -63,4 +102,9 @@ export function ToolMenu({
       ))}
     </div>
   );
+}
+
+function menuItems(menu: HTMLElement | null): HTMLElement[] {
+  if (!menu) return [];
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
 }

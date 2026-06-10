@@ -17,7 +17,7 @@ export function NotificationMenu({
   return (
     <div
       className="overlay-tool-menu notification-menu"
-      role="menu"
+      role="dialog"
       aria-label="Message history"
       style={style}
     >
