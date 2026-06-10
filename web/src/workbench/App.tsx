@@ -100,10 +100,18 @@ export function App() {
   );
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const agentRunning = useRef(false);
+  // pushStatus is captured by the commands memo, so popup/toast visibility
+  // must be read through refs to avoid stale closures.
+  const notificationsOpenRef = useRef(false);
+  const toastUnseenRef = useRef(false);
 
   const activeTab = activeTabId
     ? (tabs.find((tab) => tab.id === activeTabId) ?? null)
     : null;
+
+  useEffect(() => {
+    notificationsOpenRef.current = openTool === "notifications";
+  }, [openTool]);
 
   const refreshVaultData = useCallback(async () => {
     if (!api) return;
@@ -409,20 +417,33 @@ export function App() {
       createdAt: new Date().toISOString(),
     };
     setToastHistory((current) => [message, ...current].slice(0, 20));
-    setUnreadCount((count) => count + 1);
+    // A message counts as unread only if its toast was cut short by the
+    // next message; fully displayed, dismissed, or popup-visible messages
+    // are considered seen.
+    if (toastUnseenRef.current && !notificationsOpenRef.current) {
+      setUnreadCount((count) => count + 1);
+    }
+    toastUnseenRef.current = !notificationsOpenRef.current;
     setTransientToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(
-      () => setTransientToast(null),
-      transientToastMs,
-    );
+    toastTimer.current = setTimeout(() => {
+      toastUnseenRef.current = false;
+      setTransientToast(null);
+    }, transientToastMs);
+  }
+
+  function dismissTransientToast() {
+    toastUnseenRef.current = false;
+    setTransientToast(null);
   }
 
   function toggleNotifications() {
-    setOpenTool((current) =>
-      current === "notifications" ? null : "notifications",
-    );
-    setUnreadCount(0);
+    const opening = openTool !== "notifications";
+    setOpenTool(opening ? "notifications" : null);
+    if (opening) {
+      setUnreadCount(0);
+      toastUnseenRef.current = false;
+    }
   }
 
   function removeToastMessage(messageId: number) {
@@ -489,7 +510,7 @@ export function App() {
             <span>{transientToast.text}</span>
             <button
               type="button"
-              onClick={() => setTransientToast(null)}
+              onClick={dismissTransientToast}
               aria-label="Dismiss message"
             >
               x
