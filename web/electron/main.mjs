@@ -1,14 +1,32 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { spawn } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  buildSearchCliArgs,
+  buildSyncCliArgs,
+  toSearchResult,
+  validateExplorerLayers,
+  validateIsoDate,
+  validateLlmAgent,
+  validateNonEmptyString,
+  validateNoteFileName,
+  validateOptionalString,
+  validateTagAction,
+  validateTags
+} from "./cli-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
 const cliEntry = process.env.KNOTER_CLI_ENTRY ?? join(repoRoot, "cli", "src", "cli.ts");
 const cliRunner = process.env.KNOTER_CLI_RUNNER ?? "bun";
 const devServerUrl = process.env.KNOTER_DEV_SERVER_URL;
+const cliTimeoutMs = Number.parseInt(process.env.KNOTER_CLI_TIMEOUT_MS ?? "30000", 10);
+const cliIndexTimeoutMs = 120_000;
+const cliAgentTimeoutMs = 300_000;
+let mainWindow = null;
 
 app.whenReady().then(async () => {
   installIpcHandlers();
@@ -30,6 +48,12 @@ async function createMainWindow() {
     minWidth: 900,
     minHeight: 600,
     title: "knoter",
+    // macOS: hide the system title bar; traffic lights are pulled down so
+    // their center (y + 6) sits on the top tab bar row (top 14 + half of the
+    // 38px tab pill = 33). The renderer provides the drag region.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 18, y: 27 } }
+      : {}),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -37,6 +61,12 @@ async function createMainWindow() {
       sandbox: false
     }
   });
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+  win.on("enter-full-screen", () => win.webContents.send("shell:fullscreen-changed", true));
+  win.on("leave-full-screen", () => win.webContents.send("shell:fullscreen-changed", false));
 
   if (devServerUrl) {
     await win.loadURL(devServerUrl);
@@ -50,14 +80,15 @@ async function createMainWindow() {
 function installIpcHandlers() {
   ipcMain.handle("vault:getActive", async () => getActiveVaultSummary());
   ipcMain.handle("vault:switch", async (_event, input) => {
-    await runCli(["vault", "switch", input.vaultId]);
+    const vaultId = validateNonEmptyString(input?.vaultId, "Vault id");
+    await runCli(["vault", "switch", vaultId]);
     const active = await getActiveVaultSummary();
-    if (!active) throw new Error(`Vault switch succeeded but active vault was not found: ${input.vaultId}`);
+    if (!active) throw new Error(`Vault switch succeeded but active vault was not found: ${vaultId}`);
     return active;
   });
   ipcMain.handle("explorer:list", async (_event, input) => {
-    const layers = new Set(input.layers ?? []);
-    const query = input.query?.trim().toLowerCase() ?? "";
+    const layers = new Set(validateExplorerLayers(input?.layers, { allowEmpty: true, fallback: [] }));
+    const query = validateOptionalString(input?.query, "Explorer query").toLowerCase();
     const items = await loadExplorerItems();
     return items.filter((item) => {
       if (!layers.has(item.layer)) return false;
@@ -88,36 +119,235 @@ function installIpcHandlers() {
     };
   });
   ipcMain.handle("search:query", async (_event, input) => {
-    const args = [
-      "search",
-      input.query ?? "",
-      "--mode",
-      input.mode ?? "hybrid",
-      "--top",
-      "20"
-    ];
-    if (input.layers?.includes("template")) {
-      return searchExplorerFallback(input);
-    }
+    const { args } = buildSearchCliArgs(input);
     const envelope = await runCli(args);
-    return (envelope.data?.results ?? []).map((result) => ({
-      id: String(result.id),
-      title: result.title ?? result.filePath ?? "Untitled",
-      path: result.filePath ?? "",
-      layer: "rewritten",
-      score: typeof result.score === "number" ? result.score : 0,
-      snippet: result.content ?? result.heading ?? ""
+    return (envelope.data?.results ?? []).map(toSearchResult);
+  });
+  ipcMain.handle("html:openWindow", async (_event, input) => openHtmlWindow(input));
+  ipcMain.handle("vault:list", async () => {
+    const envelope = await runCli(["vault", "list"]);
+    return (envelope.data?.vaults ?? []).map((vault) => ({
+      id: vault.name,
+      name: vault.name,
+      root: vault.path,
+      active: !!vault.active
     }));
   });
+  ipcMain.handle("vault:status", async () => {
+    const envelope = await runCli(["vault", "status"]);
+    const data = envelope.data ?? {};
+    const status = data.status ?? {};
+    return {
+      vault: data.vault ?? "unknown",
+      path: data.path ?? "",
+      noteCount: status.noteCount ?? 0,
+      chunkCount: status.chunkCount ?? 0,
+      tagCount: status.tagCount ?? 0,
+      sourceCount: status.sourceCount ?? 0,
+      rewrittenCount: status.rewrittenCount ?? 0,
+      artifactCount: status.artifactCount ?? 0,
+      lastIndexedAt: status.lastIndexedAt ?? null,
+      embeddingModel: status.embeddingModel ?? null
+    };
+  });
+  ipcMain.handle("sync:run", async (_event, input) => {
+    const envelope = await runCli(buildSyncCliArgs(input), { timeoutMs: cliIndexTimeoutMs });
+    const data = envelope.data ?? {};
+    return {
+      recovered: data.recovered ?? 0,
+      added: data.added ?? 0,
+      updated: data.updated ?? 0,
+      pruned: data.pruned ?? 0,
+      reconciled: data.reconciled ?? 0,
+      errors: Array.isArray(data.errors) ? data.errors : []
+    };
+  });
+  ipcMain.handle("source:addFromPicker", async (_event, input) => addSourcesFromPicker(input));
+  ipcMain.handle("note:save", async (_event, input) => saveNoteToVault(input));
+  ipcMain.handle("template:get", async () => loadTemplateInfo("get"));
+  ipcMain.handle("template:list", async () => loadTemplateInfo("list"));
+  ipcMain.handle("tag:list", async () => {
+    const envelope = await runCli(["tag", "list"]);
+    return envelope.data?.tags ?? [];
+  });
+  ipcMain.handle("tag:update", async (_event, input) => {
+    const action = validateTagAction(input?.action);
+    const target = validateNonEmptyString(input?.target, "Tag target");
+    const tags = validateTags(input?.tags);
+    if (tags.length === 0) throw new Error("At least one tag is required");
+    const envelope = await runCli(["tag", action, target, ...tags]);
+    return envelope.data ?? {};
+  });
+  ipcMain.handle("report:context", async (_event, input) => {
+    const date = validateIsoDate(input?.date);
+    const args = ["report", "context", "--date", date];
+    if (input?.includeArtifacts === true) args.push("--include-artifacts");
+    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
+    return envelope.data ?? {};
+  });
+  ipcMain.handle("llm:rewrite", async (_event, input) => {
+    const source = validateNonEmptyString(input?.source, "Source path");
+    const agent = validateLlmAgent(input?.agent);
+    const envelope = await runCli(
+      ["llm", "rewrite", "--source", source, "--agent", agent],
+      { timeoutMs: cliAgentTimeoutMs }
+    );
+    const data = envelope.data ?? {};
+    return {
+      sourcePath: data.sourcePath ?? source,
+      rewrittenPath: data.rewrittenPath ?? "",
+      agent: data.agent ?? agent,
+      rewritten: {
+        status: data.rewritten?.status ?? "unknown",
+        chunkCount: data.rewritten?.chunkCount ?? 0
+      },
+      artifacts: (data.artifacts ?? []).map((artifact) => ({
+        path: artifact.path ?? "",
+        status: artifact.status ?? "unknown"
+      }))
+    };
+  });
+}
+
+async function addSourcesFromPicker(input) {
+  const tags = validateTags(input?.tags);
+  const emptyResult = {
+    canceled: true,
+    filesProcessed: 0,
+    filesAdded: 0,
+    filesUpdated: 0,
+    filesSkipped: 0,
+    details: []
+  };
+  const picked = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    title: "Add source files",
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      { name: "Markdown", extensions: ["md", "markdown", "txt"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return emptyResult;
+
+  const totals = { ...emptyResult, canceled: false };
+  for (const filePath of picked.filePaths) {
+    const args = ["add", filePath];
+    for (const tag of tags) args.push("--tag", tag);
+    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
+    const data = envelope.data ?? {};
+    totals.filesProcessed += data.filesProcessed ?? 0;
+    totals.filesAdded += data.filesAdded ?? 0;
+    totals.filesUpdated += data.filesUpdated ?? 0;
+    totals.filesSkipped += data.filesSkipped ?? 0;
+    for (const detail of data.details ?? []) {
+      totals.details.push({
+        filePath: detail.filePath ?? "",
+        status: detail.status ?? "unknown",
+        chunkCount: detail.chunkCount ?? 0
+      });
+    }
+  }
+  return totals;
+}
+
+async function saveNoteToVault(input) {
+  const fileName = validateNoteFileName(input?.fileName);
+  const content = validateNonEmptyString(input?.content, "Note content");
+  const tags = validateTags(input?.tags);
+
+  const tempDir = await mkdtemp(join(tmpdir(), "knoter-note-"));
+  try {
+    const tempPath = join(tempDir, fileName);
+    await writeFile(tempPath, content, "utf8");
+    const args = ["add", tempPath, "--force"];
+    for (const tag of tags) args.push("--tag", tag);
+    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
+    const detail = envelope.data?.details?.[0] ?? {};
+    return {
+      filePath: detail.filePath ?? "",
+      status: detail.status ?? "added",
+      chunkCount: detail.chunkCount ?? 0
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function loadTemplateInfo(subcommand) {
+  const envelope = await runCli(["template", subcommand]);
+  const data = envelope.data ?? {};
+  return {
+    source: data.source ?? "unknown",
+    path: data.path ?? "",
+    content: typeof data.content === "string" ? data.content : "",
+    metadata: data.metadata ?? null
+  };
+}
+
+async function openHtmlWindow(input) {
+  const title = validateNonEmptyString(input?.title, "HTML window title").slice(0, 120);
+  const html = validateNonEmptyString(input?.html, "HTML window content");
+  if (html.length > 1_000_000) throw new Error("HTML window content is too large");
+
+  const win = new BrowserWindow({
+    width: 720,
+    height: 520,
+    minWidth: 420,
+    minHeight: 320,
+    title,
+    parent: mainWindow ?? undefined,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createExternalHtmlDocument(html))}`);
+  return { opened: true };
+}
+
+function createExternalHtmlDocument(html) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; script-src 'none'; connect-src 'none'; frame-src 'none';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; padding: 22px; color: #eeeeee; background: #090909; line-height: 1.55; }
+      h1, h2, h3 { line-height: 1.15; }
+      .eyebrow { color: #ff6a00; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      a { color: #ff7a00; }
+    </style>
+  </head>
+  <body>${sanitizeHtmlFragment(html)}</body>
+</html>`;
+}
+
+function sanitizeHtmlFragment(html) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
+    .replace(/<embed\b[^>]*>/gi, "")
+    .replace(/<link\b[^>]*>/gi, "")
+    .replace(/<meta\b[^>]*>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s(src|href)\s*=\s*("|')\s*(https?:|data:|javascript:)[^"']*\2/gi, "");
 }
 
 async function readExplorerItem(input) {
   const active = await getActiveVaultSummary();
   if (!active) throw new Error("No active vault found");
+  const inputPath = validateNonEmptyString(input?.path, "Explorer item path");
 
   const items = await loadExplorerItems(active);
-  const item = items.find((candidate) => candidate.path === input.path);
-  if (!item) throw new Error(`Explorer item not found: ${input.path}`);
+  const item = items.find((candidate) => candidate.path === inputPath);
+  if (!item) throw new Error(`Explorer item not found: ${inputPath}`);
 
   const vaultRoot = resolve(active.root);
   const absolutePath = isAbsolute(item.path) ? item.path : resolve(vaultRoot, item.path);
@@ -228,22 +458,6 @@ async function buildGraphPayload(input = {}) {
   };
 }
 
-async function searchExplorerFallback(input) {
-  const query = (input.query ?? "").trim().toLowerCase();
-  const layers = new Set(input.layers ?? ["source", "rewritten", "template"]);
-  return (await loadExplorerItems())
-    .filter((item) => layers.has(item.layer))
-    .filter((item) => !query || `${item.title} ${item.path}`.toLowerCase().includes(query))
-    .map((item, index) => ({
-      id: item.id,
-      title: item.title,
-      path: item.path,
-      layer: item.layer,
-      score: 1 - index * 0.05,
-      snippet: item.path
-    }));
-}
-
 function createExplorerItem(id, layer, title, path, options = {}) {
   return {
     id,
@@ -257,10 +471,25 @@ function createExplorerItem(id, layer, title, path, options = {}) {
   };
 }
 
-async function runCli(args) {
+async function runCli(args, options = {}) {
+  const lockRetries = 2;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await runCliOnce(args, options);
+    } catch (error) {
+      // The CLI bootstrap (test vault ensure) can briefly hold the SQLite lock.
+      const lockBusy = String(error?.message ?? "").includes("database is locked");
+      if (!lockBusy || attempt >= lockRetries) throw error;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 600 * (attempt + 1)));
+    }
+  }
+}
+
+async function runCliOnce(args, options = {}) {
   const childArgs = [cliEntry, "--format", "json", ...args];
   const { stdout, stderr, code } = await spawnToCompletion(cliRunner, childArgs, {
-    cwd: join(repoRoot, "cli")
+    cwd: join(repoRoot, "cli"),
+    timeoutMs: options.timeoutMs
   });
 
   let parsed;
@@ -280,11 +509,27 @@ async function runCli(args) {
 
 function spawnToCompletion(command, args, options) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let timedOut = false;
+    let killTimeout = null;
+    const { timeoutMs: timeoutOverride, ...spawnOptions } = options ?? {};
+    const fallbackTimeoutMs = Number.isFinite(cliTimeoutMs) && cliTimeoutMs > 0 ? cliTimeoutMs : 30000;
+    const timeoutMs = Number.isFinite(timeoutOverride) && timeoutOverride > 0
+      ? timeoutOverride
+      : fallbackTimeoutMs;
     const child = spawn(command, args, {
-      ...options,
+      ...spawnOptions,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"]
     });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      child.kill("SIGTERM");
+      killTimeout = setTimeout(() => {
+        if (!settled) child.kill("SIGKILL");
+      }, 1500);
+    }, timeoutMs);
     let stdout = "";
     let stderr = "";
 
@@ -294,8 +539,22 @@ function spawnToCompletion(command, args, options) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (killTimeout) clearTimeout(killTimeout);
+      reject(error);
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (killTimeout) clearTimeout(killTimeout);
+      if (timedOut) {
+        reject(new Error(`CLI command timed out after ${timeoutMs}ms`));
+        return;
+      }
       resolve({ stdout, stderr, code });
     });
   });

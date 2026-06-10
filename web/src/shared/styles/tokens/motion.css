@@ -1,0 +1,25 @@
+:root {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-standard-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --motion-instant: 80ms;
+  --motion-fast: 140ms;
+  --motion-medium: 220ms;
+  --motion-slow: 360ms;
+
+  --motion-preview-edge-duration: var(--motion-medium);
+  --motion-preview-tab-placement-duration: var(--motion-medium);
+  --motion-control-hover-duration: var(--motion-fast);
+  --motion-command-enter-duration: var(--motion-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-preview-edge-duration: 0ms;
+    --motion-preview-tab-placement-duration: 0ms;
+    --motion-control-hover-duration: 0ms;
+    --motion-command-enter-duration: 0ms;
+  }
+}

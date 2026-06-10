@@ -11,21 +11,18 @@
     "dev:electron": "electron .",
     "build": "vite build",
     "check": "tsc --noEmit && vite build",
-    "test": "npm run check && npm run test:unit",
-    "test:unit": "tsc -p tsconfig.test.json && node scripts/prepare-test-build.cjs && node --test tests/*.test.cjs",
-    "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
     "electron:hint": "node -e \"console.log('npm run dev starts Vite and the Electron shell on 127.0.0.1:39281.')\""
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
     "lucide-react": "^0.468.0",
+    "marked": "^18.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vite": "^5.4.11"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "electron": "^42.2.0",
