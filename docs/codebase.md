@@ -263,9 +263,9 @@ Change template contract:
 
 - No general LLM call in normal `kn` commands except embedding provider calls.
 - `kn llm` is the only namespace for prompt assembly or explicit LLM calls.
-  `kn llm rewrite` (Codex CLI) is the current implementation.
+  `kn llm rewrite` (Codex CLI 또는 Claude Code CLI)가 현재 구현이다.
 - `cli/package.json` still has package name `nlpr` and no `bin.kn`; packaging is
-  intentionally listed as P1 work in `docs/plan.md`.
+  intentionally listed as P1 work in `docs/plan/roadmap.md`.
 - `cli/package.json` also has no package-local `check` script and keeps
   TypeScript as a peer dependency, so `bunx tsc --noEmit` is an ad hoc baseline.
 - Container runtime and TEI process lifecycle are outside the CLI. The CLI only

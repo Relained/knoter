@@ -3,7 +3,7 @@
 최종 수정: 2026-06-10
 적용 패키지: `web/`
 근거: 대형 데스크톱 앱(VS Code, Obsidian, Slack, Linear, Raycast) GUI 관습과의
-대조 분석 결과 16개 결함. 상태 추적은 `docs/plan.md` P0.
+대조 분석 결과 16개 결함. 상태 추적은 `docs/plan/roadmap.md` P0.
 
 표기: ✅ 완료 / ⬜ 미착수. 규모: S(≤1h), M(반나절), L(설계 필요).
 

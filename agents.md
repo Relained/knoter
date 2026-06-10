@@ -37,7 +37,8 @@ Read the smallest relevant set under `docs/` before larger changes:
 - `docs/architecture.md` — product model and boundary source of truth.
 - `docs/codebase.md` — code reading entry point for both packages.
 - `docs/testing.md` — test commands and `.env` environment catalog.
-- `docs/plan.md` — current state and next work.
+- `docs/plan/progress.md` — implemented current state and verification baseline.
+- `docs/plan/roadmap.md` — active decisions and P0–P2 planned work.
 - `docs/template.md` — the artifact workflow contract delivered to external
   agents at runtime through `kn template get` / `kn report context`. It is
   validated content, not prose documentation; changing it changes agent

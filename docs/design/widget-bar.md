@@ -2,7 +2,7 @@
 
 최종 수정: 2026-06-10
 적용 패키지: `web/`
-상태: 구현 완료 — `npm run check`/CLI 테스트 통과, 수동 스모크는 미실시 (`docs/plan.md` P0 참조)
+상태: 구현 완료 — `npm run check`/CLI 테스트 통과, 수동 스모크는 미실시 (`docs/plan/roadmap.md` P0 참조)
 
 이 문서는 HTML-first 워크벤치의 다음 두 기능에 대한 디자인/구현 설계다.
 
@@ -140,7 +140,7 @@ export type WorkbenchWidget = {
 ## 4. 검증
 
 - 자동: `cd web && npm run check` (워크벤치에는 동작 테스트 하니스가 없음 —
-  `docs/plan.md` P1의 web 하니스 재도입 항목 참조).
+  `docs/plan/roadmap.md` P1의 web 하니스 재도입 항목 참조).
 - 수동 스모크(`npm run dev`): 핀 3개 동일 비율 → divider/바 폭 드래그 → 리로드 복원
   → 상태 메시지 발생 시 토스트 4초 소멸·뱃지 증가 → 벨 팝업 히스토리/삭제 →
   탭 dock top/bottom 양쪽 레이아웃 확인.

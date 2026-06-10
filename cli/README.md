@@ -71,7 +71,7 @@ Start with:
 - `agents.md` (agent work guide for this package)
 - `../docs/README.md`
 - `../docs/architecture.md`
-- `../docs/plan.md`
+- `../docs/plan/` (progress.md, roadmap.md)
 - `../docs/template.md`
 
 Legacy design notes were deleted; recover them from git history if needed.
