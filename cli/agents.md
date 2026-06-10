@@ -79,6 +79,8 @@ is tracked as P1 work.
 | `src/core/rewrite-context.ts` | Source-layer rewrite evidence bundle for external agents. |
 | `src/core/llm-rewrite.ts` | Codex workspace setup, prompt assembly, output import for `kn llm rewrite`. |
 | `src/core/agent-fixtures.ts` | Deterministic agent-style rewritten/artifact scenario fixtures for the test vault. |
+| `src/core/document-templates.ts` | Named document templates: bundled defaults in `templates/` with vault overrides at `.kn/templates/`, plus starter-artifact scaffolding. |
+| `templates/` | Bundled default document templates (llm-wiki, calendar, todo, kanban) as markdown + default HTML pairs. |
 | `src/core/logger.ts` | CLI logging helpers. |
 | `src/mcp/server.ts` | MCP tool definitions and transport-agnostic server factory. |
 | `src/pipeline/*` | Markdown parsing, chunking, hashing, embedding, preprocessing. |
@@ -149,6 +151,9 @@ Change retrieval policy:
 
 Change template behavior:
 
+0. Named document templates (`kn template get <name>` / `scaffold`) live in
+   `src/core/document-templates.ts` + `templates/`; the steps below cover the
+   single artifact-workflow contract template.
 1. Update `../docs/template.md`.
 2. Update `src/core/template-validation.ts` only when validation semantics change.
 3. Update `tests/template-command-behavior.test.ts`.
