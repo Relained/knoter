@@ -9,6 +9,7 @@ import type {
   GraphGetInput,
   GraphPayload,
   GraphRefreshResult,
+  HtmlWindowTheme,
   LlmRewriteRunInput,
   LlmRewriteRunResult,
   NoteSaveInput,
@@ -68,7 +69,11 @@ export type KnotenApi = {
     rewrite(input: LlmRewriteRunInput): Promise<LlmRewriteRunResult>;
   };
   html: {
-    openWindow(input: { title: string; html: string }): Promise<{ opened: true }>;
+    openWindow(input: {
+      title: string;
+      html: string;
+      theme?: HtmlWindowTheme;
+    }): Promise<{ opened: true }>;
   };
 };
 
