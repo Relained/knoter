@@ -56,6 +56,9 @@ import type {
 
 const transientToastMs = 4_000;
 const explorerLayers = ["source", "rewritten", "artifact", "template"] as const;
+// Keep-alive cap: each kept tab holds a live sandboxed iframe (static
+// srcdoc, no scripts), trading memory for preserved scroll positions.
+const keepAliveTabLimit = 8;
 
 export function App() {
   const api = window.knoterApi ?? null;
@@ -108,6 +111,36 @@ export function App() {
   const activeTab = activeTabId
     ? (tabs.find((tab) => tab.id === activeTabId) ?? null)
     : null;
+
+  const [recentTabIds, setRecentTabIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    setRecentTabIds((current) =>
+      [activeTabId, ...current.filter((id) => id !== activeTabId)].slice(
+        0,
+        keepAliveTabLimit,
+      ),
+    );
+  }, [activeTabId]);
+
+  // Iframe tabs among the most recently active stay mounted (hidden) so
+  // their scroll positions survive tab switches; editors keep their state
+  // in App and render only while active.
+  const keptTabs = useMemo(() => {
+    const recencyIds = activeTabId
+      ? [activeTabId, ...recentTabIds.filter((id) => id !== activeTabId)]
+      : recentTabIds;
+    const keepIds = new Set(recencyIds.slice(0, keepAliveTabLimit));
+    return tabs.filter(
+      (tab) =>
+        (tab.kind === "artifact" || tab.kind === "source") &&
+        keepIds.has(tab.id),
+    );
+  }, [tabs, activeTabId, recentTabIds]);
+
+  const activeTabIsKept =
+    activeTab !== null && keptTabs.some((tab) => tab.id === activeTab.id);
 
   useEffect(() => {
     notificationsOpenRef.current = openTool === "notifications";
@@ -466,14 +499,34 @@ export function App() {
           <div className="titlebar-drag-region" aria-hidden="true" />
         )}
         <section className="html-page" aria-label="Main page">
-          <HtmlPageView
-            tab={activeTab}
-            dailyNote={dailyNote}
-            simpleNote={simpleNote}
-            onDailyNote={setDailyNote}
-            onSimpleNote={setSimpleNote}
-            onSaveNote={(editor) => executeCommand("note.save", { editor })}
-          />
+          {keptTabs.map((tab) => (
+            <div
+              className="html-page-scroll"
+              key={tab.id}
+              hidden={tab.id !== activeTabId}
+            >
+              <HtmlPageView
+                tab={tab}
+                dailyNote={dailyNote}
+                simpleNote={simpleNote}
+                onDailyNote={setDailyNote}
+                onSimpleNote={setSimpleNote}
+                onSaveNote={(editor) => executeCommand("note.save", { editor })}
+              />
+            </div>
+          ))}
+          {!activeTabIsKept && (
+            <div className="html-page-scroll">
+              <HtmlPageView
+                tab={activeTab}
+                dailyNote={dailyNote}
+                simpleNote={simpleNote}
+                onDailyNote={setDailyNote}
+                onSimpleNote={setSimpleNote}
+                onSaveNote={(editor) => executeCommand("note.save", { editor })}
+              />
+            </div>
+          )}
         </section>
 
         <OverlayBar

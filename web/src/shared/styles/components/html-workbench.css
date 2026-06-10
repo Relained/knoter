@@ -39,17 +39,29 @@
 .html-page {
     width: 100%;
     height: 100%;
+    overflow: hidden;
+}
+
+/* Per-tab scroll container: keep-alive tabs each own their scroller so
+   switching tabs preserves scroll position. */
+.html-page-scroll {
+    width: 100%;
+    height: 100%;
     padding: 16px;
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
 }
 
-.html-workbench-tabs-top .html-page {
+.html-page-scroll[hidden] {
+    display: none;
+}
+
+.html-workbench-tabs-top .html-page-scroll {
     padding-top: var(--overlay-single-safe-area);
 }
 
-.html-workbench-tabs-bottom .html-page {
+.html-workbench-tabs-bottom .html-page-scroll {
     padding-bottom: var(--overlay-single-safe-area);
 }
 
