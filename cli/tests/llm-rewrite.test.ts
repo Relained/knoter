@@ -121,6 +121,76 @@ describe("llm rewrite", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  test("imports Claude-authored rewritten output through the claude agent runner", async () => {
+    const vaultRoot = randomTestPath("kn-llm-rewrite-claude-vault");
+    const workspace = randomTestPath("kn-llm-rewrite-claude-agent");
+    const vaultConfig: VaultConfig = {
+      embedding: { model: "nomic-embed-text" },
+      search: { fusionAlpha: 0.8 },
+      preprocessor: null,
+    };
+    mkdirSync(join(vaultRoot, ".kn"), { recursive: true });
+    mkdirSync(workspace, { recursive: true });
+    await saveVaultConfig(vaultRoot, vaultConfig);
+
+    try {
+      await seedSource(vaultRoot);
+      const runner: LlmRewriteRunner = async (input) => {
+        expect(input.agent).toBe("claude");
+        expect(input.prompt).toContain("You are Claude");
+        expect(input.prompt).toContain("rewrite_agent: claude-cli");
+        expect(input.prompt).toContain("rewrite_prompt_hash: claude-cli-v1");
+        return {
+          rewrittenContent: [
+            "---",
+            'title: "Claude rewritten study note"',
+            "layer: rewritten",
+            "kind: study",
+            "doc_date: 2026-03-05",
+            `source_path: "${SOURCE_REL_PATH}"`,
+            "rewrite_agent: claude-cli",
+            "rewrite_prompt_hash: claude-cli-v1",
+            "---",
+            "",
+            "# Claude rewritten study note",
+            "",
+            "## 정리",
+            "- Claude agent 산출물과 같은 계약으로 저장되는 rewritten 테스트 문서다.",
+          ].join("\n"),
+          artifactFiles: [],
+          lastMessage: "created rewritten.md",
+          stdout: "",
+          stderr: "",
+        };
+      };
+
+      const result = await runLlmRewrite({
+        vaultRoot,
+        vaultName: VAULT_NAME,
+        sourcePath: SOURCE_REL_PATH,
+        agent: "claude",
+        workspace,
+        runner,
+        embedProvider: new DeterministicEmbeddingProvider(vaultConfig),
+      });
+
+      expect(result.agent).toBe("claude");
+      expect(result.rewritten.status).toBe("added");
+      expect(result.artifacts).toEqual([]);
+
+      const metaDb = new MetaDB(vaultRoot);
+      try {
+        const rewritten = metaDb.getNoteByPath(VAULT_NAME, result.rewrittenPath);
+        expect(rewritten?.rewrite_agent).toBe("claude-cli");
+      } finally {
+        metaDb.close();
+      }
+    } finally {
+      rmSync(vaultRoot, { recursive: true, force: true });
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
 async function seedSource(vaultRoot: string): Promise<void> {

@@ -10,12 +10,17 @@ import type { EmbeddingProvider } from "../pipeline/embedder";
 import { MetaDB, type NoteRow } from "../stores/meta-store";
 import { createVaultCollection, EMBEDDING_DIMENSIONS, openVaultCollection } from "../stores/vec-store";
 
+export type LlmAgent = "codex" | "claude";
+
+export const LLM_AGENTS: readonly LlmAgent[] = ["codex", "claude"];
+
 export interface LlmRewriteInput {
   vaultRoot: string;
   vaultName: string;
   sourcePath: string;
-  agent?: "codex";
+  agent?: LlmAgent;
   codexBin?: string;
+  claudeBin?: string;
   timeoutMs?: number;
   force?: boolean;
   rewrittenPath?: string;
@@ -29,7 +34,7 @@ export interface LlmRewriteResult {
   sourcePath: string;
   rewrittenPath: string;
   workspace: string;
-  agent: "codex";
+  agent: LlmAgent;
   lastMessage: string;
   stdoutTail: string;
   stderrTail: string;
@@ -52,7 +57,8 @@ export interface LlmRewriteRunnerInput {
   sourceContent: string;
   templateContent: string;
   timeoutMs: number;
-  codexBin: string;
+  agent: LlmAgent;
+  agentBin: string;
 }
 
 export interface LlmRewriteRunnerResult {
@@ -75,7 +81,7 @@ const FALLBACK_TEMPLATE_PATH = fileURLToPath(new URL("../../../docs/template.md"
 
 export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteResult> {
   const agent = input.agent ?? "codex";
-  if (agent !== "codex") {
+  if (!LLM_AGENTS.includes(agent)) {
     throw new KnError(ErrorCode.CONFIG_INVALID, `Unsupported LLM agent: ${agent}`);
   }
 
@@ -107,7 +113,8 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
     const workspace = input.workspace ?? join(input.vaultRoot, ".kn", "agent-runs", randomUUID());
     mkdirSync(workspace, { recursive: true });
 
-    const prompt = buildCodexRewritePrompt({
+    const prompt = buildRewritePrompt({
+      agent,
       context: rewriteContext,
       templateContent,
       sourceNote,
@@ -116,14 +123,19 @@ export async function runLlmRewrite(input: LlmRewriteInput): Promise<LlmRewriteR
       artifactOutputDir: "artifacts",
     });
 
-    const runner = input.runner ?? runCodexCliAgent;
+    const runner = input.runner ?? (agent === "claude" ? runClaudeCliAgent : runCodexCliAgent);
+    const agentBin =
+      agent === "claude"
+        ? input.claudeBin ?? process.env.KN_CLAUDE_BIN ?? "claude"
+        : input.codexBin ?? process.env.KN_CODEX_BIN ?? "codex";
     const agentResult = await runner({
       workspace,
       prompt,
       sourceContent,
       templateContent,
       timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      codexBin: input.codexBin ?? process.env.KN_CODEX_BIN ?? "codex",
+      agent,
+      agentBin,
     });
     const vectorCollection = openOrCreateVectorCollection(input.vaultRoot, vaultConfig);
     let rewritten: Awaited<ReturnType<typeof addMarkdownNoteToVault>>;
@@ -217,7 +229,8 @@ async function readEffectiveTemplateContent(vaultRoot: string): Promise<string> 
   return Bun.file(FALLBACK_TEMPLATE_PATH).text();
 }
 
-export function buildCodexRewritePrompt(input: {
+export function buildRewritePrompt(input: {
+  agent: LlmAgent;
   context: Record<string, unknown>;
   templateContent: string;
   sourceNote: NoteRow;
@@ -225,8 +238,9 @@ export function buildCodexRewritePrompt(input: {
   rewrittenOutputPath: string;
   artifactOutputDir: string;
 }): string {
+  const agentName = input.agent === "claude" ? "Claude" : "Codex";
   return [
-    "You are Codex acting as knoter's external rewrite and artifact agent.",
+    `You are ${agentName} acting as knoter's external rewrite and artifact agent.`,
     "Task: produce a chunk-friendly rewritten-source Markdown file, then decide which durable artifact files should be created or updated from the template.",
     "",
     "Hard requirements:",
@@ -240,8 +254,8 @@ export function buildCodexRewritePrompt(input: {
     "- Every artifact file you create must include YAML frontmatter with layer: artifact.",
     `- In rewritten frontmatter, set source_note_id: ${input.sourceNote.id}.`,
     `- In rewritten frontmatter, set source_path: ${input.sourceNote.file_path}.`,
-    "- In rewritten frontmatter, set rewrite_agent: codex-cli.",
-    "- In rewritten frontmatter, set rewrite_prompt_hash: codex-cli-v1.",
+    `- In rewritten frontmatter, set rewrite_agent: ${input.agent}-cli.`,
+    `- In rewritten frontmatter, set rewrite_prompt_hash: ${input.agent}-cli-v1.`,
     `- In artifact frontmatter, set source_path: ${input.rewrittenVaultPath}.`,
     "- In artifact frontmatter, set artifact_template_id to the scenario template id or artifact-workflow when the template does not define a narrower id.",
     "- Preserve task checkbox state exactly when tasks exist.",
@@ -262,24 +276,9 @@ export function buildCodexRewritePrompt(input: {
 }
 
 export async function runCodexCliAgent(input: LlmRewriteRunnerInput): Promise<LlmRewriteRunnerResult> {
-  if (!Number.isFinite(input.timeoutMs) || input.timeoutMs <= 0) {
-    throw new KnError(ErrorCode.CONFIG_INVALID, "timeoutMs must be a positive integer.");
-  }
-
-  const promptPath = join(input.workspace, "prompt.md");
-  const lastMessagePath = join(input.workspace, "last-message.txt");
-  const sourcePath = join(input.workspace, "source.md");
-  const templatePath = join(input.workspace, "template.md");
-  const rewrittenPath = join(input.workspace, "rewritten.md");
-  const artifactRoot = join(input.workspace, "artifacts");
-
-  await Bun.write(promptPath, input.prompt);
-  await Bun.write(sourcePath, input.sourceContent);
-  await Bun.write(templatePath, input.templateContent);
-  mkdirSync(artifactRoot, { recursive: true });
-
+  const paths = await prepareAgentWorkspace(input);
   const command = [
-    shellQuote(input.codexBin),
+    shellQuote(input.agentBin),
     "exec",
     "--cd",
     shellQuote(input.workspace),
@@ -287,13 +286,92 @@ export async function runCodexCliAgent(input: LlmRewriteRunnerInput): Promise<Ll
     "--sandbox",
     "workspace-write",
     "--output-last-message",
-    shellQuote(lastMessagePath),
+    shellQuote(paths.lastMessagePath),
     "-",
     "<",
-    shellQuote(promptPath),
+    shellQuote(paths.promptPath),
   ].join(" ");
 
+  const { stdout, stderr } = await runAgentCommand("Codex CLI", command, {
+    timeoutMs: input.timeoutMs,
+    rewrittenPath: paths.rewrittenPath,
+  });
+
+  return {
+    rewrittenContent: await Bun.file(paths.rewrittenPath).text(),
+    artifactFiles: await readArtifactOutputs(input.workspace, paths.artifactRoot),
+    lastMessage: existsSync(paths.lastMessagePath) ? await Bun.file(paths.lastMessagePath).text() : "",
+    stdout,
+    stderr,
+  };
+}
+
+export async function runClaudeCliAgent(input: LlmRewriteRunnerInput): Promise<LlmRewriteRunnerResult> {
+  const paths = await prepareAgentWorkspace(input);
+  // Claude Code CLI has no --cd flag; cwd confines file tools to the workspace.
+  const command = [
+    shellQuote(input.agentBin),
+    "--print",
+    "--output-format",
+    "text",
+    "--allowedTools",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "<",
+    shellQuote(paths.promptPath),
+  ].join(" ");
+
+  const { stdout, stderr } = await runAgentCommand("Claude CLI", command, {
+    cwd: input.workspace,
+    timeoutMs: input.timeoutMs,
+    rewrittenPath: paths.rewrittenPath,
+  });
+
+  return {
+    rewrittenContent: await Bun.file(paths.rewrittenPath).text(),
+    artifactFiles: await readArtifactOutputs(input.workspace, paths.artifactRoot),
+    lastMessage: stdout.trim(),
+    stdout,
+    stderr,
+  };
+}
+
+interface AgentWorkspacePaths {
+  promptPath: string;
+  lastMessagePath: string;
+  rewrittenPath: string;
+  artifactRoot: string;
+}
+
+async function prepareAgentWorkspace(input: LlmRewriteRunnerInput): Promise<AgentWorkspacePaths> {
+  if (!Number.isFinite(input.timeoutMs) || input.timeoutMs <= 0) {
+    throw new KnError(ErrorCode.CONFIG_INVALID, "timeoutMs must be a positive integer.");
+  }
+
+  const paths: AgentWorkspacePaths = {
+    promptPath: join(input.workspace, "prompt.md"),
+    lastMessagePath: join(input.workspace, "last-message.txt"),
+    rewrittenPath: join(input.workspace, "rewritten.md"),
+    artifactRoot: join(input.workspace, "artifacts"),
+  };
+
+  await Bun.write(paths.promptPath, input.prompt);
+  await Bun.write(join(input.workspace, "source.md"), input.sourceContent);
+  await Bun.write(join(input.workspace, "template.md"), input.templateContent);
+  mkdirSync(paths.artifactRoot, { recursive: true });
+  return paths;
+}
+
+async function runAgentCommand(
+  label: string,
+  command: string,
+  options: { timeoutMs: number; rewrittenPath: string; cwd?: string },
+): Promise<{ stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bash", "-lc", command], {
+    cwd: options.cwd,
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,
@@ -303,7 +381,7 @@ export async function runCodexCliAgent(input: LlmRewriteRunnerInput): Promise<Ll
   const timer = setTimeout(() => {
     timedOut = true;
     proc.kill();
-  }, input.timeoutMs);
+  }, options.timeoutMs);
 
   try {
     const [exitCode, stdout, stderr] = await Promise.all([
@@ -313,24 +391,16 @@ export async function runCodexCliAgent(input: LlmRewriteRunnerInput): Promise<Ll
     ]);
 
     if (timedOut) {
-      throw new KnError(ErrorCode.UNKNOWN, `Codex CLI timed out after ${input.timeoutMs}ms`);
+      throw new KnError(ErrorCode.UNKNOWN, `${label} timed out after ${options.timeoutMs}ms`);
     }
     if (exitCode !== 0) {
-      throw new KnError(ErrorCode.UNKNOWN, `Codex CLI exited with ${exitCode}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+      throw new KnError(ErrorCode.UNKNOWN, `${label} exited with ${exitCode}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+    }
+    if (!existsSync(options.rewrittenPath)) {
+      throw new KnError(ErrorCode.FILE_NOT_FOUND, `${label} did not create expected output: ${options.rewrittenPath}`);
     }
 
-    const missing = [rewrittenPath].filter((path) => !existsSync(path));
-    if (missing.length > 0) {
-      throw new KnError(ErrorCode.FILE_NOT_FOUND, `Codex CLI did not create expected output: ${missing.join(", ")}`);
-    }
-
-    return {
-      rewrittenContent: await Bun.file(rewrittenPath).text(),
-      artifactFiles: await readArtifactOutputs(input.workspace, artifactRoot),
-      lastMessage: existsSync(lastMessagePath) ? await Bun.file(lastMessagePath).text() : "",
-      stdout,
-      stderr,
-    };
+    return { stdout, stderr };
   } finally {
     clearTimeout(timer);
   }

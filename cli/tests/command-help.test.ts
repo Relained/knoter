@@ -95,7 +95,8 @@ describe("CLI help surface", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Usage: kn llm rewrite");
     expect(result.stdout).toContain("--source <path>");
-    expect(result.stdout).toContain("--agent <codex>");
+    expect(result.stdout).toContain("--agent <agent>");
+    expect(result.stdout).toContain("--claude-bin <path>");
   });
 
   test("search help exposes deprecated threshold alias", async () => {
