@@ -47,6 +47,7 @@ export function SettingsPageView({
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
+        ref={dismiss.containerRef}
       >
         <header>
           <span>Settings</span>

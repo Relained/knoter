@@ -78,6 +78,7 @@ export function CommandPaletteOverlay({
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
+        ref={dismiss.containerRef}
       >
         {pending ? (
           <CommandOptionsForm
