@@ -6,8 +6,10 @@ import { getShortCjkFallbackTerms } from "../pipeline/preprocessor";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type VectorSyncStatus = "pending" | "synced";
-export type DocumentLayer = "source" | "rewritten" | "artifact";
-export type SignalKind = "task" | "workout" | "daily" | "area" | "metric";
+export type DocumentLayer = "source" | "artifact";
+
+/** Keyword search scope. Semantic/hybrid retrieval is llm-wiki only. */
+export type SearchScope = "llm-wiki" | "artifacts" | "sources" | "all";
 
 export interface NoteLineage {
   sourceNoteId?: string;
@@ -83,14 +85,6 @@ export interface ChunkInsert {
   nextChunkId?: string;
 }
 
-export interface TagRow {
-  note_id: string;
-  tag: string;
-  source: string;
-}
-
-export type TagSource = "manual" | "auto" | "frontmatter";
-
 export interface FtsResult {
   chunkId: string;
   noteId: string;
@@ -100,91 +94,16 @@ export interface FtsResult {
   score: number;
 }
 
-export interface VaultConfigRow {
-  vault_id: string;
-  embedding_model: string;
-  preprocessor_alias: string | null;
-  created_at: string;
-}
-
 export interface VaultStatus {
   noteCount: number;
   chunkCount: number;
-  tagCount: number;
   pendingCount: number;
   sourceCount: number;
-  rewrittenCount: number;
   artifactCount: number;
+  pendingWorkCount: number;
   lastIndexedAt: string | null;
+  lastSyncAt: string | null;
   embeddingModel: string | null;
-  preprocessorAlias: string | null;
-}
-
-export interface PreprocessorRow {
-  alias: string;
-  command: string;
-  language: string | null;
-}
-
-export interface NoteSignalInput {
-  noteId: string;
-  chunkId?: string;
-  kind: SignalKind;
-  key: string;
-  value: unknown;
-  confidence?: number;
-  source?: string;
-}
-
-export interface NoteSignalRow {
-  id: number;
-  note_id: string;
-  chunk_id: string | null;
-  kind: SignalKind;
-  key: string;
-  value_json: string;
-  confidence: number | null;
-  source: string | null;
-  created_at: string;
-}
-
-export interface PageIndexDocumentInput {
-  noteId: string;
-  indexPath: string;
-  model?: string;
-  status?: "pending" | "ready" | "failed";
-  error?: string;
-}
-
-export interface PageIndexDocumentRow {
-  note_id: string;
-  index_path: string;
-  model: string | null;
-  status: "pending" | "ready" | "failed";
-  error: string | null;
-  updated_at: string;
-}
-
-export interface PageIndexNodeInput {
-  noteId: string;
-  nodeId: string;
-  parentNodeId?: string;
-  title: string;
-  summary?: string;
-  startIndex?: number;
-  endIndex?: number;
-  depth?: number;
-}
-
-export interface PageIndexNodeRow {
-  note_id: string;
-  node_id: string;
-  parent_node_id: string | null;
-  title: string;
-  summary: string | null;
-  start_index: number | null;
-  end_index: number | null;
-  depth: number | null;
 }
 
 export type DocumentGraphEdgeKind =
@@ -208,6 +127,26 @@ export interface DocumentGraphEdgeRow {
   kind: DocumentGraphEdgeKind;
   metadata_json: string | null;
   created_at: string;
+}
+
+// ─── Agent work queue ────────────────────────────────────────────────────────
+// Source-layer file changes detected by sync are queued here. A periodically
+// invoked external agent (codex/claude over MCP) drains the queue and
+// creates/updates/deletes artifacts accordingly.
+
+export type AgentWorkChange = "added" | "updated" | "deleted";
+export type AgentWorkStatus = "pending" | "done";
+
+export interface AgentWorkItem {
+  id: number;
+  vault_id: string;
+  source_path: string;
+  source_note_id: string | null;
+  change: AgentWorkChange;
+  status: AgentWorkStatus;
+  enqueued_at: string;
+  completed_at: string | null;
+  result_note: string | null;
 }
 
 // ─── FTS5 Query Builder ─────────────────────────────────────────────────────
@@ -294,6 +233,20 @@ export function normalizeBM25(raw: number): number {
   return pos / (1 + pos);
 }
 
+/** Build the note-scope SQL clause for keyword search. */
+function scopeClause(scope: SearchScope): string {
+  switch (scope) {
+    case "llm-wiki":
+      return "AND n.layer = 'artifact' AND n.kind = 'llm-wiki'";
+    case "artifacts":
+      return "AND n.layer = 'artifact'";
+    case "sources":
+      return "AND n.layer = 'source'";
+    case "all":
+      return "";
+  }
+}
+
 function normalizeDocDate(input?: string | Date): string | null {
   if (!input) return null;
   if (input instanceof Date) {
@@ -310,6 +263,11 @@ function normalizeDocDate(input?: string | Date): string | null {
 }
 
 // ─── MetaDB ──────────────────────────────────────────────────────────────────
+// Unified SQLite CRUD for vault metadata: notes, chunks, FTS, document graph,
+// agent work queue, and sync state. Vector storage lives in vec-store.
+// Vault layout: <vault>/{templates,sources,artifacts}/ + <vault>/.db/.
+
+export const VAULT_DB_DIR = ".db";
 
 export class MetaDB {
   readonly db: Database;
@@ -318,9 +276,9 @@ export class MetaDB {
     if (dbOrVaultRoot instanceof Database) {
       this.db = dbOrVaultRoot;
     } else {
-      const knDir = join(dbOrVaultRoot, ".kn");
-      mkdirSync(knDir, { recursive: true });
-      this.db = new Database(join(knDir, "meta.db"));
+      const dbDir = join(dbOrVaultRoot, VAULT_DB_DIR);
+      mkdirSync(dbDir, { recursive: true });
+      this.db = new Database(join(dbDir, "meta.db"));
     }
     this.#configure();
     this.#initSchema();
@@ -376,15 +334,6 @@ export class MetaDB {
         )
       `);
 
-      this.#addColumnIfMissing("notes", "language", "TEXT");
-      this.#addColumnIfMissing("notes", "doc_date", "TEXT");
-      this.#addColumnIfMissing("notes", "layer", "TEXT NOT NULL DEFAULT 'source'");
-      this.#addColumnIfMissing("notes", "kind", "TEXT");
-      this.#addColumnIfMissing("notes", "source_note_id", "TEXT REFERENCES notes(id) ON DELETE SET NULL");
-      this.#addColumnIfMissing("notes", "source_path", "TEXT");
-      this.#addColumnIfMissing("notes", "rewrite_agent", "TEXT");
-      this.#addColumnIfMissing("notes", "rewrite_prompt_hash", "TEXT");
-      this.#addColumnIfMissing("notes", "artifact_template_id", "TEXT");
       this.db.run(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_vault_path
         ON notes(vault_id, file_path)
@@ -433,18 +382,6 @@ export class MetaDB {
         CREATE INDEX IF NOT EXISTS idx_chunks_note_id ON chunks(note_id)
       `);
 
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS tags (
-          note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-          tag     TEXT NOT NULL,
-          source  TEXT DEFAULT 'manual',
-          PRIMARY KEY (note_id, tag)
-        )
-      `);
-      this.db.run(`
-        CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)
-      `);
-
       // FTS5 external content table (trigram as default for CJK baseline)
       this.db.run(`
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -472,66 +409,6 @@ export class MetaDB {
         END
       `);
 
-      // ── Preprocessor registry ─────────────────────────────────────────────
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS preprocessors (
-          alias    TEXT PRIMARY KEY,
-          command  TEXT NOT NULL,
-          language TEXT
-        )
-      `);
-
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS note_signals (
-          id          INTEGER PRIMARY KEY AUTOINCREMENT,
-          note_id     TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-          chunk_id    TEXT REFERENCES chunks(id) ON DELETE CASCADE,
-          kind        TEXT NOT NULL,
-          key         TEXT NOT NULL,
-          value_json  TEXT NOT NULL,
-          confidence  REAL,
-          source      TEXT,
-          created_at  TEXT NOT NULL
-        )
-      `);
-      this.db.run(`
-        CREATE INDEX IF NOT EXISTS idx_note_signals_note_kind
-        ON note_signals(note_id, kind)
-      `);
-      this.db.run(`
-        CREATE INDEX IF NOT EXISTS idx_note_signals_kind_key
-        ON note_signals(kind, key)
-      `);
-
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS pageindex_documents (
-          note_id     TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
-          index_path  TEXT NOT NULL,
-          model       TEXT,
-          status      TEXT NOT NULL DEFAULT 'pending',
-          error       TEXT,
-          updated_at  TEXT NOT NULL
-        )
-      `);
-
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS pageindex_nodes (
-          note_id         TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-          node_id         TEXT NOT NULL,
-          parent_node_id  TEXT,
-          title           TEXT NOT NULL,
-          summary         TEXT,
-          start_index     INTEGER,
-          end_index       INTEGER,
-          depth           INTEGER,
-          PRIMARY KEY (note_id, node_id)
-        )
-      `);
-      this.db.run(`
-        CREATE INDEX IF NOT EXISTS idx_pageindex_nodes_parent
-        ON pageindex_nodes(note_id, parent_node_id)
-      `);
-
       this.db.run(`
         CREATE TABLE IF NOT EXISTS document_graph_edges (
           vault_id      TEXT NOT NULL,
@@ -551,16 +428,46 @@ export class MetaDB {
         CREATE INDEX IF NOT EXISTS idx_document_graph_edges_to
         ON document_graph_edges(vault_id, to_id, kind)
       `);
-    })();
-  }
 
-  #addColumnIfMissing(table: string, column: string, definition: string): void {
-    const existing = this.db
-      .query(`PRAGMA table_info(${table})`)
-      .all() as Array<{ name: string }>;
-    if (!existing.some((row) => row.name === column)) {
-      this.db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    }
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS agent_queue (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          vault_id        TEXT NOT NULL,
+          source_path     TEXT NOT NULL,
+          source_note_id  TEXT,
+          change          TEXT NOT NULL,
+          status          TEXT NOT NULL DEFAULT 'pending',
+          enqueued_at     TEXT NOT NULL,
+          completed_at    TEXT,
+          result_note     TEXT
+        )
+      `);
+      this.db.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_queue_pending_path
+        ON agent_queue(vault_id, source_path) WHERE status = 'pending'
+      `);
+      this.db.run(`
+        CREATE INDEX IF NOT EXISTS idx_agent_queue_status
+        ON agent_queue(vault_id, status)
+      `);
+
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS sync_state (
+          vault_id     TEXT PRIMARY KEY,
+          last_sync_at TEXT NOT NULL
+        )
+      `);
+
+      // Removed subsystems (tags, structured signals, pageindex, preprocessor
+      // registry, legacy rewritten layer). Dropping keeps long-lived dev
+      // vaults consistent.
+      this.db.run("DROP TABLE IF EXISTS tags");
+      this.db.run("DROP TABLE IF EXISTS note_signals");
+      this.db.run("DROP TABLE IF EXISTS pageindex_documents");
+      this.db.run("DROP TABLE IF EXISTS pageindex_nodes");
+      this.db.run("DROP TABLE IF EXISTS preprocessors");
+      this.db.run("DELETE FROM notes WHERE layer = 'rewritten'");
+    })();
   }
 
   // ── Vault Config ──────────────────────────────────────────────────────────
@@ -573,27 +480,6 @@ export class MetaDB {
        ON CONFLICT(vault_id) DO UPDATE SET embedding_model = excluded.embedding_model`,
       [vaultId, model, now],
     );
-  }
-
-  getEmbeddingModel(vaultId: string): string | null {
-    const row = this.db
-      .query("SELECT embedding_model FROM vault_config WHERE vault_id = ?")
-      .get(vaultId) as { embedding_model: string } | null;
-    return row?.embedding_model ?? null;
-  }
-
-  setPreprocessor(vaultId: string, alias: string | null): void {
-    this.db.run(
-      "UPDATE vault_config SET preprocessor_alias = ? WHERE vault_id = ?",
-      [alias, vaultId],
-    );
-  }
-
-  getPreprocessor(vaultId: string): string | null {
-    const row = this.db
-      .query("SELECT preprocessor_alias FROM vault_config WHERE vault_id = ?")
-      .get(vaultId) as { preprocessor_alias: string | null } | null;
-    return row?.preprocessor_alias ?? null;
   }
 
   // ── Notes CRUD ────────────────────────────────────────────────────────────
@@ -665,16 +551,12 @@ export class MetaDB {
     );
   }
 
-  /** Mark multiple notes as synced in a transaction. */
-  markSyncedBatch(noteIds: string[]): void {
-    this.db.transaction(() => {
-      const stmt = this.db.prepare(
-        "UPDATE notes SET vector_sync_status = 'synced' WHERE id = ?",
-      );
-      for (const id of noteIds) {
-        stmt.run(id);
-      }
-    })();
+  /** Mark a note as needing vector recovery. */
+  markPending(noteId: string): void {
+    this.db.run(
+      "UPDATE notes SET vector_sync_status = 'pending' WHERE id = ?",
+      [noteId],
+    );
   }
 
   /** List notes that have pending vector sync. */
@@ -696,26 +578,8 @@ export class MetaDB {
       .get(vaultId, filePath) as NoteRow | null;
   }
 
-  /** Content-addressed dedup: check if a file with this hash already exists and is synced. */
-  getNoteByHash(vaultId: string, fileHash: string): NoteRow | null {
-    return this.db
-      .query(
-        "SELECT * FROM notes WHERE vault_id = ? AND file_hash = ? AND vector_sync_status = 'synced' LIMIT 1",
-      )
-      .get(vaultId, fileHash) as NoteRow | null;
-  }
-
   deleteNote(id: string): void {
     this.db.run("DELETE FROM notes WHERE id = ?", [id]);
-  }
-
-  deleteNotesBatch(ids: string[]): void {
-    this.db.transaction(() => {
-      const del = this.db.prepare("DELETE FROM notes WHERE id = ?");
-      for (const id of ids) {
-        del.run(id);
-      }
-    })();
   }
 
   listNotes(vaultId: string, limit = 50, offset = 0): NoteRow[] {
@@ -738,23 +602,6 @@ export class MetaDB {
          LIMIT ? OFFSET ?`,
       )
       .all(vaultId, layer, limit, offset) as NoteRow[];
-  }
-
-  listNotesByKind(
-    vaultId: string,
-    layer: DocumentLayer,
-    kind: string,
-    limit = 50,
-    offset = 0,
-  ): NoteRow[] {
-    return this.db
-      .query(
-        `SELECT * FROM notes
-         WHERE vault_id = ? AND layer = ? AND kind = ?
-         ORDER BY doc_date DESC, file_path
-         LIMIT ? OFFSET ?`,
-      )
-      .all(vaultId, layer, kind, limit, offset) as NoteRow[];
   }
 
   listNotesByDate(
@@ -782,16 +629,6 @@ export class MetaDB {
          LIMIT ? OFFSET ?`,
       )
       .all(vaultId, docDate, limit, offset) as NoteRow[];
-  }
-
-  listDerivedNotes(sourceNoteId: string): NoteRow[] {
-    return this.db
-      .query(
-        `SELECT * FROM notes
-         WHERE source_note_id = ?
-         ORDER BY layer, file_path`,
-      )
-      .all(sourceNoteId) as NoteRow[];
   }
 
   // ── Chunks CRUD ───────────────────────────────────────────────────────────
@@ -849,222 +686,120 @@ export class MetaDB {
     this.db.run("DELETE FROM chunks WHERE note_id = ?", [noteId]);
   }
 
-  // ── Tags CRUD ─────────────────────────────────────────────────────────────
-
-  setTags(
-    noteId: string,
-    tags: Array<{ tag: string; source?: TagSource }>,
-  ): void {
+  /**
+   * Atomically reindex a note.
+   * Deletes existing chunks -> upserts note (as pending) -> inserts new chunks.
+   */
+  reindexNote(note: NoteInput, chunks: ChunkInsert[]): void {
     this.db.transaction(() => {
-      this.#setTagsRaw(noteId, tags);
+      this.deleteChunksByNote(note.id);
+      this.upsertNote(note);
+      this.#insertChunksRaw(chunks);
     })();
   }
 
-  #setTagsRaw(
-    noteId: string,
-    tags: Array<{ tag: string; source?: TagSource }>,
-  ): void {
-    this.db.run("DELETE FROM tags WHERE note_id = ?", [noteId]);
-    const insert = this.db.prepare(
-      "INSERT INTO tags (note_id, tag, source) VALUES (?, ?, ?)",
-    );
-    for (const t of tags) {
-      insert.run(noteId, t.tag, t.source ?? "manual");
-    }
-  }
+  // ── Agent Work Queue ──────────────────────────────────────────────────────
 
-  addTag(noteId: string, tag: string, source: TagSource = "manual"): void {
-    this.db.run(
-      "INSERT OR IGNORE INTO tags (note_id, tag, source) VALUES (?, ?, ?)",
-      [noteId, tag, source],
-    );
-  }
-
-  removeTag(noteId: string, tag: string): void {
-    this.db.run("DELETE FROM tags WHERE note_id = ? AND tag = ?", [
-      noteId,
-      tag,
-    ]);
-  }
-
-  getTagsByNote(noteId: string): TagRow[] {
-    return this.db
-      .query("SELECT * FROM tags WHERE note_id = ? ORDER BY tag")
-      .all(noteId) as TagRow[];
-  }
-
-  getNotesByTag(tag: string, vaultId?: string, limit = 50, offset = 0): NoteRow[] {
-    if (vaultId) {
-      return this.db
-        .query(
-          `SELECT n.* FROM notes n
-           JOIN tags t ON n.id = t.note_id
-           WHERE t.tag = ? AND n.vault_id = ?
-           ORDER BY n.file_path
-           LIMIT ? OFFSET ?`,
-        )
-        .all(tag, vaultId, limit, offset) as NoteRow[];
-    }
-    return this.db
-      .query(
-        `SELECT n.* FROM notes n
-         JOIN tags t ON n.id = t.note_id
-         WHERE t.tag = ?
-         ORDER BY n.file_path
-         LIMIT ? OFFSET ?`,
-      )
-      .all(tag, limit, offset) as NoteRow[];
-  }
-
-  listAllTags(vaultId: string, limit = 50, offset = 0): Array<{ tag: string; count: number }> {
-    return this.db
-      .query(
-        `SELECT t.tag, COUNT(*) as count
-         FROM tags t
-         JOIN notes n ON t.note_id = n.id
-         WHERE n.vault_id = ?
-         GROUP BY t.tag
-         ORDER BY count DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(vaultId, limit, offset) as Array<{ tag: string; count: number }>;
-  }
-
-  // ── Structured Signals ───────────────────────────────────────────────────
-
-  addNoteSignal(signal: NoteSignalInput): number {
-    const now = new Date().toISOString();
-    const result = this.db
-      .query(
-        `INSERT INTO note_signals
-           (note_id, chunk_id, kind, key, value_json, confidence, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id`,
-      )
-      .get(
-        signal.noteId,
-        signal.chunkId ?? null,
-        signal.kind,
-        signal.key,
-        JSON.stringify(signal.value),
-        signal.confidence ?? null,
-        signal.source ?? null,
-        now,
-      ) as { id: number };
-    return result.id;
-  }
-
-  replaceNoteSignals(noteId: string, signals: NoteSignalInput[]): void {
-    this.db.transaction(() => {
-      this.db.run("DELETE FROM note_signals WHERE note_id = ?", [noteId]);
-      for (const signal of signals) {
-        this.addNoteSignal({ ...signal, noteId });
-      }
-    })();
-  }
-
-  getNoteSignals(noteId: string, kind?: SignalKind): NoteSignalRow[] {
-    if (kind) {
-      return this.db
-        .query(
-          `SELECT * FROM note_signals
-           WHERE note_id = ? AND kind = ?
-           ORDER BY id`,
-        )
-        .all(noteId, kind) as NoteSignalRow[];
-    }
-    return this.db
-      .query("SELECT * FROM note_signals WHERE note_id = ? ORDER BY id")
-      .all(noteId) as NoteSignalRow[];
-  }
-
-  listSignalsByDate(
+  /**
+   * Record a source-layer change for the external agent. One pending item per
+   * source path: re-changes collapse into the earliest meaningful state
+   * ("added" beats "updated"; "deleted" cancels an unprocessed "added").
+   */
+  enqueueAgentWork(
     vaultId: string,
-    docDate: string,
-    kind?: SignalKind,
-  ): NoteSignalRow[] {
-    if (kind) {
-      return this.db
-        .query(
-          `SELECT s.* FROM note_signals s
-           JOIN notes n ON s.note_id = n.id
-           WHERE n.vault_id = ? AND n.doc_date = ? AND s.kind = ?
-           ORDER BY n.layer, n.file_path, s.id`,
-        )
-        .all(vaultId, docDate, kind) as NoteSignalRow[];
-    }
-    return this.db
-      .query(
-        `SELECT s.* FROM note_signals s
-         JOIN notes n ON s.note_id = n.id
-         WHERE n.vault_id = ? AND n.doc_date = ?
-         ORDER BY n.layer, n.file_path, s.id`,
-      )
-      .all(vaultId, docDate) as NoteSignalRow[];
-  }
-
-  // ── PageIndex Metadata ───────────────────────────────────────────────────
-
-  upsertPageIndexDocument(input: PageIndexDocumentInput): void {
+    input: { sourcePath: string; sourceNoteId?: string | null; change: AgentWorkChange },
+  ): void {
     const now = new Date().toISOString();
-    this.db.run(
-      `INSERT INTO pageindex_documents
-         (note_id, index_path, model, status, error, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(note_id) DO UPDATE SET
-         index_path = excluded.index_path,
-         model = excluded.model,
-         status = excluded.status,
-         error = excluded.error,
-         updated_at = excluded.updated_at`,
-      [
-        input.noteId,
-        input.indexPath,
-        input.model ?? null,
-        input.status ?? "pending",
-        input.error ?? null,
-        now,
-      ],
-    );
-  }
+    const pending = this.db
+      .query(
+        "SELECT * FROM agent_queue WHERE vault_id = ? AND source_path = ? AND status = 'pending'",
+      )
+      .get(vaultId, input.sourcePath) as AgentWorkItem | null;
 
-  getPageIndexDocument(noteId: string): PageIndexDocumentRow | null {
-    return this.db
-      .query("SELECT * FROM pageindex_documents WHERE note_id = ?")
-      .get(noteId) as PageIndexDocumentRow | null;
-  }
-
-  replacePageIndexNodes(noteId: string, nodes: PageIndexNodeInput[]): void {
-    this.db.transaction(() => {
-      this.db.run("DELETE FROM pageindex_nodes WHERE note_id = ?", [noteId]);
-      const insert = this.db.prepare(
-        `INSERT INTO pageindex_nodes
-           (note_id, node_id, parent_node_id, title, summary, start_index, end_index, depth)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    if (!pending) {
+      this.db.run(
+        `INSERT INTO agent_queue (vault_id, source_path, source_note_id, change, status, enqueued_at)
+         VALUES (?, ?, ?, ?, 'pending', ?)`,
+        [vaultId, input.sourcePath, input.sourceNoteId ?? null, input.change, now],
       );
-      for (const node of nodes) {
-        insert.run(
-          noteId,
-          node.nodeId,
-          node.parentNodeId ?? null,
-          node.title,
-          node.summary ?? null,
-          node.startIndex ?? null,
-          node.endIndex ?? null,
-          node.depth ?? null,
+      return;
+    }
+
+    if (input.change === "deleted") {
+      if (pending.change === "added") {
+        // Source appeared and disappeared before the agent ever saw it.
+        this.db.run("DELETE FROM agent_queue WHERE id = ?", [pending.id]);
+      } else {
+        this.db.run(
+          "UPDATE agent_queue SET change = 'deleted', source_note_id = ?, enqueued_at = ? WHERE id = ?",
+          [input.sourceNoteId ?? null, now, pending.id],
         );
       }
-    })();
+      return;
+    }
+
+    const change = pending.change === "added" ? "added" : input.change;
+    this.db.run(
+      "UPDATE agent_queue SET change = ?, source_note_id = ? WHERE id = ?",
+      [change, input.sourceNoteId ?? pending.source_note_id, pending.id],
+    );
   }
 
-  listPageIndexNodes(noteId: string): PageIndexNodeRow[] {
+  listPendingAgentWork(vaultId: string, limit = 100): AgentWorkItem[] {
     return this.db
       .query(
-        `SELECT * FROM pageindex_nodes
-         WHERE note_id = ?
-         ORDER BY COALESCE(depth, 0), node_id`,
+        `SELECT * FROM agent_queue
+         WHERE vault_id = ? AND status = 'pending'
+         ORDER BY enqueued_at, id
+         LIMIT ?`,
       )
-      .all(noteId) as PageIndexNodeRow[];
+      .all(vaultId, limit) as AgentWorkItem[];
+  }
+
+  /** Mark queue items done. Returns the number of items updated. */
+  completeAgentWork(vaultId: string, ids: number[], resultNote?: string): number {
+    if (ids.length === 0) return 0;
+    const now = new Date().toISOString();
+    let updated = 0;
+    this.db.transaction(() => {
+      const stmt = this.db.prepare(
+        `UPDATE agent_queue SET status = 'done', completed_at = ?, result_note = ?
+         WHERE vault_id = ? AND id = ? AND status = 'pending'`,
+      );
+      for (const id of ids) {
+        const result = stmt.run(now, resultNote ?? null, vaultId, id);
+        updated += result.changes;
+      }
+    })();
+    return updated;
+  }
+
+  countPendingAgentWork(vaultId: string): number {
+    const row = this.db
+      .query(
+        "SELECT COUNT(*) AS count FROM agent_queue WHERE vault_id = ? AND status = 'pending'",
+      )
+      .get(vaultId) as { count: number };
+    return row.count;
+  }
+
+  // ── Sync State ────────────────────────────────────────────────────────────
+  // Persisted so the implicit pre-read sync can debounce across one-shot CLI
+  // processes, not just within a long-lived MCP server.
+
+  getLastSyncAt(vaultId: string): string | null {
+    const row = this.db
+      .query("SELECT last_sync_at FROM sync_state WHERE vault_id = ?")
+      .get(vaultId) as { last_sync_at: string } | null;
+    return row?.last_sync_at ?? null;
+  }
+
+  setLastSyncAt(vaultId: string, when: Date = new Date()): void {
+    this.db.run(
+      `INSERT INTO sync_state (vault_id, last_sync_at) VALUES (?, ?)
+       ON CONFLICT(vault_id) DO UPDATE SET last_sync_at = excluded.last_sync_at`,
+      [vaultId, when.toISOString()],
+    );
   }
 
   // ── Document Graph Metadata ──────────────────────────────────────────────
@@ -1116,15 +851,11 @@ export class MetaDB {
     limit = 20,
     vaultId?: string,
     offset = 0,
-    includeArtifacts = false,
+    scope: SearchScope = "llm-wiki",
   ): FtsResult[] {
     const ftsQuery = buildFtsQuery(query);
     if (!ftsQuery) return [];
-    // Default retrieval targets non-artifact chunks plus llm-wiki artifacts;
-    // includeArtifacts widens to every artifact kind.
-    const artifactClause = includeArtifacts
-      ? ""
-      : "AND (n.layer != 'artifact' OR n.kind = 'llm-wiki')";
+    const artifactClause = scopeClause(scope);
 
     const ftsRows = vaultId
       ? (
@@ -1208,34 +939,6 @@ export class MetaDB {
     }));
   }
 
-  // ── Preprocessor Registry ─────────────────────────────────────────────────
-
-  registerPreprocessor(alias: string, command: string, language?: string): void {
-    this.db.run(
-      `INSERT INTO preprocessors (alias, command, language)
-       VALUES (?, ?, ?)
-       ON CONFLICT(alias) DO UPDATE SET command = excluded.command, language = excluded.language`,
-      [alias, command, language ?? null],
-    );
-  }
-
-  removePreprocessor(alias: string): void {
-    this.db.run("DELETE FROM preprocessors WHERE alias = ?", [alias]);
-  }
-
-  getPreprocessorCommand(alias: string): string | null {
-    const row = this.db
-      .query("SELECT command FROM preprocessors WHERE alias = ?")
-      .get(alias) as { command: string } | null;
-    return row?.command ?? null;
-  }
-
-  listPreprocessors(): PreprocessorRow[] {
-    return this.db
-      .query("SELECT * FROM preprocessors ORDER BY alias")
-      .all() as PreprocessorRow[];
-  }
-
   // ── Vault Status ──────────────────────────────────────────────────────────
 
   getVaultStatus(vaultId: string): VaultStatus {
@@ -1249,132 +952,30 @@ export class MetaDB {
            SELECT COUNT(*) AS chunkCount
            FROM chunks c JOIN notes n ON c.note_id = n.id WHERE n.vault_id = ?1
          ),
-         tag_stats AS (
-           SELECT COUNT(DISTINCT t.tag) AS tagCount
-           FROM tags t JOIN notes n ON t.note_id = n.id WHERE n.vault_id = ?1
-         ),
          pending_stats AS (
            SELECT COUNT(*) AS pendingCount
            FROM notes WHERE vault_id = ?1 AND vector_sync_status = 'pending'
          ),
+         work_stats AS (
+           SELECT COUNT(*) AS pendingWorkCount
+           FROM agent_queue WHERE vault_id = ?1 AND status = 'pending'
+         ),
          layer_stats AS (
            SELECT
              SUM(CASE WHEN layer = 'source' THEN 1 ELSE 0 END) AS sourceCount,
-             SUM(CASE WHEN layer = 'rewritten' THEN 1 ELSE 0 END) AS rewrittenCount,
              SUM(CASE WHEN layer = 'artifact' THEN 1 ELSE 0 END) AS artifactCount
            FROM notes WHERE vault_id = ?1
          )
          SELECT
-           ns.noteCount, cs.chunkCount, ts.tagCount, ps.pendingCount,
+           ns.noteCount, cs.chunkCount, ps.pendingCount,
+           ws.pendingWorkCount,
            COALESCE(ls.sourceCount, 0) AS sourceCount,
-           COALESCE(ls.rewrittenCount, 0) AS rewrittenCount,
            COALESCE(ls.artifactCount, 0) AS artifactCount,
            ns.lastIndexedAt,
-           (SELECT embedding_model FROM vault_config WHERE vault_id = ?1) AS embeddingModel,
-           (SELECT preprocessor_alias FROM vault_config WHERE vault_id = ?1) AS preprocessorAlias
-         FROM note_stats ns, chunk_stats cs, tag_stats ts, pending_stats ps, layer_stats ls`,
+           (SELECT last_sync_at FROM sync_state WHERE vault_id = ?1) AS lastSyncAt,
+           (SELECT embedding_model FROM vault_config WHERE vault_id = ?1) AS embeddingModel
+         FROM note_stats ns, chunk_stats cs, pending_stats ps, work_stats ws, layer_stats ls`,
       )
       .get(vaultId) as VaultStatus;
-  }
-
-  // ── FTS5 Tokenizer Management ────────────────────────────────────────────
-
-  /**
-   * Get the current FTS5 tokenizer for chunks_fts.
-   * Parses the CREATE VIRTUAL TABLE statement to extract tokenize="...".
-   * Returns the tokenizer string (e.g. "trigram", "unicode61", etc.).
-   * Returns "trigram" (the default) if not found or not yet created.
-   */
-  getFtsTokenizer(): string {
-    try {
-      const row = this.db
-        .query(
-          `SELECT sql FROM sqlite_master WHERE type='table' AND name='chunks_fts'`
-        )
-        .get() as { sql: string } | null;
-
-      if (!row || !row.sql) {
-        return "trigram";
-      }
-
-      const match = row.sql.match(/tokenize="([^"]+)"/);
-      return match?.[1] ?? "trigram";
-    } catch {
-      return "trigram";
-    }
-  }
-
-  /**
-   * Rebuild chunks_fts with a new tokenizer.
-   * Validates tokenizer string to prevent SQL injection.
-   * Drops the old FTS table and its triggers, recreates with new tokenizer,
-   * then runs FTS rebuild.
-   */
-  rebuildFtsWithTokenizer(tokenizer: string): void {
-    // Validate tokenizer: alphanumeric, underscore, space only
-    if (!/^[a-zA-Z0-9_ ]+$/.test(tokenizer)) {
-      throw new Error(
-        `Invalid tokenizer: "${tokenizer}". Only alphanumeric, underscore, and space allowed.`
-      );
-    }
-
-    this.db.transaction(() => {
-      // Drop triggers (must drop before table)
-      this.db.run("DROP TRIGGER IF EXISTS chunks_ai");
-      this.db.run("DROP TRIGGER IF EXISTS chunks_ad");
-      this.db.run("DROP TRIGGER IF EXISTS chunks_au");
-
-      // Drop the FTS table
-      this.db.run("DROP TABLE IF EXISTS chunks_fts");
-
-      // Recreate with new tokenizer
-      this.db.run(`
-        CREATE VIRTUAL TABLE chunks_fts USING fts5(
-          content, content=chunks, content_rowid=rowid, tokenize="${tokenizer}"
-        )
-      `);
-
-      // Recreate triggers
-      this.db.run(`
-        CREATE TRIGGER chunks_ai AFTER INSERT ON chunks BEGIN
-          INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
-        END
-      `);
-      this.db.run(`
-        CREATE TRIGGER chunks_ad AFTER DELETE ON chunks BEGIN
-          INSERT INTO chunks_fts(chunks_fts, rowid, content)
-            VALUES('delete', old.rowid, old.content);
-        END
-      `);
-      this.db.run(`
-        CREATE TRIGGER chunks_au AFTER UPDATE ON chunks BEGIN
-          INSERT INTO chunks_fts(chunks_fts, rowid, content)
-            VALUES('delete', old.rowid, old.content);
-          INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
-        END
-      `);
-
-      // Rebuild FTS index
-      this.db.run("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')");
-    })();
-  }
-
-  // ── Sync / Reindex ────────────────────────────────────────────────────────
-
-  /**
-   * Atomically reindex a note.
-   * Deletes existing chunks/tags -> upserts note (as pending) -> inserts new chunks -> sets tags.
-   */
-  reindexNote(
-    note: NoteInput,
-    chunks: ChunkInsert[],
-    tags: Array<{ tag: string; source?: TagSource }>,
-  ): void {
-    this.db.transaction(() => {
-      this.deleteChunksByNote(note.id);
-      this.upsertNote(note);
-      this.#insertChunksRaw(chunks);
-      this.#setTagsRaw(note.id, tags);
-    })();
   }
 }

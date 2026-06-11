@@ -25,11 +25,8 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
     search: {
       query: (input) => invoke("search:query", input),
     },
-    sync: {
-      run: (input) => invoke("sync:run", input),
-    },
     source: {
-      addFromPicker: (input) => invoke("source:addFromPicker", input),
+      addFromPicker: () => invoke("source:addFromPicker", undefined),
       addFromFolder: (input) => invoke("source:addFromFolder", input),
     },
     note: {
@@ -39,17 +36,6 @@ export function createIpcKnotenApi(invoke: IpcInvoke): KnotenApiClient {
       get: () => invoke("template:get", undefined),
       list: () => invoke("template:list", undefined),
       getDocument: (input) => invoke("template:getDocument", input),
-      scaffold: () => invoke("template:scaffold", undefined),
-    },
-    tag: {
-      list: () => invoke("tag:list", undefined),
-      update: (input) => invoke("tag:update", input),
-    },
-    report: {
-      context: (input) => invoke("report:context", input),
-    },
-    llm: {
-      rewrite: (input) => invoke("llm:rewrite", input),
     },
     html: {
       openWindow: (input) => invoke("html:openWindow", input),

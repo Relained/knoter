@@ -1,6 +1,5 @@
-import { MetaDB, type FtsResult } from "../stores/meta-store";
-import { openVaultCollection, semanticQuery, type EmbeddingModel } from "../stores/vec-store";
-import type { SearchFilters } from "./query-builder";
+import { MetaDB, VAULT_DB_DIR, type FtsResult, type SearchScope } from "../stores/meta-store";
+import { openVaultCollection, semanticQuery } from "../stores/vec-store";
 import { linearFusion, isStrongSignal, isBm25StrongSignal, mergeAdjacentChunks, DEFAULT_ALPHA, type FusedResult } from "./fusion";
 import { logger } from "../core/logger";
 import { loadVaultConfig } from "../core/config";
@@ -15,11 +14,14 @@ export interface SearchOptions {
   semanticMin?: number;       // min semantic score
   keywordMin?: number;        // min keyword score
   hybridMin?: number;         // min fused score
-  tags?: string[];
   after?: string;
   before?: string;
   lang?: string;              // language filter: "cjk", "latin", "mixed", etc.
-  includeArtifacts?: boolean; // default search covers llm-wiki artifacts only; true widens to all artifacts
+  /**
+   * Search scope. Default "llm-wiki" supports semantic/hybrid retrieval;
+   * every other scope is keyword-only because only the llm-wiki is embedded.
+   */
+  scope?: SearchScope;
   alpha?: number;             // fusion weight, default 0.80
 }
 
@@ -54,10 +56,15 @@ export async function search(
   options: SearchOptions
 ): Promise<SearchResult> {
   const metaDb = new MetaDB(vaultRoot);
+  const scope = options.scope ?? "llm-wiki";
 
   try {
-    if (options.mode === "keyword") {
-      return await keywordSearch(metaDb, vaultId, query, options);
+    // Only the llm-wiki carries vectors; any wider scope is keyword-only.
+    if (options.mode === "keyword" || scope !== "llm-wiki") {
+      if (options.mode !== "keyword") {
+        logger.debug(`Scope "${scope}" is keyword-only; ignoring mode ${options.mode}`);
+      }
+      return await keywordSearch(metaDb, vaultId, query, options, scope);
     }
 
     if (options.mode === "semantic") {
@@ -83,12 +90,13 @@ async function keywordSearch(
   metaDb: MetaDB,
   vaultId: string,
   query: string,
-  options: SearchOptions
+  options: SearchOptions,
+  scope: SearchScope
 ): Promise<SearchResult> {
-  logger.debug(`Keyword search for: "${query}"`);
+  logger.debug(`Keyword search for: "${query}" (scope: ${scope})`);
 
   // searchFts internally builds the FTS5 query, so pass raw query
-  let results = metaDb.searchFts(query, options.top * 2, vaultId, 0, !!options.includeArtifacts);
+  let results = metaDb.searchFts(query, options.top * 2, vaultId, 0, scope);
 
   logger.debug(`FTS returned ${results.length} results`);
 
@@ -96,12 +104,6 @@ async function keywordSearch(
   if (options.keywordMin !== undefined) {
     results = results.filter(r => r.score >= options.keywordMin!);
     logger.debug(`After keywordMin filter: ${results.length} results`);
-  }
-
-  // Apply tag filter if provided
-  if (options.tags && options.tags.length > 0) {
-    results = filterByTags(metaDb, results, options.tags);
-    logger.debug(`After tag filter: ${results.length} results`);
   }
 
   // Apply date filter if provided
@@ -128,8 +130,8 @@ async function keywordSearch(
 
 /**
  * Semantic-only search via zvec.
- * 1. Generate query embedding (placeholder zeros for now)
- * 2. Build zvec filter from tags/dates
+ * 1. Generate query embedding from the vault provider
+ * 2. Build zvec filter from dates
  * 3. Query semantic index
  * 4. Map to FusedResult with semantic score
  */
@@ -153,13 +155,13 @@ async function semanticSearch(
       throw new Error("Embedding provider returned no query embedding");
     }
 
-    // Open zvec collection
-    const vectorPath = join(vaultRoot, ".kn", "vectors");
+    // Open zvec collection (llm-wiki chunks only)
+    const vectorPath = join(vaultRoot, VAULT_DB_DIR, "vectors");
     const collection = openVaultCollection(vectorPath, {});
 
     try {
-      // Build zvec filter from tags/dates
-      const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
+      // Build zvec filter from dates
+      const zvecFilter = buildZvecFilter(options.after, options.before);
 
       // Query semantic index using semanticQuery builder
       logger.debug(`Querying zvec with filter: ${zvecFilter || "none"}`);
@@ -170,12 +172,6 @@ async function semanticSearch(
         ...r,
         score: normalizeSemanticScore(r.score),
       }));
-      if (!options.includeArtifacts) {
-        results = results.filter((r: any) => {
-          const noteId = r.fields?.note_id || r.data?.note_id;
-          return isDefaultRetrievable(metaDb.getNote(noteId));
-        });
-      }
 
       logger.debug(`Semantic search returned ${results.length} results`);
 
@@ -226,8 +222,8 @@ async function hybridSearch(
 ): Promise<SearchResult> {
   logger.debug(`Hybrid search for: "${query}" with alpha=${alpha}`);
 
-  // Step 1: Keyword search (searchFts builds FTS5 query internally)
-  let keywordResults = metaDb.searchFts(query, options.top * 2, vaultId, 0, !!options.includeArtifacts);
+  // Step 1: Keyword search over the llm-wiki (searchFts builds FTS5 query internally)
+  let keywordResults = metaDb.searchFts(query, options.top * 2, vaultId, 0, "llm-wiki");
   logger.debug(`Keyword search returned ${keywordResults.length} results`);
 
   // Apply keyword score filter if provided
@@ -246,10 +242,7 @@ async function hybridSearch(
 
     let results = keywordResults.slice(0, options.top);
 
-    // Apply tag/date filters
-    if (options.tags && options.tags.length > 0) {
-      results = filterByTags(metaDb, results, options.tags);
-    }
+    // Apply date filter
     if (options.after || options.before) {
       results = filterByDates(metaDb, results, options.after, options.before);
     }
@@ -275,11 +268,11 @@ async function hybridSearch(
     throw new Error("Embedding provider returned no query embedding");
   }
 
-  const vectorPath = join(vaultRoot, ".kn", "vectors");
+  const vectorPath = join(vaultRoot, VAULT_DB_DIR, "vectors");
   const collection = openVaultCollection(vectorPath, {});
 
   try {
-    const zvecFilter = buildZvecFilter(options.tags, options.after, options.before);
+    const zvecFilter = buildZvecFilter(options.after, options.before);
 
     logger.debug(`Semantic search with filter: ${zvecFilter || "none"}`);
 
@@ -289,12 +282,6 @@ async function hybridSearch(
       ...r,
       score: normalizeSemanticScore(r.score),
     }));
-    if (!options.includeArtifacts) {
-      semanticResults = semanticResults.filter((r: any) => {
-        const noteId = r.fields?.note_id || r.data?.note_id;
-        return isDefaultRetrievable(metaDb.getNote(noteId));
-      });
-    }
 
     logger.debug(`Semantic search returned ${semanticResults.length} results`);
 
@@ -349,16 +336,6 @@ async function hybridSearch(
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
 /**
- * Default retrieval policy: non-artifact layers plus llm-wiki artifacts.
- * Other artifact kinds need an explicit includeArtifacts request. Rows
- * without metadata stay included, matching the previous layer-only filter.
- */
-function isDefaultRetrievable(noteRow: { layer?: string; kind?: string | null } | null | undefined): boolean {
-  if (!noteRow) return true;
-  return noteRow.layer !== "artifact" || noteRow.kind === "llm-wiki";
-}
-
-/**
  * Convert FTS result to FusedResult structure.
  */
 function ftsResultToFused(
@@ -368,7 +345,6 @@ function ftsResultToFused(
 ): FusedResult {
   const chunkRow = metaDb.getChunk(ftsResult.chunkId);
   const noteRow = metaDb.getNote(ftsResult.noteId);
-  const tags = metaDb.getTagsByNote(ftsResult.noteId).map(t => t.tag);
 
   let headingPath: string | null = null;
   if (chunkRow?.heading_path) {
@@ -383,7 +359,6 @@ function ftsResultToFused(
     title: noteRow?.title || null,
     heading: chunkRow?.heading || null,
     headingPath,
-    tags,
     createdAt: noteRow?.created_at || null,
     seqIndex: chunkRow?.seq_index || 0,
     score: scoreDetail.fused ?? ftsResult.score,
@@ -402,7 +377,6 @@ function zvecResultToFused(
   noteRow: any
 ): FusedResult {
   const fields = zvecResult.fields || {};
-  const tags = fields.tags || [];
 
   let headingPath: string | null = null;
   if (fields.heading_path) {
@@ -422,7 +396,6 @@ function zvecResultToFused(
     title: fields.title || null,
     heading: fields.heading || null,
     headingPath,
-    tags,
     createdAt: noteRow?.created_at || null,
     seqIndex: fields.seq_index || 0,
     score: zvecResult.score,
@@ -510,20 +483,13 @@ function mergeResultsByChunkId(
 }
 
 /**
- * Build zvec filter expression from tags and dates.
+ * Build zvec filter expression from dates.
  */
 function buildZvecFilter(
-  tags?: string[],
   after?: string,
   before?: string
 ): string | undefined {
   const parts: string[] = [];
-
-  // Tag filter: tags CONTAIN_ANY ("tag1", "tag2")
-  if (tags && tags.length > 0) {
-    const tagExprs = tags.map(t => `"${t.replace(/"/g, '\\"')}"`).join(", ");
-    parts.push(`tags CONTAIN_ANY (${tagExprs})`);
-  }
 
   // Date filters: created_at >= timestamp_ms
   if (after) {
@@ -549,23 +515,6 @@ function buildZvecFilter(
   }
 
   return parts.length > 0 ? parts.join(" AND ") : undefined;
-}
-
-/**
- * Filter FTS results by tags.
- */
-function filterByTags(
-  metaDb: MetaDB,
-  results: FtsResult[],
-  tags: string[]
-): FtsResult[] {
-  if (tags.length === 0) return results;
-
-  const tagSet = new Set(tags);
-  return results.filter(r => {
-    const noteTags = metaDb.getTagsByNote(r.noteId).map(t => t.tag);
-    return noteTags.some(t => tagSet.has(t));
-  });
 }
 
 /**

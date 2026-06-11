@@ -2,7 +2,11 @@
 
 Backend CLI for vault-based personal knowledge records.
 
-`knoter` stores user sources, external-agent rewritten documents, and generated artifacts in separate layers. It indexes rewritten/artifact documents for retrieval and exposes JSON/MCP context for external LLM agents.
+`knoter` stores user sources and agent-generated artifacts in separate
+layers, indexes them for retrieval, and queues source changes for an external
+maintenance agent. `kn sync` (run periodically by the OS service or manually)
+hands the queue to the configured agent backend (codex/claude CLI), which
+maintains `artifacts/` markdown + HTML directly in the vault.
 
 ## Quick Commands
 
@@ -11,58 +15,39 @@ bun install
 bun run src/cli.ts --help
 # Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
-bun test
 ```
 
-Optional local TEI smoke test:
+## Vault Layout
 
-```bash
-scripts/test-env.sh tei-start
-
-KN_TEI_BASE_URL=http://127.0.0.1:39280 \
-KN_TEI_MODEL=<model-id> \
-KN_TEI_DIM=<embedding-dimension> \
-bun test tests/tei-integration.test.ts
+```
+<vault>/                    # default ~/Documents/<name>, or --path
+  config.json               # optional override of the global config
+  templates/                # workflow.md contract + per-artifact templates (seeded at init)
+  sources/                  # user originals (evidence only)
+  artifacts/                # agent-maintained .md + same-path .html
+  .db/                      # meta.db, vectors, vault.lock
 ```
 
-On macOS, local TEI via `text-embeddings-router` is the supported path for
-Metal acceleration. `kn vault create --embedding-base-url http://127.0.0.1:39280`
-stores that endpoint. Container lifecycle is handled outside the CLI.
-
-The TEI integration test reads fixtures from `KN_TESTDATA_ROOT` (default:
-`../testdata` from this package), builds a Codex rewrite prompt for source ->
-rewritten -> artifact output, indexes rewritten/artifact documents with the TEI
-embedding model, and verifies Korean keyword plus semantic search. Set
-`KN_CODEX_CLI_E2E=1` to call the real Codex CLI agent.
-
-When `KN_TESTDATA_ROOT` exists, corpus tests and `scripts/test-env.sh setup`
-include every `**/*.md` file below that directory. Non-Markdown files are not
-part of the corpus.
-
-## Current Scope
-
-- Backend CLI package inside the monorepo.
-- Frontend lives in `../web`.
-- Normal `kn` commands do not call LLMs except embedding.
-- External LLM agents use MCP/JSON context to rewrite sources and create artifacts.
-- Package metadata is not final yet: `package.json` still uses the legacy
-  package name, keeps TypeScript as a peer dependency, and has no `bin.kn` or
-  package-local `check` script.
+Configuration is file-based only: `~/.config/knoter/config.json` (vault
+registry, agent backends, embedding defaults, sync interval) plus the
+per-vault override. No environment variables.
 
 ## Command Surface
 
-- `kn vault create|list|switch|delete|status`
-- `kn add`
-- `kn sync`
-- `kn search`
-- `kn get`, `kn get batch`
-- `kn tag list|add|remove`
-- `kn template get|list|validate`
-- `kn report context`
-- `kn mcp` (`stdio` default; HTTP/daemon mode is present but experimental)
-- `kn service status`
-- `kn llm rewrite` (explicit Codex-driven rewrite/artifact authoring; the only
-  command that calls an LLM)
+- `kn vault init <name> [--path <dir>]` — create layout + seed templates;
+  `list | switch | delete | status` (status triggers an index-only sync;
+  delete removes only `.db/` and the registry entry)
+- `kn sync [--full] [--no-agent] [--reconcile]` — index → queue source
+  changes → spawn the agent backend → re-index → complete queue items
+- `kn search <q> [--mode hybrid|semantic|keyword] [--scope llm-wiki|artifacts|sources|all]`
+  — default scope `llm-wiki` (the only embedded document); other scopes are
+  keyword-only
+- `kn service install [--interval <min>] | uninstall | status [--check]` —
+  macOS launchd registration for periodic `kn sync`, endpoint probe
+
+The CLI calls no LLM API itself (embedding endpoint only). On macOS, run
+`text-embeddings-router` locally for Metal acceleration (default endpoint
+`http://127.0.0.1:39280`).
 
 ## Docs
 
@@ -72,6 +57,6 @@ Start with:
 - `../docs/README.md`
 - `../docs/architecture.md`
 - `../docs/plan/` (progress.md, roadmap.md)
-- `../docs/template.md`
+- `../res/templates/workflow.md` (the seeded agent contract)
 
 Legacy design notes were deleted; recover them from git history if needed.

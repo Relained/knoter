@@ -60,7 +60,7 @@ import type {
 } from "./types";
 
 const transientToastMs = 4_000;
-const explorerLayers = ["source", "rewritten", "artifact", "template"] as const;
+const explorerLayers = ["source", "artifact", "template"] as const;
 // Keep-alive cap: each kept tab holds a live sandboxed iframe (static
 // srcdoc, no scripts), trading memory for preserved scroll positions.
 const keepAliveTabLimit = 8;
@@ -157,14 +157,14 @@ export function App() {
 
   const refreshVaultData = useCallback(async () => {
     if (!api) return;
-    const [vault, items, templateInfo] = await Promise.all([
+    const [vault, items, templates] = await Promise.all([
       api.vault.getActive(),
       api.explorer.list({ layers: [...explorerLayers] }),
       api.template.list(),
     ]);
     setActiveVault(vault);
     setExplorerItems(items);
-    setDocumentTemplates(templateInfo.templates ?? []);
+    setDocumentTemplates(templates);
   }, [api]);
 
   const keybindings = useSyncExternalStore(
@@ -256,11 +256,11 @@ export function App() {
       try {
         const vault = await api.vault.getActive();
         const items = await api.explorer.list({ layers: [...explorerLayers] });
-        const templateInfo = await api.template.list();
+        const templates = await api.template.list();
         if (canceled) return;
         setActiveVault(vault);
         setExplorerItems(items);
-        setDocumentTemplates(templateInfo.templates ?? []);
+        setDocumentTemplates(templates);
         pushStatus(
           vault
             ? `Vault connected: ${vault.name} (${items.length} documents).`
@@ -652,9 +652,8 @@ export function App() {
               "vault.bootstrap",
               {
                 name: input.name,
-                directory: input.directory,
+                directory: input.directory ?? "",
                 sourceFolder: input.sourceFolder ?? "",
-                scaffold: input.scaffold,
               },
               { skipOptionsForm: true },
             )

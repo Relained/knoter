@@ -24,7 +24,6 @@ export interface FusedResult {
   title: string | null;
   heading: string | null;
   headingPath: string | null;
-  tags: string[];
   createdAt: string | null;
   seqIndex: number;
   score: number;

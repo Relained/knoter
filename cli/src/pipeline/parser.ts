@@ -3,12 +3,11 @@ import { basename, extname } from "node:path";
 
 export interface ParsedNote {
   title: string;
-  tags: string[];
   frontmatter: Record<string, any>;
   content: string;
   rawContent: string;
   docDate: string | null;
-  layer: "source" | "rewritten" | "artifact";
+  layer: "source" | "artifact";
   kind: string | null;
 }
 
@@ -45,27 +44,8 @@ export function parseNote(content: string, filePath: string): ParsedNote {
     }
   }
 
-  // 3. Extract tags:
-  //    - frontmatter "tags" field (can be array or comma-separated string)
-  //    - Return as string[]
-  let tags: string[] = [];
-
-  if (frontmatter.tags) {
-    if (Array.isArray(frontmatter.tags)) {
-      tags = frontmatter.tags
-        .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
-        .filter((tag) => tag.length > 0);
-    } else if (typeof frontmatter.tags === "string") {
-      tags = frontmatter.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0);
-    }
-  }
-
   return {
     title,
-    tags,
     frontmatter,
     content: bodyContent,
     rawContent: content,
@@ -92,14 +72,12 @@ function inferDocDate(frontmatter: Record<string, any>, filePath: string): strin
 function inferDocumentLayer(
   frontmatter: Record<string, any>,
   filePath: string,
-): "source" | "rewritten" | "artifact" {
+): "source" | "artifact" {
   const raw = firstString(frontmatter.layer, frontmatter.documentLayer)?.toLowerCase();
-  if (raw === "source" || raw === "rewritten" || raw === "artifact") return raw;
+  if (raw === "source" || raw === "artifact") return raw;
 
   const normalizedPath = filePath.replace(/\\/g, "/").toLowerCase();
-  if (normalizedPath.startsWith("rewritten/")) return "rewritten";
   if (normalizedPath.startsWith("artifacts/")) return "artifact";
-  if (normalizedPath.startsWith("sources/")) return "source";
   return "source";
 }
 

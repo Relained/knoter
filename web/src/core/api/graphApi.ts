@@ -1,9 +1,9 @@
 import type {
   AddFolderInput,
   AddFolderResult,
-  AddSourcesInput,
   AddSourcesResult,
   DocumentTemplate,
+  DocumentTemplateSummary,
   ExplorerItem,
   ExplorerListInput,
   ExplorerReadInput,
@@ -13,20 +13,12 @@ import type {
   GraphPayload,
   GraphRefreshResult,
   HtmlWindowTheme,
-  LlmRewriteRunInput,
-  LlmRewriteRunResult,
   NoteSaveInput,
   NoteSaveResult,
   PickDirectoryResult,
-  ReportContextInput,
   SearchInput,
   SearchResult,
-  SyncRunInput,
-  SyncRunResult,
-  TagInfo,
-  TagUpdateInput,
   TemplateInfo,
-  TemplateScaffoldResult,
   VaultCreateInput,
   VaultStatus,
   VaultSummary
@@ -55,11 +47,8 @@ export type KnotenApi = {
   search: {
     query(input: SearchInput): Promise<SearchResult[]>;
   };
-  sync: {
-    run(input: SyncRunInput): Promise<SyncRunResult>;
-  };
   source: {
-    addFromPicker(input: AddSourcesInput): Promise<AddSourcesResult>;
+    addFromPicker(): Promise<AddSourcesResult>;
     addFromFolder(input: AddFolderInput): Promise<AddFolderResult>;
   };
   note: {
@@ -67,19 +56,8 @@ export type KnotenApi = {
   };
   template: {
     get(): Promise<TemplateInfo>;
-    list(): Promise<TemplateInfo>;
+    list(): Promise<DocumentTemplateSummary[]>;
     getDocument(input: { name: string }): Promise<DocumentTemplate>;
-    scaffold(): Promise<TemplateScaffoldResult>;
-  };
-  tag: {
-    list(): Promise<TagInfo[]>;
-    update(input: TagUpdateInput): Promise<Record<string, unknown>>;
-  };
-  report: {
-    context(input: ReportContextInput): Promise<Record<string, unknown>>;
-  };
-  llm: {
-    rewrite(input: LlmRewriteRunInput): Promise<LlmRewriteRunResult>;
   };
   html: {
     openWindow(input: {

@@ -4,14 +4,12 @@ import type {
   DocumentTemplateSummary,
   ExplorerItem,
   SearchResult,
-  TagInfo,
   TemplateInfo,
   VaultStatus,
   VaultSummary,
 } from "../../core/api/types";
 import { builtinViews } from "../fixtures";
 import type {
-  CommandValues,
   HtmlTab,
   WorkbenchCommand,
 } from "../types";
@@ -45,7 +43,7 @@ export type CommandContext = {
 };
 
 const searchModes = ["hybrid", "keyword", "semantic"] as const;
-const llmAgents = ["codex", "claude"] as const;
+const searchScopes = ["llm-wiki", "artifacts", "sources", "all"] as const;
 const noteEditors = ["daily", "simple"] as const;
 
 export function buildWorkbenchCommands(ctx: CommandContext): WorkbenchCommand[] {
@@ -82,10 +80,11 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           defaultValue: "hybrid",
         },
         {
-          key: "includeArtifacts",
-          label: "Include artifacts",
-          type: "boolean",
-          defaultValue: false,
+          key: "scope",
+          label: "Scope",
+          type: "enum",
+          enumValues: [...searchScopes],
+          defaultValue: "llm-wiki",
         },
       ],
       run: async (values) => {
@@ -93,9 +92,9 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         if (!api) return;
         const query = stringValue(values.query);
         const mode = enumValue(values.mode, searchModes, "hybrid");
-        const includeArtifacts = values.includeArtifacts === true;
-        ctx.pushStatus(`Searching: ${query} (${mode})`);
-        const results = await api.search.query({ query, mode, includeArtifacts });
+        const scope = enumValue(values.scope, searchScopes, "llm-wiki");
+        ctx.pushStatus(`Searching: ${query} (${mode}, ${scope})`);
+        const results = await api.search.query({ query, mode, scope });
         ctx.upsertTab({
           id: "search-results",
           title: `Search: ${query}`,
@@ -104,37 +103,6 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           html: searchResultsHtml(query, mode, results),
         });
         ctx.pushStatus(`Search complete: ${results.length} result(s).`);
-      },
-    },
-    {
-      id: "sync.run",
-      title: "Sync Vault Index",
-      detail: "backend sync",
-      icon: "agent.refresh",
-      options: [
-        { key: "full", label: "Full rebuild", type: "boolean", defaultValue: false },
-        { key: "changed", label: "Changed files only", type: "boolean", defaultValue: false },
-        { key: "prune", label: "Prune orphans only", type: "boolean", defaultValue: false },
-      ],
-      run: async (values) => {
-        const api = requireApi(ctx);
-        if (!api) return;
-        const operationId = ctx.beginOperation("Sync vault index");
-        try {
-          ctx.pushStatus("Sync started...");
-          const result = await api.sync.run({
-            full: values.full === true,
-            changed: values.changed === true,
-            prune: values.prune === true,
-          });
-          const errorNote = result.errors.length > 0 ? `, errors: ${result.errors.length}` : "";
-          ctx.pushStatus(
-            `Sync complete: +${result.added} added, ${result.updated} updated, ${result.pruned} pruned${errorNote}.`,
-          );
-          await ctx.refreshVaultData();
-        } finally {
-          ctx.endOperation(operationId);
-        }
       },
     },
     {
@@ -204,20 +172,13 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           key: "directory",
           label: "Parent folder",
           type: "string",
-          required: true,
-          placeholder: "/absolute/path/to/parent",
+          placeholder: "default: ~/Documents/<name>",
         },
         {
           key: "sourceFolder",
           label: "Source folder",
           type: "string",
           placeholder: "folder of .md files to bulk add (optional)",
-        },
-        {
-          key: "scaffold",
-          label: "Create template documents",
-          type: "boolean",
-          defaultValue: true,
         },
       ],
       run: async (values) => {
@@ -226,32 +187,17 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         const name = stringValue(values.name);
         const directory = stringValue(values.directory);
         const sourceFolder = stringValue(values.sourceFolder);
-        const scaffold = values.scaffold !== false;
         ctx.closeVaultModal();
         const operationId = ctx.beginOperation(`Create vault: ${name}`);
         try {
           ctx.pushStatus(`Creating vault: ${name}...`);
-          const vault = await api.vault.create({ name, directory });
-          ctx.pushStatus(`Vault created and activated: ${vault.name}`);
-          if (scaffold) {
-            const scaffolded = await api.template.scaffold();
-            ctx.pushStatus(
-              `Template documents: ${scaffolded.created.length} created, ${scaffolded.skipped.length} skipped.`,
-            );
-          }
+          const vault = await api.vault.create({ name, directory: directory || null });
+          ctx.pushStatus(`Vault created and activated: ${vault.name} (templates seeded).`);
           if (sourceFolder) {
             ctx.pushStatus(`Adding sources from ${sourceFolder}...`);
             const added = await api.source.addFromFolder({ path: sourceFolder });
-            ctx.pushStatus(
-              `Sources added: ${added.filesAdded} added, ${added.filesUpdated} updated, ${added.filesSkipped} skipped.`,
-            );
+            ctx.pushStatus(`Sources added: ${added.filesAdded} file(s) indexed.`);
           }
-          const sync = await api.sync.run({});
-          const errorNote =
-            sync.errors.length > 0 ? `, errors: ${sync.errors.length}` : "";
-          ctx.pushStatus(
-            `Index sync complete: +${sync.added} added, ${sync.updated} updated${errorNote}.`,
-          );
           await ctx.refreshVaultData();
         } finally {
           ctx.endOperation(operationId);
@@ -286,28 +232,18 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
       title: "Add Source Files to Vault",
       detail: "backend source",
       icon: "document.new",
-      options: [
-        {
-          key: "tags",
-          label: "Tags",
-          type: "string",
-          placeholder: "tag1, tag2 (optional)",
-        },
-      ],
-      run: async (values) => {
+      run: async () => {
         const api = requireApi(ctx);
         if (!api) return;
         const operationId = ctx.beginOperation("Add source files");
         try {
           ctx.pushStatus("Choose source files in the file picker...");
-          const result = await api.source.addFromPicker({ tags: parseTags(values.tags) });
+          const result = await api.source.addFromPicker();
           if (result.canceled) {
             ctx.pushStatus("Add source canceled.");
             return;
           }
-          ctx.pushStatus(
-            `Sources added: ${result.filesAdded} added, ${result.filesUpdated} updated, ${result.filesSkipped} skipped.`,
-          );
+          ctx.pushStatus(`Sources added: ${result.filesAdded} file(s) indexed.`);
           await ctx.refreshVaultData();
         } finally {
           ctx.endOperation(operationId);
@@ -334,12 +270,6 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
           type: "string",
           placeholder: "defaults to <editor>-note-<today>.md",
         },
-        {
-          key: "tags",
-          label: "Tags",
-          type: "string",
-          placeholder: "tag1, tag2 (optional)",
-        },
       ],
       run: async (values) => {
         const api = requireApi(ctx);
@@ -352,18 +282,14 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         }
         const today = new Date().toISOString().slice(0, 10);
         const fileName = stringValue(values.fileName) || `${editor}-note-${today}.md`;
-        const result = await api.note.save({
-          fileName,
-          content,
-          tags: parseTags(values.tags),
-        });
+        const result = await api.note.save({ fileName, content });
         ctx.pushStatus(`Note saved to vault: ${result.filePath} (${result.status}).`);
         await ctx.refreshVaultData();
       },
     },
     {
       id: "template.get",
-      title: "Open Effective Template",
+      title: "Open Workflow Contract",
       detail: "backend template",
       icon: "artifact.list",
       run: async () => {
@@ -371,13 +297,13 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
         if (!api) return;
         const template = await api.template.get();
         ctx.upsertTab({
-          id: "template-effective",
-          title: template.metadata?.name ?? "Effective Template",
+          id: "template-workflow",
+          title: "Workflow Contract",
           kind: "artifact",
           label: "Template",
           html: templateHtml(template),
         });
-        ctx.pushStatus(`Template loaded from ${template.source}.`);
+        ctx.pushStatus(`Workflow contract loaded: ${template.path}.`);
       },
     },
     {
@@ -388,174 +314,15 @@ function backendCommands(ctx: CommandContext): WorkbenchCommand[] {
       run: async () => {
         const api = requireApi(ctx);
         if (!api) return;
-        const template = await api.template.list();
+        const templates = await api.template.list();
         ctx.upsertTab({
           id: "template-list",
           title: "Templates",
           kind: "artifact",
           label: "Template",
-          html: templateListHtml(template),
+          html: templateListHtml(templates),
         });
-        ctx.pushStatus(
-          `Loaded ${template.templates?.length ?? 0} document template(s) (workflow contract: ${template.source}).`,
-        );
-      },
-    },
-    {
-      id: "tag.list",
-      title: "List Tags",
-      detail: "backend tag",
-      icon: "artifact.list",
-      run: async () => {
-        const api = requireApi(ctx);
-        if (!api) return;
-        const tags = await api.tag.list();
-        ctx.upsertTab({
-          id: "tag-list",
-          title: "Tags",
-          kind: "artifact",
-          label: "Tag",
-          html: tagListHtml(tags),
-        });
-        ctx.pushStatus(`Loaded ${tags.length} tag(s).`);
-      },
-    },
-    {
-      id: "tag.add",
-      title: "Add Tags to Note",
-      detail: "backend tag",
-      icon: "artifact.list",
-      options: [
-        {
-          key: "target",
-          label: "Target note path",
-          type: "string",
-          required: true,
-          placeholder: "sources/YYYY-MM-DD/note.md",
-        },
-        {
-          key: "tags",
-          label: "Tags",
-          type: "string",
-          required: true,
-          placeholder: "tag1, tag2",
-        },
-      ],
-      run: (values) => runTagUpdate(ctx, "add", values),
-    },
-    {
-      id: "tag.remove",
-      title: "Remove Tags from Note",
-      detail: "backend tag",
-      icon: "artifact.list",
-      options: [
-        {
-          key: "target",
-          label: "Target note path",
-          type: "string",
-          required: true,
-          placeholder: "sources/YYYY-MM-DD/note.md",
-        },
-        {
-          key: "tags",
-          label: "Tags",
-          type: "string",
-          required: true,
-          placeholder: "tag1, tag2",
-        },
-      ],
-      run: (values) => runTagUpdate(ctx, "remove", values),
-    },
-    {
-      id: "report.context",
-      title: "Build Report Context",
-      detail: "backend report",
-      icon: "agent.refresh",
-      options: [
-        {
-          key: "date",
-          label: "Date",
-          type: "string",
-          required: true,
-          defaultValue: new Date().toISOString().slice(0, 10),
-          placeholder: "YYYY-MM-DD",
-        },
-        {
-          key: "includeArtifacts",
-          label: "Include artifacts",
-          type: "boolean",
-          defaultValue: false,
-        },
-      ],
-      run: async (values) => {
-        const api = requireApi(ctx);
-        if (!api) return;
-        const date = stringValue(values.date);
-        const operationId = ctx.beginOperation(`Report context ${date}`);
-        try {
-          ctx.pushStatus(`Building report context for ${date}...`);
-          const bundle = await api.report.context({
-            date,
-            includeArtifacts: values.includeArtifacts === true,
-          });
-          ctx.upsertTab({
-            id: `report-context-${date}`,
-            title: `Report Context ${date}`,
-            kind: "artifact",
-            label: "Report",
-            html: jsonHtml(`Report Context ${date}`, bundle),
-          });
-          ctx.pushStatus(`Report context ready for ${date}.`);
-        } finally {
-          ctx.endOperation(operationId);
-        }
-      },
-    },
-    {
-      id: "llm.rewrite",
-      title: "Run Agent Rewrite",
-      detail: "backend agent",
-      icon: "agent.refresh",
-      options: [
-        {
-          key: "source",
-          label: "Source path",
-          type: "string",
-          required: true,
-          placeholder: "sources/YYYY-MM-DD/note.md",
-        },
-        {
-          key: "agent",
-          label: "Agent",
-          type: "enum",
-          enumValues: [...llmAgents],
-          defaultValue: "codex",
-        },
-      ],
-      run: async (values) => {
-        const api = requireApi(ctx);
-        if (!api) return;
-        if (!ctx.beginAgentRun()) {
-          ctx.pushStatus("An agent rewrite is already running.");
-          return;
-        }
-        const source = stringValue(values.source);
-        const agent = enumValue(values.agent, llmAgents, "codex");
-        const operationId = ctx.beginOperation(`Agent rewrite (${agent}): ${source}`);
-        try {
-          ctx.pushStatus(`Agent rewrite running (${agent}): ${source} — this can take minutes.`);
-          const result = await api.llm.rewrite({ source, agent });
-          const artifactPaths = result.artifacts.map((artifact) => artifact.path);
-          ctx.pushStatus(
-            `Rewrite complete (${result.agent}): ${result.artifacts.length} artifact(s) updated${
-              artifactPaths.length > 0 ? ` — ${artifactPaths.join(", ")}` : ""
-            }.`,
-          );
-          await ctx.refreshVaultData();
-        } finally {
-          ctx.endAgentRun();
-          ctx.endOperation(operationId);
-        }
+        ctx.pushStatus(`Loaded ${templates.length} template file(s).`);
       },
     },
   ];
@@ -702,8 +469,8 @@ function openTabCommands(ctx: CommandContext): WorkbenchCommand[] {
 function documentTemplateCommands(ctx: CommandContext): WorkbenchCommand[] {
   return ctx.documentTemplates.map((template) => ({
     id: `template.open.${template.name}`,
-    title: `Template: ${template.title ?? template.name}`,
-    detail: `${template.source} template`,
+    title: `Template: ${template.name}`,
+    detail: "vault template",
     icon: "artifact.list",
     run: async () => {
       const api = requireApi(ctx);
@@ -711,12 +478,12 @@ function documentTemplateCommands(ctx: CommandContext): WorkbenchCommand[] {
       const doc = await api.template.getDocument({ name: template.name });
       ctx.upsertTab({
         id: `template:${doc.name}`,
-        title: doc.title ?? doc.name,
+        title: doc.name,
         kind: "artifact",
         label: "Template",
         html: documentTemplateHtml(doc),
       });
-      ctx.pushStatus(`Template loaded: ${doc.name} (${doc.source}).`);
+      ctx.pushStatus(`Template loaded: ${doc.name}.`);
     },
   }));
 }
@@ -755,23 +522,6 @@ function openBuiltinView(ctx: CommandContext, viewId: string) {
   if (view) ctx.upsertTab(view);
 }
 
-async function runTagUpdate(
-  ctx: CommandContext,
-  action: "add" | "remove",
-  values: CommandValues,
-) {
-  const api = requireApi(ctx);
-  if (!api) return;
-  const target = stringValue(values.target);
-  const tags = parseTags(values.tags);
-  if (tags.length === 0) {
-    ctx.pushStatus("At least one tag is required.");
-    return;
-  }
-  await api.tag.update({ action, target, tags });
-  ctx.pushStatus(`Tags ${action === "add" ? "added to" : "removed from"} ${target}: ${tags.join(", ")}`);
-}
-
 function requireApi(ctx: CommandContext): KnotenApiClient | null {
   if (!ctx.api) {
     ctx.pushStatus("Backend bridge not available — run through the Electron dev shell (npm run dev).");
@@ -790,13 +540,6 @@ function enumValue<T extends string>(
   fallback: T,
 ): T {
   return options.includes(value as T) ? (value as T) : fallback;
-}
-
-function parseTags(value: unknown): string[] {
-  return stringValue(value)
-    .split(/[,\s]+/)
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0);
 }
 
 function capitalize(value: string): string {
@@ -854,109 +597,68 @@ function vaultStatusHtml(status: VaultStatus): string {
         <dt>notes</dt><dd>${status.noteCount}</dd>
         <dt>chunks</dt><dd>${status.chunkCount}</dd>
         <dt>sources</dt><dd>${status.sourceCount}</dd>
-        <dt>rewritten</dt><dd>${status.rewrittenCount}</dd>
         <dt>artifacts</dt><dd>${status.artifactCount}</dd>
-        <dt>tags</dt><dd>${status.tagCount}</dd>
+        <dt>pending agent work</dt><dd>${status.pendingWorkCount}</dd>
         <dt>last indexed</dt><dd>${escapeHtml(status.lastIndexedAt ?? "never")}</dd>
+        <dt>last sync</dt><dd>${escapeHtml(status.lastSyncAt ?? "never")}</dd>
         <dt>embedding model</dt><dd>${escapeHtml(status.embeddingModel ?? "none")}</dd>
       </dl>
     </article>
   `;
 }
 
-function tagListHtml(tags: TagInfo[]): string {
-  const rows = tags
-    .map((tag) => `<li><strong>${escapeHtml(tag.tag)}</strong> · ${tag.count}</li>`)
-    .join("");
-  return `
-    <article>
-      <p class="eyebrow">TAGS</p>
-      <h1>Tags</h1>
-      <ul>${rows || "<li>No tags found.</li>"}</ul>
-    </article>
-  `;
-}
-
 function templateHtml(template: TemplateInfo): string {
-  const name = template.metadata?.name ?? "Template";
   return `
     <article>
       <p class="eyebrow">TEMPLATE</p>
-      <h1>${escapeHtml(name)}</h1>
-      <p>source: ${escapeHtml(template.source)} · <code>${escapeHtml(template.path)}</code></p>
+      <h1>Workflow Contract</h1>
+      <p><code>${escapeHtml(template.path)}</code></p>
       ${markdownToHtml(template.content)}
     </article>
   `;
 }
 
-function templateListHtml(template: TemplateInfo): string {
-  const templates = template.templates ?? [];
+function templateListHtml(templates: DocumentTemplateSummary[]): string {
   const rows = templates
     .map(
       (entry) => `
         <tr>
-          <td><strong>${escapeHtml(entry.title ?? entry.name)}</strong><br /><code>${escapeHtml(entry.name)}</code></td>
-          <td>${escapeHtml(entry.kind ?? "-")}</td>
-          <td>${escapeHtml(entry.source)}${entry.scaffold ? " · scaffold" : ""}</td>
-          <td><code>${escapeHtml(entry.artifactPath)}</code></td>
-          <td>${escapeHtml(entry.description ?? "")}</td>
+          <td><strong>${escapeHtml(entry.name)}</strong></td>
+          <td><code>${escapeHtml(entry.path)}</code></td>
+          <td>${entry.hasHtml ? "yes" : "-"}</td>
         </tr>`,
     )
     .join("");
   return `
     <article>
       <p class="eyebrow">TEMPLATES</p>
-      <h1>Document Templates</h1>
-      <p>${templates.length} per-artifact template(s). Open one from the command palette ("Template: ...").
-         Vault overrides live at <code>.kn/templates/&lt;name&gt;.md</code>.</p>
+      <h1>Vault Templates</h1>
+      <p>${templates.length} template file(s) in <code>templates/</code>. Open one from the
+         command palette ("Template: ..."). Edit the files directly to customize the
+         agent's artifact contracts.</p>
       <table>
         <thead>
-          <tr><th>Template</th><th>Kind</th><th>Source</th><th>Artifact path</th><th>Description</th></tr>
+          <tr><th>Name</th><th>Path</th><th>Default HTML</th></tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="5">No document templates found.</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="3">No template files found.</td></tr>'}</tbody>
       </table>
-      <section>
-        <h2>Workflow contract</h2>
-        <p>${escapeHtml(template.metadata?.name ?? "knoter Artifact Workflow")} ·
-           ${escapeHtml(template.source)} · <code>${escapeHtml(template.path)}</code> —
-           open it with the "Open Effective Template" command.</p>
-      </section>
     </article>
   `;
 }
 
 function documentTemplateHtml(doc: DocumentTemplate): string {
-  const facts = [
-    ["name", doc.name],
-    ["kind", doc.kind ?? "-"],
-    ["source", doc.source],
-    ["artifact path", doc.artifactPath],
-    ["scaffold", doc.scaffold ? "yes" : "no"],
-  ]
-    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd><code>${escapeHtml(value)}</code></dd>`)
-    .join("");
-  // doc.html is the bundled default display template; it flows through the
-  // same sandbox sanitize path as every artifact tab.
+  // doc.html is the default display template; it flows through the same
+  // sandbox sanitize path as every artifact tab.
   const htmlPreview = doc.html
     ? `<section><h2>Default HTML preview</h2>${doc.html}</section>`
     : "";
   return `
     <article>
       <p class="eyebrow">TEMPLATE</p>
-      <h1>${escapeHtml(doc.title ?? doc.name)}</h1>
-      <dl>${facts}</dl>
+      <h1>${escapeHtml(doc.name)}</h1>
+      <p><code>${escapeHtml(doc.path)}</code></p>
       ${markdownToHtml(doc.content)}
       ${htmlPreview}
-    </article>
-  `;
-}
-
-function jsonHtml(title: string, payload: unknown): string {
-  return `
-    <article>
-      <p class="eyebrow">REPORT</p>
-      <h1>${escapeHtml(title)}</h1>
-      <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
     </article>
   `;
 }

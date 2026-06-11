@@ -1,21 +1,15 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   buildSearchCliArgs,
-  buildSyncCliArgs,
   toSearchResult,
   validateExplorerLayers,
-  validateIsoDate,
-  validateLlmAgent,
   validateNonEmptyString,
   validateNoteFileName,
   validateOptionalString,
-  validateTagAction,
-  validateTags,
   validateTemplateName,
   validateVaultName
 } from "./cli-contract.mjs";
@@ -27,7 +21,6 @@ const cliRunner = process.env.KNOTER_CLI_RUNNER ?? "bun";
 const devServerUrl = process.env.KNOTER_DEV_SERVER_URL;
 const cliTimeoutMs = Number.parseInt(process.env.KNOTER_CLI_TIMEOUT_MS ?? "30000", 10);
 const cliIndexTimeoutMs = 120_000;
-const cliAgentTimeoutMs = 300_000;
 let mainWindow = null;
 
 app.whenReady().then(async () => {
@@ -136,7 +129,9 @@ function installIpcHandlers() {
     }));
   });
   ipcMain.handle("vault:status", async () => {
-    const envelope = await runCli(["vault", "status"]);
+    // vault status runs the implicit sync, so it doubles as the
+    // "index whatever was dropped into the vault" trigger.
+    const envelope = await runCli(["vault", "status"], { timeoutMs: cliIndexTimeoutMs });
     const data = envelope.data ?? {};
     const status = data.status ?? {};
     return {
@@ -144,83 +139,30 @@ function installIpcHandlers() {
       path: data.path ?? "",
       noteCount: status.noteCount ?? 0,
       chunkCount: status.chunkCount ?? 0,
-      tagCount: status.tagCount ?? 0,
+      pendingWorkCount: status.pendingWorkCount ?? 0,
       sourceCount: status.sourceCount ?? 0,
-      rewrittenCount: status.rewrittenCount ?? 0,
       artifactCount: status.artifactCount ?? 0,
       lastIndexedAt: status.lastIndexedAt ?? null,
+      lastSyncAt: status.lastSyncAt ?? null,
       embeddingModel: status.embeddingModel ?? null
-    };
-  });
-  ipcMain.handle("sync:run", async (_event, input) => {
-    const envelope = await runCli(buildSyncCliArgs(input), { timeoutMs: cliIndexTimeoutMs });
-    const data = envelope.data ?? {};
-    return {
-      recovered: data.recovered ?? 0,
-      added: data.added ?? 0,
-      updated: data.updated ?? 0,
-      pruned: data.pruned ?? 0,
-      reconciled: data.reconciled ?? 0,
-      errors: Array.isArray(data.errors) ? data.errors : []
     };
   });
   ipcMain.handle("vault:create", async (_event, input) => createVaultFromInput(input));
   ipcMain.handle("dialog:pickDirectory", async (_event, input) => pickDirectory(input));
-  ipcMain.handle("source:addFromPicker", async (_event, input) => addSourcesFromPicker(input));
+  ipcMain.handle("source:addFromPicker", async () => addSourcesFromPicker());
   ipcMain.handle("source:addFromFolder", async (_event, input) => addSourcesFromFolder(input));
   ipcMain.handle("note:save", async (_event, input) => saveNoteToVault(input));
-  ipcMain.handle("template:get", async () => loadTemplateInfo("get"));
-  ipcMain.handle("template:list", async () => loadTemplateInfo("list"));
+  ipcMain.handle("template:get", async () => loadWorkflowTemplate());
+  ipcMain.handle("template:list", async () => listTemplateFiles());
   ipcMain.handle("template:getDocument", async (_event, input) => loadDocumentTemplate(input));
-  ipcMain.handle("template:scaffold", async () => scaffoldTemplateDocuments());
-  ipcMain.handle("tag:list", async () => {
-    const envelope = await runCli(["tag", "list"]);
-    return envelope.data?.tags ?? [];
-  });
-  ipcMain.handle("tag:update", async (_event, input) => {
-    const action = validateTagAction(input?.action);
-    const target = validateNonEmptyString(input?.target, "Tag target");
-    const tags = validateTags(input?.tags);
-    if (tags.length === 0) throw new Error("At least one tag is required");
-    const envelope = await runCli(["tag", action, target, ...tags]);
-    return envelope.data ?? {};
-  });
-  ipcMain.handle("report:context", async (_event, input) => {
-    const date = validateIsoDate(input?.date);
-    const args = ["report", "context", "--date", date];
-    if (input?.includeArtifacts === true) args.push("--include-artifacts");
-    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
-    return envelope.data ?? {};
-  });
-  ipcMain.handle("llm:rewrite", async (_event, input) => {
-    const source = validateNonEmptyString(input?.source, "Source path");
-    const agent = validateLlmAgent(input?.agent);
-    const envelope = await runCli(
-      ["llm", "rewrite", "--source", source, "--agent", agent],
-      { timeoutMs: cliAgentTimeoutMs }
-    );
-    const data = envelope.data ?? {};
-    return {
-      sourcePath: data.sourcePath ?? source,
-      rewrittenPath: data.rewrittenPath ?? "",
-      agent: data.agent ?? agent,
-      rewritten: {
-        status: data.rewritten?.status ?? "unknown",
-        chunkCount: data.rewritten?.chunkCount ?? 0
-      },
-      artifacts: (data.artifacts ?? []).map((artifact) => ({
-        path: artifact.path ?? "",
-        status: artifact.status ?? "unknown"
-      }))
-    };
-  });
 }
 
 async function createVaultFromInput(input) {
   const name = validateVaultName(input?.name);
-  const directory = validateNonEmptyString(input?.directory, "Vault location");
-  const vaultPath = join(directory, name);
-  await runCli(["vault", "create", name, "--path", vaultPath]);
+  const directory = validateOptionalString(input?.directory, "Vault location");
+  const args = ["vault", "init", name];
+  if (directory) args.push("--path", join(directory, name));
+  await runCli(args);
   await runCli(["vault", "switch", name]);
   const active = await getActiveVaultSummary();
   if (!active) throw new Error(`Vault was created but could not be activated: ${name}`);
@@ -239,51 +181,50 @@ async function pickDirectory(input) {
   return { canceled: false, path: picked.filePaths[0] };
 }
 
+// Sources enter the vault by direct file placement under sources/; the CLI's
+// implicit pre-read sync indexes them and queues agent work. There is no
+// kn add command.
 async function addSourcesFromFolder(input) {
   const folder = validateNonEmptyString(input?.path, "Source folder path");
-  const tags = validateTags(input?.tags);
-  const args = ["add", folder, "--recursive"];
-  for (const tag of tags) args.push("--tag", tag);
-  // Bulk folder indexing can embed many chunks; use the long agent timeout.
-  const envelope = await runCli(args, { timeoutMs: cliAgentTimeoutMs });
-  const data = envelope.data ?? {};
+  const files = await listMarkdownFiles(resolve(folder));
+  const details = await copyFilesIntoVaultSources(files);
   return {
-    filesProcessed: data.filesProcessed ?? 0,
-    filesAdded: data.filesAdded ?? 0,
-    filesUpdated: data.filesUpdated ?? 0,
-    filesSkipped: data.filesSkipped ?? 0,
-    details: (data.details ?? []).map((detail) => ({
-      filePath: detail.filePath ?? "",
-      status: detail.status ?? "unknown",
-      chunkCount: detail.chunkCount ?? 0
-    }))
+    filesProcessed: files.length,
+    filesAdded: details.length,
+    details
   };
 }
 
-async function scaffoldTemplateDocuments() {
-  const envelope = await runCli(["template", "scaffold"]);
-  const data = envelope.data ?? {};
-  return {
-    created: (data.created ?? []).map((entry) => ({
-      name: entry.name ?? "",
-      path: entry.path ?? ""
-    })),
-    skipped: (data.skipped ?? []).map((entry) => ({
-      name: entry.name ?? "",
-      path: entry.path ?? "",
-      reason: entry.reason ?? ""
-    }))
-  };
+async function copyFilesIntoVaultSources(files) {
+  if (files.length === 0) return [];
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error("No active vault found");
+
+  const details = [];
+  for (const file of files) {
+    const name = basename(file);
+    const datePart = inferDateFromName(name) ?? new Date().toISOString().slice(0, 10);
+    const targetDir = join(active.root, "sources", datePart);
+    await mkdir(targetDir, { recursive: true });
+    await copyFile(file, join(targetDir, name));
+    details.push({ filePath: join("sources", datePart, name), status: "added" });
+  }
+
+  // Trigger the implicit sync so the dropped files are indexed and queued.
+  await runCli(["vault", "status"], { timeoutMs: cliIndexTimeoutMs });
+  return details;
 }
 
-async function addSourcesFromPicker(input) {
-  const tags = validateTags(input?.tags);
+function inferDateFromName(name) {
+  const match = name.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+async function addSourcesFromPicker() {
   const emptyResult = {
     canceled: true,
     filesProcessed: 0,
     filesAdded: 0,
-    filesUpdated: 0,
-    filesSkipped: 0,
     details: []
   };
   const picked = await dialog.showOpenDialog(mainWindow ?? undefined, {
@@ -296,87 +237,91 @@ async function addSourcesFromPicker(input) {
   });
   if (picked.canceled || picked.filePaths.length === 0) return emptyResult;
 
-  const totals = { ...emptyResult, canceled: false };
-  for (const filePath of picked.filePaths) {
-    const args = ["add", filePath];
-    for (const tag of tags) args.push("--tag", tag);
-    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
-    const data = envelope.data ?? {};
-    totals.filesProcessed += data.filesProcessed ?? 0;
-    totals.filesAdded += data.filesAdded ?? 0;
-    totals.filesUpdated += data.filesUpdated ?? 0;
-    totals.filesSkipped += data.filesSkipped ?? 0;
-    for (const detail of data.details ?? []) {
-      totals.details.push({
-        filePath: detail.filePath ?? "",
-        status: detail.status ?? "unknown",
-        chunkCount: detail.chunkCount ?? 0
-      });
-    }
-  }
-  return totals;
+  const details = await copyFilesIntoVaultSources(picked.filePaths);
+  return {
+    canceled: false,
+    filesProcessed: picked.filePaths.length,
+    filesAdded: details.length,
+    details
+  };
 }
 
 async function saveNoteToVault(input) {
   const fileName = validateNoteFileName(input?.fileName);
   const content = validateNonEmptyString(input?.content, "Note content");
-  const tags = validateTags(input?.tags);
 
-  const tempDir = await mkdtemp(join(tmpdir(), "knoter-note-"));
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error("No active vault found");
+
+  const datePart = inferDateFromName(fileName) ?? new Date().toISOString().slice(0, 10);
+  const targetDir = join(active.root, "sources", datePart);
+  await mkdir(targetDir, { recursive: true });
+  await writeFile(join(targetDir, fileName), content, "utf8");
+
+  await runCli(["vault", "status"], { timeoutMs: cliIndexTimeoutMs });
+  return {
+    filePath: join("sources", datePart, fileName),
+    status: "added"
+  };
+}
+
+// Templates are plain files in <vault>/templates/ (seeded by `kn vault init`).
+// The bridge reads them directly; there is no template CLI surface.
+
+async function loadWorkflowTemplate() {
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error("No active vault found");
+  const relPath = join("templates", "workflow.md");
+  return {
+    path: relPath,
+    content: await readFile(join(active.root, relPath), "utf8")
+  };
+}
+
+async function listTemplateFiles() {
+  const active = await getActiveVaultSummary();
+  if (!active) return [];
+  const templatesDir = join(active.root, "templates");
+  let entries;
   try {
-    const tempPath = join(tempDir, fileName);
-    await writeFile(tempPath, content, "utf8");
-    const args = ["add", tempPath, "--force"];
-    for (const tag of tags) args.push("--tag", tag);
-    const envelope = await runCli(args, { timeoutMs: cliIndexTimeoutMs });
-    const detail = envelope.data?.details?.[0] ?? {};
-    return {
-      filePath: detail.filePath ?? "",
-      status: detail.status ?? "added",
-      chunkCount: detail.chunkCount ?? 0
-    };
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
+    entries = await readdir(templatesDir, { withFileTypes: true });
+  } catch {
+    return [];
   }
-}
-
-async function loadTemplateInfo(subcommand) {
-  const envelope = await runCli(["template", subcommand]);
-  const data = envelope.data ?? {};
-  return {
-    source: data.source ?? "unknown",
-    path: data.path ?? "",
-    content: typeof data.content === "string" ? data.content : "",
-    metadata: data.metadata ?? null,
-    ...(Array.isArray(data.templates)
-      ? { templates: data.templates.map(toDocumentTemplateSummary) }
-      : {})
-  };
-}
-
-function toDocumentTemplateSummary(entry) {
-  return {
-    name: entry?.name ?? "",
-    source: entry?.source === "vault" ? "vault" : "bundled",
-    path: entry?.path ?? "",
-    kind: entry?.kind ?? null,
-    title: entry?.title ?? null,
-    description: entry?.description ?? null,
-    hasHtml: entry?.hasHtml === true,
-    scaffold: entry?.scaffold === true,
-    artifactPath: entry?.artifactPath ?? ""
-  };
+  const names = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
+  return [...names]
+    .filter((file) => file.toLowerCase().endsWith(".md"))
+    .sort()
+    .map((file) => {
+      const name = file.slice(0, -3);
+      return {
+        name,
+        path: join("templates", file),
+        hasHtml: names.has(`${name}.html`)
+      };
+    });
 }
 
 async function loadDocumentTemplate(input) {
   const name = validateTemplateName(input?.name);
-  const envelope = await runCli(["template", "get", name]);
-  const data = envelope.data ?? {};
+  const active = await getActiveVaultSummary();
+  if (!active) throw new Error("No active vault found");
+  const templatesDir = join(active.root, "templates");
+  const mdPath = join(templatesDir, `${name}.md`);
+  const htmlPath = join(templatesDir, `${name}.html`);
+  const content = await readFile(mdPath, "utf8");
+  let html = null;
+  try {
+    html = await readFile(htmlPath, "utf8");
+  } catch {
+    // No default HTML for this template.
+  }
   return {
-    ...toDocumentTemplateSummary(data),
-    content: typeof data.content === "string" ? data.content : "",
-    metadata: data.metadata ?? null,
-    html: typeof data.html === "string" ? data.html : null
+    name,
+    path: join("templates", `${name}.md`),
+    hasHtml: html !== null,
+    content,
+    html
   };
 }
 
@@ -496,7 +441,7 @@ async function readExplorerItem(input) {
   const absolutePath = isAbsolute(item.path) ? item.path : resolve(vaultRoot, item.path);
   const relativePath = relative(vaultRoot, absolutePath);
   const outsideVault = relativePath === ".." || relativePath.startsWith(`..${sep}`);
-  if (outsideVault && item.layer !== "template") {
+  if (outsideVault) {
     throw new Error(`Explorer item is outside the active vault: ${item.path}`);
   }
 
@@ -527,12 +472,14 @@ async function getActiveVaultSummary() {
 async function loadExplorerItems(activeVault) {
   const active = activeVault ?? await getActiveVaultSummary();
   const items = [];
-  const template = await loadTemplateItem();
-  if (template) items.push(template);
   if (!active) return items;
 
+  for (const template of await listTemplateFiles()) {
+    items.push(
+      createExplorerItem(`template:${template.path}`, "template", template.name, template.path)
+    );
+  }
   items.push(...await listMarkdownLayer(active.root, "source", "sources"));
-  items.push(...await listMarkdownLayer(active.root, "rewritten", "rewritten"));
   items.push(...await listMarkdownLayer(active.root, "artifact", "artifacts"));
   return items;
 }
@@ -562,18 +509,6 @@ async function listMarkdownFiles(root) {
     return nested.flat();
   } catch {
     return [];
-  }
-}
-
-async function loadTemplateItem() {
-  try {
-    const envelope = await runCli(["template", "get"]);
-    const template = envelope.data;
-    return createExplorerItem("template:effective", "template", template.metadata?.name ?? "Effective Template", template.path, {
-      kind: template.metadata?.kind ?? null
-    });
-  } catch {
-    return null;
   }
 }
 

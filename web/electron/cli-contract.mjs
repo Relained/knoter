@@ -1,7 +1,6 @@
-const validExplorerLayers = new Set(["source", "rewritten", "artifact", "template"]);
+const validExplorerLayers = new Set(["source", "artifact", "template"]);
 const validSearchModes = new Set(["keyword", "semantic", "hybrid"]);
-const validLlmAgents = new Set(["codex", "claude"]);
-const validTagActions = new Set(["add", "remove"]);
+const validSearchScopes = new Set(["llm-wiki", "artifacts", "sources", "all"]);
 
 export function validateNonEmptyString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -17,7 +16,7 @@ export function validateOptionalString(value, label) {
 }
 
 export function validateExplorerLayers(value, options = {}) {
-  const fallback = options.fallback ?? ["rewritten"];
+  const fallback = options.fallback ?? ["artifact"];
   if (!Array.isArray(value)) return fallback;
   if (value.length === 0 && options.allowEmpty) return [];
   const layers = value.filter((layer) => validExplorerLayers.has(layer));
@@ -30,48 +29,17 @@ export function validateSearchMode(value) {
   return "hybrid";
 }
 
+export function validateSearchScope(value) {
+  if (typeof value === "string" && validSearchScopes.has(value)) return value;
+  return "llm-wiki";
+}
+
 export function buildSearchCliArgs(input) {
   const query = validateNonEmptyString(input?.query, "Search query");
   const mode = validateSearchMode(input?.mode);
-  if ("layers" in (input ?? {})) {
-    throw new Error("Search layers are not part of the Source/Artifact API; use includeArtifacts");
-  }
-  const args = ["search", query, "--mode", mode, "--top", "20"];
-  if (input?.includeArtifacts === true) args.push("--include-artifacts");
-  return { args, includeArtifacts: input?.includeArtifacts === true };
-}
-
-export function validateLlmAgent(value) {
-  if (typeof value !== "string" || !validLlmAgents.has(value)) {
-    throw new Error("Agent must be codex or claude");
-  }
-  return value;
-}
-
-export function validateTagAction(value) {
-  if (typeof value !== "string" || !validTagActions.has(value)) {
-    throw new Error("Tag action must be add or remove");
-  }
-  return value;
-}
-
-export function validateIsoDate(value) {
-  const date = validateNonEmptyString(value, "Date");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error("Date must use the YYYY-MM-DD format");
-  }
-  return date;
-}
-
-export function validateTags(value) {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) throw new Error("Tags must be an array of strings");
-  const tags = value
-    .filter((tag) => typeof tag === "string")
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0);
-  if (tags.length > 20) throw new Error("Too many tags (max 20)");
-  return tags;
+  const scope = validateSearchScope(input?.scope);
+  const args = ["search", query, "--mode", mode, "--top", "20", "--scope", scope];
+  return { args, scope };
 }
 
 export function validateNoteFileName(value) {
@@ -99,14 +67,6 @@ export function validateTemplateName(value) {
     throw new Error("Template name may use lowercase letters, digits, and dashes");
   }
   return name;
-}
-
-export function buildSyncCliArgs(input) {
-  const args = ["sync"];
-  if (input?.full === true) args.push("--full");
-  if (input?.changed === true) args.push("--changed");
-  if (input?.prune === true) args.push("--prune");
-  return args;
 }
 
 export function toSearchResult(result) {

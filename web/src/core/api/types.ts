@@ -1,4 +1,6 @@
-export type ExplorerLayer = "source" | "rewritten" | "artifact" | "template";
+export type ExplorerLayer = "source" | "artifact" | "template";
+
+export type SearchScope = "llm-wiki" | "artifacts" | "sources" | "all";
 export type SidebarSurface = "explorer" | "search" | "graph" | "tasks" | "settings";
 
 export type VaultSummary = {
@@ -82,7 +84,8 @@ export type GraphRefreshResult = {
 export type SearchInput = {
   query: string;
   mode: "keyword" | "semantic" | "hybrid";
-  includeArtifacts?: boolean;
+  /** Default "llm-wiki" (semantic+keyword); other scopes are keyword-only. */
+  scope?: SearchScope;
 };
 
 export type SearchResult = {
@@ -99,125 +102,52 @@ export type VaultStatus = {
   path: string;
   noteCount: number;
   chunkCount: number;
-  tagCount: number;
+  pendingWorkCount: number;
   sourceCount: number;
-  rewrittenCount: number;
   artifactCount: number;
   lastIndexedAt: string | null;
+  lastSyncAt: string | null;
   embeddingModel: string | null;
-};
-
-export type SyncRunInput = {
-  full?: boolean;
-  changed?: boolean;
-  prune?: boolean;
-};
-
-export type SyncRunResult = {
-  recovered: number;
-  added: number;
-  updated: number;
-  pruned: number;
-  reconciled: number;
-  errors: string[];
 };
 
 export type AddedFileDetail = {
   filePath: string;
   status: string;
-  chunkCount: number;
-};
-
-export type AddSourcesInput = {
-  tags?: string[];
 };
 
 export type AddSourcesResult = {
   canceled: boolean;
   filesProcessed: number;
   filesAdded: number;
-  filesUpdated: number;
-  filesSkipped: number;
   details: AddedFileDetail[];
 };
 
 export type NoteSaveInput = {
   fileName: string;
   content: string;
-  tags?: string[];
 };
 
 export type NoteSaveResult = {
   filePath: string;
   status: string;
-  chunkCount: number;
 };
 
+/** The vault workflow contract (templates/workflow.md). */
 export type TemplateInfo = {
-  source: string;
   path: string;
   content: string;
-  metadata: {
-    id?: string;
-    name?: string;
-    version?: number;
-    kind?: string;
-  } | null;
-  /** Per-artifact document templates; present on template:list responses. */
-  templates?: DocumentTemplateSummary[];
 };
 
+/** A template file in <vault>/templates/ (markdown + optional default HTML). */
 export type DocumentTemplateSummary = {
   name: string;
-  source: "bundled" | "vault";
   path: string;
-  kind: string | null;
-  title: string | null;
-  description: string | null;
   hasHtml: boolean;
-  scaffold: boolean;
-  artifactPath: string;
 };
 
 export type DocumentTemplate = DocumentTemplateSummary & {
   content: string;
-  metadata: Record<string, unknown> | null;
   html: string | null;
-};
-
-export type TagInfo = {
-  tag: string;
-  count: number;
-};
-
-export type TagUpdateInput = {
-  action: "add" | "remove";
-  target: string;
-  tags: string[];
-};
-
-export type ReportContextInput = {
-  date: string;
-  includeArtifacts?: boolean;
-};
-
-export type LlmRewriteRunInput = {
-  source: string;
-  agent: "codex" | "claude";
-};
-
-export type LlmRewriteRunResult = {
-  sourcePath: string;
-  rewrittenPath: string;
-  agent: string;
-  rewritten: {
-    status: string;
-    chunkCount: number;
-  };
-  artifacts: Array<{
-    path: string;
-    status: string;
-  }>;
 };
 
 export type HtmlWindowTheme = {
@@ -234,7 +164,8 @@ export type HtmlWindowTheme = {
 
 export type VaultCreateInput = {
   name: string;
-  directory: string;
+  /** Optional parent directory; omitted = CLI default (~/Documents/<name>). */
+  directory?: string | null;
 };
 
 export type PickDirectoryResult = {
@@ -244,18 +175,10 @@ export type PickDirectoryResult = {
 
 export type AddFolderInput = {
   path: string;
-  tags?: string[];
 };
 
 export type AddFolderResult = {
   filesProcessed: number;
   filesAdded: number;
-  filesUpdated: number;
-  filesSkipped: number;
   details: AddedFileDetail[];
-};
-
-export type TemplateScaffoldResult = {
-  created: Array<{ name: string; path: string }>;
-  skipped: Array<{ name: string; path: string; reason: string }>;
 };

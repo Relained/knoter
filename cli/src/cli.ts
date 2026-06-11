@@ -1,40 +1,27 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { registerVaultCommand } from "./commands/vault";
-import { registerAddCommand } from "./commands/add";
-import { registerSearchCommand } from "./commands/search";
 import { registerSyncCommand } from "./commands/sync";
-import { registerTagCommand } from "./commands/tag";
-import { registerGetCommand } from "./commands/get";
-import { registerTemplateCommand } from "./commands/template";
-import { registerReportCommand } from "./commands/report";
-import { registerMcpCommand } from "./commands/mcp";
+import { registerSearchCommand } from "./commands/search";
 import { registerServiceCommand } from "./commands/service";
-import { registerLlmCommand } from "./commands/llm";
 
 const program = new Command();
 
 program
   .name("kn")
   .version("0.1.0")
-  .description("Knowledge knot CLI — index, search, and query your notes");
+  .description("Knowledge knot CLI — vault indexing, agent work queue, and search");
 
 program
   .option("--format <type>", "Output format: text, json, jsonl", "text")
   .option("--vault <name>", "Vault name override")
   .option("--verbose", "Enable verbose logging");
 
-// Register all subcommands
+// Command surface: vault (init/config), sync (index + queue + agent),
+// search (llm-wiki hybrid by default), service (periodic sync scheduling).
 registerVaultCommand(program);
-registerAddCommand(program);
-registerSearchCommand(program);
 registerSyncCommand(program);
-registerTagCommand(program);
-registerGetCommand(program);
-registerTemplateCommand(program);
-registerReportCommand(program);
-registerMcpCommand(program);
+registerSearchCommand(program);
 registerServiceCommand(program);
-registerLlmCommand(program);
 
 program.parse(process.argv);

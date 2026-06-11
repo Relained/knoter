@@ -23,11 +23,8 @@ const api = {
   search: {
     query: (input) => ipcRenderer.invoke("search:query", input)
   },
-  sync: {
-    run: (input) => ipcRenderer.invoke("sync:run", input)
-  },
   source: {
-    addFromPicker: (input) => ipcRenderer.invoke("source:addFromPicker", input),
+    addFromPicker: () => ipcRenderer.invoke("source:addFromPicker"),
     addFromFolder: (input) => ipcRenderer.invoke("source:addFromFolder", input)
   },
   note: {
@@ -36,18 +33,7 @@ const api = {
   template: {
     get: () => ipcRenderer.invoke("template:get"),
     list: () => ipcRenderer.invoke("template:list"),
-    getDocument: (input) => ipcRenderer.invoke("template:getDocument", input),
-    scaffold: () => ipcRenderer.invoke("template:scaffold")
-  },
-  tag: {
-    list: () => ipcRenderer.invoke("tag:list"),
-    update: (input) => ipcRenderer.invoke("tag:update", input)
-  },
-  report: {
-    context: (input) => ipcRenderer.invoke("report:context", input)
-  },
-  llm: {
-    rewrite: (input) => ipcRenderer.invoke("llm:rewrite", input)
+    getDocument: (input) => ipcRenderer.invoke("template:getDocument", input)
   },
   html: {
     openWindow: (input) => ipcRenderer.invoke("html:openWindow", input)

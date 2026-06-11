@@ -3,17 +3,17 @@ import { useDialogDismiss } from "../hooks/useDialogDismiss";
 
 export type VaultBootstrapInput = {
   name: string;
-  directory: string;
+  /** Null = CLI default location (~/Documents/<name>). */
+  directory: string | null;
   sourceFolder: string | null;
-  scaffold: boolean;
 };
 
 const vaultNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
- * Vault onboarding dialog: name + location create the vault, an optional
- * existing folder is bulk-added as sources, and default template documents
- * can be scaffolded. Submission runs through the vault.bootstrap command.
+ * Vault onboarding dialog: name (+ optional location) initializes the vault
+ * with seeded templates, and an optional existing folder is bulk-added as
+ * sources. Submission runs through the vault.bootstrap command.
  */
 export function VaultCreateModal({
   hasBackend,
@@ -29,11 +29,10 @@ export function VaultCreateModal({
   const [name, setName] = useState("");
   const [directory, setDirectory] = useState<string | null>(null);
   const [sourceFolder, setSourceFolder] = useState<string | null>(null);
-  const [scaffold, setScaffold] = useState(true);
   const dismiss = useDialogDismiss(onClose);
 
   const nameValid = vaultNamePattern.test(name);
-  const canSubmit = hasBackend && nameValid && directory !== null;
+  const canSubmit = hasBackend && nameValid;
 
   return (
     <div
@@ -74,9 +73,9 @@ export function VaultCreateModal({
           </p>
         )}
         <div className="vault-modal-field">
-          <span>Location</span>
+          <span>Location (optional)</span>
           <div className="vault-modal-path">
-            <code>{directory ?? "No folder selected"}</code>
+            <code>{directory ?? "Default: ~/Documents/<name>"}</code>
             <button
               type="button"
               onClick={async () => {
@@ -86,10 +85,16 @@ export function VaultCreateModal({
             >
               Choose...
             </button>
+            {directory && (
+              <button type="button" onClick={() => setDirectory(null)}>
+                Clear
+              </button>
+            )}
           </div>
         </div>
         <p className="vault-modal-hint">
-          The vault is created at <code>&lt;location&gt;/&lt;name&gt;</code>.
+          The vault is created at <code>&lt;location&gt;/&lt;name&gt;</code> with
+          sources/, artifacts/, and seeded templates/.
         </p>
         <div className="vault-modal-field">
           <span>Import sources (optional)</span>
@@ -117,25 +122,11 @@ export function VaultCreateModal({
           Markdown files in the folder are bulk-added as sources after the
           vault is created.
         </p>
-        <label className="vault-modal-check">
-          <input
-            type="checkbox"
-            checked={scaffold}
-            onChange={(event) => setScaffold(event.currentTarget.checked)}
-          />
-          <span>
-            Create default template documents (llm-wiki, calendar, todo,
-            kanban)
-          </span>
-        </label>
         <button
           className="vault-modal-primary"
           type="button"
           disabled={!canSubmit}
-          onClick={() =>
-            directory &&
-            onSubmit({ name, directory, sourceFolder, scaffold })
-          }
+          onClick={() => onSubmit({ name, directory, sourceFolder })}
         >
           Create Vault
         </button>

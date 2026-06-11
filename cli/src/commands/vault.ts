@@ -1,240 +1,158 @@
 import { Command } from "commander";
 import { join } from "node:path";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { mkdirSync, rmSync, existsSync, readdirSync, copyFileSync } from "node:fs";
 import { confirm } from "@clack/prompts";
 import {
   loadGlobalConfig,
-  saveGlobalConfig,
   setActiveVault,
   registerVault,
   unregisterVault,
   loadVaultConfig,
-  saveVaultConfig,
+  saveVaultConfigOverride,
   resolveVaultRoot,
+  resolveVaultName,
+  type VaultConfigOverride,
 } from "../core/config";
 import { success, error, render } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
+import { ensureVaultSynced } from "../core/sync";
 import { setVerbose, logger } from "../core/logger";
-import { MetaDB } from "../stores/meta-store";
-import { createVaultCollection, EMBEDDING_DIMENSIONS, type EmbeddingModel } from "../stores/vec-store";
+import { MetaDB, VAULT_DB_DIR } from "../stores/meta-store";
+import { createVaultCollection, EMBEDDING_DIMENSIONS } from "../stores/vec-store";
 import { createEmbeddingProvider } from "../providers/factory";
 import { checkEmbeddingHealth } from "../providers/health";
 import type { OutputFormat } from "../core/output";
 
-function defaultEmbeddingBaseUrl(): string {
-  return "http://127.0.0.1:39280";
-}
+const BUNDLED_TEMPLATES_DIR = fileURLToPath(
+  new URL("../../../res/templates", import.meta.url),
+);
 
 export function registerVaultCommand(program: Command): void {
   const vaultCmd = program
     .command("vault")
-    .description("Manage vaults (create, list, switch, delete, status)");
+    .description("Manage vaults (init, list, switch, delete, status)");
 
   vaultCmd
-    .command("create <name>")
-    .option("--path <dir>", "Vault directory path")
-    .option("--model <model>", "Embedding model id (HuggingFace id for TEI, or preset)")
+    .command("init <name>")
+    .description("Initialize a vault: templates/, sources/, artifacts/, .db/")
+    .option("--path <dir>", "Vault directory (default: <defaultVaultDir>/<name>)")
+    .option("--model <model>", "Embedding model override for this vault")
     .option("--dim <n>", "Embedding dimension (required for unknown models)")
-    .option("--embedding-base-url <url>", "OpenAI-compatible embedding endpoint")
-    .option("--tei-base-url <url>", "Alias for --embedding-base-url")
-    .option("--embedding-api-key <key>", "Embedding endpoint API key")
+    .option("--embedding-base-url <url>", "OpenAI-compatible embedding endpoint override")
+    .option("--embedding-api-key <key>", "Embedding endpoint API key override")
     .action(async (name, options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+
       try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
+        const globalConfig = await loadGlobalConfig();
+        if (globalConfig.vaults[name]) {
+          throw new KnError(ErrorCode.VAULT_EXISTS, `Vault "${name}" already exists`);
+        }
 
-        logger.debug(`Creating vault: ${name}`);
-
-        // Resolve vault path: use --path or default to current directory
-        const vaultPath = options.path ? options.path : join(process.cwd(), name);
-        const modelStr = options.model || "nomic-embed-text";
-        const model = modelStr as EmbeddingModel;
+        const vaultPath = options.path
+          ? (options.path as string)
+          : join(globalConfig.defaultVaultDir, name);
+        const model = (options.model as string | undefined) || globalConfig.embedding.model;
 
         // Resolve dimension: explicit --dim overrides the preset table.
-        const presetDim = EMBEDDING_DIMENSIONS[modelStr];
+        const presetDim = EMBEDDING_DIMENSIONS[model];
         const dim = options.dim ? parseInt(options.dim, 10) : presetDim;
         if (!dim || isNaN(dim)) {
           throw new KnError(
             ErrorCode.CONFIG_INVALID,
-            `Unknown embedding dimension for model "${modelStr}". Pass --dim <n> explicitly.`
+            `Unknown embedding dimension for model "${model}". Pass --dim <n> explicitly.`,
           );
         }
         // Register so downstream createVaultCollection can look it up.
-        EMBEDDING_DIMENSIONS[modelStr] = dim;
+        EMBEDDING_DIMENSIONS[model] = dim;
 
-        logger.debug(`Vault path: ${vaultPath}`);
-        logger.debug(`Embedding model: ${model}`);
+        logger.debug(`Initializing vault "${name}" at ${vaultPath} (model: ${model})`);
 
-        // Check vault doesn't already exist in config
-        const globalConfig = await loadGlobalConfig();
-        if (globalConfig.vaults[name]) {
-          throw new KnError(
-            ErrorCode.VAULT_EXISTS,
-            `Vault "${name}" already exists`
-          );
+        // Vault layout: user content directories + index storage.
+        for (const dir of ["sources", "artifacts", "templates", VAULT_DB_DIR]) {
+          mkdirSync(join(vaultPath, dir), { recursive: true });
         }
 
-        // Create vault root + .kn/ dir
-        mkdirSync(join(vaultPath, ".kn"), { recursive: true });
-        logger.info(`Created .kn directory at ${vaultPath}`);
+        const seededTemplates = seedTemplates(vaultPath);
+        logger.info(`Seeded ${seededTemplates.length} template file(s)`);
 
-        // Create MetaDB - this creates .kn/meta.db
         const meta = new MetaDB(vaultPath);
         meta.setEmbeddingModel(name, model);
-        logger.info(`Set embedding model: ${model}`);
-
-        // Create zvec collection
-        const vectorDir = join(vaultPath, ".kn", "vectors");
-        createVaultCollection(vectorDir, name, model);
-        logger.info(`Created zvec collection at ${vectorDir}`);
-
-        // Register in global config
-        await registerVault(name, vaultPath);
-        logger.info(`Registered vault in global config`);
-
-        // CLI only stores the embedding server API endpoint. Lifecycle is owned
-        // by the app/service layer.
-        const embeddingBaseUrl =
-          options.embeddingBaseUrl || options.teiBaseUrl || defaultEmbeddingBaseUrl();
-        const embeddingApiKey = options.embeddingApiKey;
-
-        // Save vault config with chosen model (+ TEI wiring if applicable)
-        const defaultVaultConfig = {
-          embedding: {
-            model: modelStr,
-            baseUrl: embeddingBaseUrl,
-            ...(embeddingApiKey ? { apiKey: embeddingApiKey } : {}),
-          },
-          search: {
-            fusionAlpha: 0.8,
-          },
-          preprocessor: null,
-        };
-        await saveVaultConfig(vaultPath, defaultVaultConfig);
-        logger.info(`Saved vault configuration`);
-
-        // Close MetaDB
         meta.close();
 
-        const envelope = success(
-          "vault create",
-          {
-            name,
-            path: vaultPath,
-            model: modelStr,
-            dim,
-            embedding: {
-              baseUrl: embeddingBaseUrl,
-              localDefault: process.platform === "darwin" && embeddingBaseUrl === defaultEmbeddingBaseUrl(),
-            },
-          },
-          name
-        );
-        render(envelope, format);
-      } catch (err) {
-        const format = cmd.optsWithGlobals?.()?.format || "text";
-        if (err instanceof KnError) {
-          render(error("vault create", err.code, err.message), format as OutputFormat);
-          process.exit(err.exitCode);
-        } else {
-          render(
-            error(
-              "vault create",
-              ErrorCode.UNKNOWN,
-              err instanceof Error ? err.message : String(err)
-            ),
-            format as OutputFormat
-          );
-          process.exit(1);
+        createVaultCollection(join(vaultPath, VAULT_DB_DIR, "vectors"), name, model);
+        logger.info(`Created vector collection`);
+
+        // Vault config override only stores deviations from the global config.
+        const override: VaultConfigOverride = {};
+        if (options.model || options.embeddingBaseUrl || options.embeddingApiKey) {
+          override.embedding = {
+            ...(options.model ? { model } : {}),
+            ...(options.embeddingBaseUrl ? { baseUrl: options.embeddingBaseUrl } : {}),
+            ...(options.embeddingApiKey ? { apiKey: options.embeddingApiKey } : {}),
+          };
+          await saveVaultConfigOverride(vaultPath, override);
         }
+
+        await registerVault(name, vaultPath);
+
+        render(
+          success(
+            "vault init",
+            {
+              name,
+              path: vaultPath,
+              model,
+              dim,
+              templatesSeeded: seededTemplates,
+            },
+            name,
+          ),
+          format,
+        );
+      } catch (err) {
+        renderCommandError("vault init", err, format);
       }
     });
 
   vaultCmd
     .command("list")
     .action(async (options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+
       try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
-
-        logger.debug("Listing all vaults");
-
-        // Load global config
         const globalConfig = await loadGlobalConfig();
-
-        // Format vault list with active marker
         const vaults = Object.values(globalConfig.vaults).map((vault) => ({
           name: vault.name,
           path: vault.path,
           active: vault.name === globalConfig.activeVault,
         }));
-
-        logger.info(`Found ${vaults.length} vault(s)`);
-
-        const envelope = success("vault list", {
-          vaults,
-          activeVault: globalConfig.activeVault,
-        });
-        render(envelope, format);
+        render(
+          success("vault list", { vaults, activeVault: globalConfig.activeVault }),
+          format,
+        );
       } catch (err) {
-        const format = cmd.optsWithGlobals?.()?.format || "text";
-        if (err instanceof KnError) {
-          render(error("vault list", err.code, err.message), format as OutputFormat);
-          process.exit(err.exitCode);
-        } else {
-          render(
-            error(
-              "vault list",
-              ErrorCode.UNKNOWN,
-              err instanceof Error ? err.message : String(err)
-            ),
-            format as OutputFormat
-          );
-          process.exit(1);
-        }
+        renderCommandError("vault list", err, format);
       }
     });
 
   vaultCmd
     .command("switch <name>")
     .action(async (name, options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+
       try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
-
-        logger.debug(`Switching to vault: ${name}`);
-
-        // Call setActiveVault - throws VAULT_NOT_FOUND if missing
         await setActiveVault(name);
-        logger.info(`Switched to vault: ${name}`);
-
-        const envelope = success(
-          "vault switch",
-          {
-            activeVault: name,
-          },
-          name
-        );
-        render(envelope, format);
+        render(success("vault switch", { activeVault: name }, name), format);
       } catch (err) {
-        const format = cmd.optsWithGlobals?.()?.format || "text";
-        if (err instanceof KnError) {
-          render(error("vault switch", err.code, err.message), format as OutputFormat);
-          process.exit(err.exitCode);
-        } else {
-          render(
-            error(
-              "vault switch",
-              ErrorCode.UNKNOWN,
-              err instanceof Error ? err.message : String(err)
-            ),
-            format as OutputFormat
-          );
-          process.exit(1);
-        }
+        renderCommandError("vault switch", err, format);
       }
     });
 
@@ -242,69 +160,32 @@ export function registerVaultCommand(program: Command): void {
     .command("delete <name>")
     .option("--confirm", "Skip confirmation prompt")
     .action(async (name, options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+
       try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
-
-        logger.debug(`Deleting vault: ${name}`);
-
-        // If no --confirm, ask for confirmation
         if (!options.confirm) {
           const shouldDelete = await confirm({
-            message: `Delete vault "${name}" and all its data?`,
+            message: `Delete vault "${name}" index data (.db) and unregister it? User files (sources/artifacts/templates) are kept.`,
           });
           if (!shouldDelete || typeof shouldDelete === "symbol") {
-            logger.info("Deletion cancelled");
-            const envelope = success("vault delete", {
-              cancelled: true,
-              name,
-            });
-            render(envelope, format);
+            render(success("vault delete", { cancelled: true, name }), format);
             return;
           }
         }
 
-        // Resolve vault path from config
         const vaultRoot = await resolveVaultRoot(name);
-        logger.debug(`Vault root: ${vaultRoot}`);
-
-        // Remove .kn/ directory recursively
-        const knDir = join(vaultRoot, ".kn");
-        if (existsSync(knDir)) {
-          rmSync(knDir, { recursive: true, force: true });
-          logger.info(`Removed .kn directory`);
+        const dbDir = join(vaultRoot, VAULT_DB_DIR);
+        if (existsSync(dbDir)) {
+          rmSync(dbDir, { recursive: true, force: true });
+          logger.info(`Removed ${dbDir}`);
         }
-
-        // Unregister from global config
         await unregisterVault(name);
-        logger.info(`Unregistered vault from global config`);
 
-        const envelope = success(
-          "vault delete",
-          {
-            deleted: true,
-            name,
-          },
-          name
-        );
-        render(envelope, format);
+        render(success("vault delete", { deleted: true, name }, name), format);
       } catch (err) {
-        const format = cmd.optsWithGlobals?.()?.format || "text";
-        if (err instanceof KnError) {
-          render(error("vault delete", err.code, err.message), format as OutputFormat);
-          process.exit(err.exitCode);
-        } else {
-          render(
-            error(
-              "vault delete",
-              ErrorCode.UNKNOWN,
-              err instanceof Error ? err.message : String(err)
-            ),
-            format as OutputFormat
-          );
-          process.exit(1);
-        }
+        renderCommandError("vault delete", err, format);
       }
     });
 
@@ -312,73 +193,76 @@ export function registerVaultCommand(program: Command): void {
     .command("status [name]")
     .option("--check-providers", "Check health of embedding provider")
     .action(async (name, options, cmd) => {
+      const globalOpts = cmd.optsWithGlobals?.() || {};
+      const format = (globalOpts.format || "text") as OutputFormat;
+      setVerbose(!!globalOpts.verbose);
+
       try {
-        const globalOpts = cmd.optsWithGlobals?.() || {};
-        const format = (globalOpts.format || "text") as OutputFormat;
-        setVerbose(!!globalOpts.verbose);
-
-        logger.debug(`Getting status for vault: ${name || "(active)"}`);
-
-        // Resolve vault root (by name or active)
         const vaultRoot = await resolveVaultRoot(name);
-        const vaultName = name || (await loadGlobalConfig()).activeVault || "unknown";
-        logger.debug(`Vault root: ${vaultRoot}`);
+        const vaultName = await resolveVaultName(name);
 
-        // Open MetaDB at vault root
+        // Status doubles as the cheap "index my dropped files" trigger.
+        await ensureVaultSynced(vaultRoot, vaultName);
+
         const meta = new MetaDB(vaultRoot);
-
-        // Get vault status - use the vault name as vaultId
         const vaultStatus = meta.getVaultStatus(vaultName);
-        logger.debug(`Vault status: ${JSON.stringify(vaultStatus)}`);
-
-        // Also load vault config for extra info
-        const vaultConfig = await loadVaultConfig(vaultRoot);
-        logger.debug(`Vault config loaded`);
-
-        // Close MetaDB
         meta.close();
 
-        // Check provider health if requested
-        let providerHealth: any = undefined;
+        const vaultConfig = await loadVaultConfig(vaultRoot);
+
+        let providerHealth: Record<string, unknown> | undefined;
         if (options.checkProviders) {
-          logger.debug("Checking provider health...");
           const embeddingProvider = createEmbeddingProvider(vaultConfig);
-          const embeddingStatus = await checkEmbeddingHealth(embeddingProvider);
-          providerHealth = { embedding: embeddingStatus };
-          logger.debug(`Provider health: ${JSON.stringify(providerHealth)}`);
+          providerHealth = { embedding: await checkEmbeddingHealth(embeddingProvider) };
         }
 
-        const envelope = success(
-          "vault status",
-          {
-            vault: vaultName,
-            path: vaultRoot,
-            status: vaultStatus,
-            config: {
-              embedding: vaultConfig.embedding,
-              preprocessor: vaultConfig.preprocessor,
+        render(
+          success(
+            "vault status",
+            {
+              vault: vaultName,
+              path: vaultRoot,
+              status: vaultStatus,
+              config: {
+                embedding: vaultConfig.embedding,
+                agentBackend: vaultConfig.agent.backend,
+              },
+              ...(providerHealth && { providerHealth }),
             },
-            ...(providerHealth && { providerHealth }),
-          },
-          vaultName
+            vaultName,
+          ),
+          format,
         );
-        render(envelope, format);
       } catch (err) {
-        const format = cmd.optsWithGlobals?.()?.format || "text";
-        if (err instanceof KnError) {
-          render(error("vault status", err.code, err.message), format as OutputFormat);
-          process.exit(err.exitCode);
-        } else {
-          render(
-            error(
-              "vault status",
-              ErrorCode.UNKNOWN,
-              err instanceof Error ? err.message : String(err)
-            ),
-            format as OutputFormat
-          );
-          process.exit(1);
-        }
+        renderCommandError("vault status", err, format);
       }
     });
+}
+
+/** Copy bundled templates (workflow contract + per-artifact md/html) into the vault. */
+function seedTemplates(vaultPath: string): string[] {
+  const targetDir = join(vaultPath, "templates");
+  let files: string[];
+  try {
+    files = readdirSync(BUNDLED_TEMPLATES_DIR);
+  } catch {
+    logger.warn(`Bundled templates not found at ${BUNDLED_TEMPLATES_DIR}`);
+    return [];
+  }
+
+  const seeded: string[] = [];
+  for (const file of files) {
+    const target = join(targetDir, file);
+    if (existsSync(target)) continue;
+    copyFileSync(join(BUNDLED_TEMPLATES_DIR, file), target);
+    seeded.push(file);
+  }
+  return seeded;
+}
+
+function renderCommandError(command: string, err: unknown, format: OutputFormat): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  const code = err instanceof KnError ? err.code : ErrorCode.UNKNOWN;
+  render(error(command, code, msg), format);
+  process.exit(err instanceof KnError ? err.exitCode : 1);
 }
