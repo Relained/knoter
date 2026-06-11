@@ -1,9 +1,9 @@
 import type {
   AddFolderInput,
   AddFolderResult,
-  AddSourcesInput,
   AddSourcesResult,
   DocumentTemplate,
+  DocumentTemplateSummary,
   ExplorerItem,
   ExplorerListInput,
   ExplorerReadResult,
@@ -12,20 +12,12 @@ import type {
   GraphPayload,
   GraphRefreshResult,
   HtmlWindowTheme,
-  LlmRewriteRunInput,
-  LlmRewriteRunResult,
   NoteSaveInput,
   NoteSaveResult,
   PickDirectoryResult,
-  ReportContextInput,
   SearchInput,
   SearchResult,
-  SyncRunInput,
-  SyncRunResult,
-  TagInfo,
-  TagUpdateInput,
   TemplateInfo,
-  TemplateScaffoldResult,
   VaultCreateInput,
   VaultStatus,
   VaultSummary,
@@ -44,18 +36,12 @@ export type IpcRequestMap = {
   "graph:get": GraphGetInput | void;
   "graph:refresh": void;
   "search:query": SearchInput;
-  "sync:run": SyncRunInput;
-  "source:addFromPicker": AddSourcesInput;
+  "source:addFromPicker": void;
   "source:addFromFolder": AddFolderInput;
   "note:save": NoteSaveInput;
   "template:get": void;
   "template:list": void;
   "template:getDocument": { name: string };
-  "template:scaffold": void;
-  "tag:list": void;
-  "tag:update": TagUpdateInput;
-  "report:context": ReportContextInput;
-  "llm:rewrite": LlmRewriteRunInput;
   "html:openWindow": { title: string; html: string; theme?: HtmlWindowTheme };
 };
 
@@ -72,18 +58,12 @@ export type IpcResponseMap = {
   "graph:get": GraphPayload;
   "graph:refresh": GraphRefreshResult;
   "search:query": SearchResult[];
-  "sync:run": SyncRunResult;
   "source:addFromPicker": AddSourcesResult;
   "source:addFromFolder": AddFolderResult;
   "note:save": NoteSaveResult;
   "template:get": TemplateInfo;
-  "template:list": TemplateInfo;
+  "template:list": DocumentTemplateSummary[];
   "template:getDocument": DocumentTemplate;
-  "template:scaffold": TemplateScaffoldResult;
-  "tag:list": TagInfo[];
-  "tag:update": Record<string, unknown>;
-  "report:context": Record<string, unknown>;
-  "llm:rewrite": LlmRewriteRunResult;
   "html:openWindow": { opened: true };
 };
 

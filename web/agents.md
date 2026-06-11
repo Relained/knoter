@@ -23,8 +23,9 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   `docs/design/widget-bar.md`.
 - When the backend is connected but no vault exists, the Create Vault modal
   opens automatically (`VaultCreateModal`, also via the "New Vault..."
-  palette command). It submits the `vault.bootstrap` command: create +
-  switch → template scaffold → optional bulk source add → sync.
+  palette command). It submits the `vault.bootstrap` command: `kn vault init`
+  (templates seeded, default location when no folder picked) + switch →
+  optional bulk source add.
 - There is no web unit-test or Playwright harness. `npm run check`
   (TypeScript + Vite build) is the only automated verification. Do not claim
   test coverage that does not exist.
@@ -78,26 +79,29 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   - `explorer.list`, `explorer.read`, `explorer.refresh`
   - `graph.get`, `graph.refresh` (lightweight Explorer projection; edges are
     currently empty)
-  - `search.query`, `sync.run`
-  - `source.addFromPicker` (native dialog → `kn add`),
-    `source.addFromFolder` (`kn add <dir> --recursive`, 300s timeout),
-    `note.save` (temp file → `kn add`)
-  - `template.get`, `template.list` (includes the per-artifact document
-    template summaries), `template.getDocument` (single template with
-    content + default HTML), `template.scaffold` (starter artifacts from
-    the scaffold-enabled templates), `tag.list`, `tag.update`
-  - `report.context`, `llm.rewrite` (codex|claude)
+  - `search.query`
+  - `source.addFromPicker` (native dialog → copy files into the active
+    vault's `sources/<date>/`), `source.addFromFolder` (recursive `.md` copy
+    into `sources/`), `note.save` (direct write into `sources/<date>/`).
+    After copying, main runs `kn vault status` to trigger the CLI's implicit
+    sync, which indexes the files and queues agent work. There is no `kn add`.
+  - `template.get` (vault `templates/workflow.md`), `template.list` /
+    `template.getDocument` (files in `<vault>/templates/`, read directly
+    from disk — there is no template CLI surface)
   - `html.openWindow` (optional `theme` snapshot; the main process validates
     hex colors and the font-family charset before interpolating styles)
+  - Removed surfaces: `sync.run`, `tag.*`, `report.context`, `llm.rewrite`,
+    `template.scaffold` (tags removed; indexing is sync-driven; the
+    maintenance agent is spawned by `kn sync`, not the web shell).
 - Electron main handlers shell out to the CLI as
   `bun <repo>/cli/src/cli.ts --format json ...`. Override with
   `KNOTER_CLI_ENTRY`, `KNOTER_CLI_RUNNER`, `KNOTER_CLI_TIMEOUT_MS`.
-  Indexing calls (add/sync/report) use a 120s timeout, `llm.rewrite` 300s;
-  transient SQLite `database is locked` errors are retried twice.
-- Explorer items combine the effective template (`kn template get`) with the
-  active vault's `sources/**/*.md`, legacy `rewritten/**/*.md`, and
-  `artifacts/**/*.md`. This is an interim CLI-backed bridge, not a packaged
-  daemon; the renderer never owns SQLite or vault files directly.
+  Index-triggering calls (`vault status` after source drops) use a 120s
+  timeout; transient SQLite `database is locked` errors are retried twice.
+- Explorer items combine the vault's `templates/*.md`, `sources/**/*.md`, and
+  `artifacts/**/*.md` (layers: template | source | artifact). This is an
+  interim CLI/fs-backed bridge, not a packaged daemon; the renderer never
+  owns SQLite or vault files directly.
 - The settings runtime accepts an optional `window.knoterConfigFile` JSONC
   file bridge. The current preload does not expose it, so global settings
   persist through renderer `localStorage` only.
@@ -175,13 +179,12 @@ Use npm (not bun) inside `web/`:
 cd web
 npm install
 npm run check   # tsc --noEmit && vite build — verification baseline
-npm run dev     # test vault bootstrap + Vite on 127.0.0.1:39281 + Electron shell
+npm run dev     # Vite on 127.0.0.1:39281 + Electron shell
 ```
 
-`npm run dev` runs `cli/scripts/test-env.sh ensure` first and points `KN_HOME`
-at `cli/.test-kn-home` so the IPC bridge sees the test vault. Set
-`KNOTER_DEV_TEST_VAULT=0` to skip the bootstrap, or `KNOTER_DEV_TEST_VAULT=1`
-to make bootstrap failure stop dev startup.
+`npm run dev` starts Vite and the Electron shell against the active vault
+registered in `~/.config/knoter/config.json`. The old test-vault bootstrap
+(`cli/scripts/test-env.sh`) was removed with the test environment.
 
 ## Verification Baseline
 

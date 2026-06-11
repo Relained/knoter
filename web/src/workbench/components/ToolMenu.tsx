@@ -15,8 +15,6 @@ const toolMenuEntries: Partial<Record<ToolKey, ToolMenuEntry[]>> = {
     { label: "Create New Artifact Template", commandId: "template.create" },
     { label: "List Templates", commandId: "template.list" },
     { label: "Open Effective Template", commandId: "template.get" },
-    { label: "Run Agent Rewrite", commandId: "llm.rewrite" },
-    { label: "Build Report Context", commandId: "report.context" },
     { label: "Open Artifact List", commandId: "palette.artifacts" },
   ],
   source: [
@@ -30,11 +28,9 @@ const toolMenuEntries: Partial<Record<ToolKey, ToolMenuEntry[]>> = {
     { label: "Search Vault", commandId: "search.run" },
     { label: "Browse All Commands", commandId: "palette.open" },
     { label: "Refresh Vault Explorer", commandId: "explorer.refresh" },
-    { label: "Sync Vault Index", commandId: "sync.run" },
     { label: "Vault Status", commandId: "vault.status" },
     { label: "List Vaults", commandId: "vault.list" },
     { label: "Switch Vault", commandId: "vault.switch" },
-    { label: "List Tags", commandId: "tag.list" },
   ],
 };
 

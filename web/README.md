@@ -8,13 +8,12 @@ an Electron development shell whose IPC handlers call the CLI in `../cli`.
 ```bash
 npm install
 npm run check   # tsc --noEmit && vite build — verification baseline
-npm run dev     # test vault bootstrap + Vite on 127.0.0.1:39281 + Electron shell
+npm run dev     # Vite on 127.0.0.1:39281 + Electron shell
 ```
 
-`npm run dev` runs `../cli/scripts/test-env.sh ensure` first and points
-`KN_HOME` at `../cli/.test-kn-home` so the Electron IPC bridge sees the test
-vault. Set `KNOTER_DEV_TEST_VAULT=0` to skip the bootstrap, or `=1` to make
-bootstrap failure stop dev startup.
+`npm run dev` starts Vite and the Electron shell against the active vault
+registered in `~/.config/knoter/config.json`. The old test-vault bootstrap was
+removed with the test environment.
 
 There is currently no web unit-test or E2E harness; `npm run check` is the only
 automated verification.

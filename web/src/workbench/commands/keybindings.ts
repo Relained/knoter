@@ -14,7 +14,6 @@ export const defaultKeybindings: KeybindingMap = {
   "note.save": "Mod+S",
   "settings.open": "Mod+,",
   "open.daily-note": "Mod+D",
-  "sync.run": "Mod+Shift+S",
   "explorer.refresh": "Mod+Shift+E",
   "tab.close": "Mod+Shift+W",
   "tab.next": "Ctrl+Tab",
