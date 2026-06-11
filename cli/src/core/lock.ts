@@ -19,7 +19,7 @@ function isProcessAlive(pid: number): boolean {
 }
 
 function getLockPath(vaultRoot: string): string {
-  return join(vaultRoot, ".kn", "vault.lock");
+  return join(vaultRoot, ".db", "vault.lock");
 }
 
 export async function acquireLock(vaultRoot: string): Promise<void> {
@@ -45,9 +45,9 @@ export async function acquireLock(vaultRoot: string): Promise<void> {
       }
     }
 
-    // Create .kn directory if it doesn't exist
-    const knDir = join(vaultRoot, ".kn");
-    mkdirSync(knDir, { recursive: true });
+    // Create .db directory if it doesn't exist
+    const dbDir = join(vaultRoot, ".db");
+    mkdirSync(dbDir, { recursive: true });
 
     // Write new lock file
     const lockData: LockFile = {

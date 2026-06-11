@@ -1,18 +1,20 @@
-export { MetaDB } from "./meta-store";
+export { MetaDB, VAULT_DB_DIR } from "./meta-store";
 export type {
   NoteRow,
   NoteInput,
   ChunkRow,
   ChunkInsert,
-  TagRow,
-  TagSource,
   FtsResult,
-  VaultConfigRow,
   VaultStatus,
-  PreprocessorRow,
   VectorSyncStatus,
+  SearchScope,
+  AgentWorkItem,
+  AgentWorkChange,
+  AgentWorkStatus,
 } from "./meta-store";
 export { buildFtsQuery, normalizeBM25 } from "./meta-store";
+export { VaultStore, extractSection } from "./vault-store";
+export type { UpsertNoteResult, NotePayload } from "./vault-store";
 export {
   createVaultCollection,
   openVaultCollection,

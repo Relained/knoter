@@ -114,19 +114,17 @@ export class Embedder {
 
 /**
  * Format chunk with structural context for embedding.
- * "title: X | section: Y | tags: Z | text: content"
+ * "title: X | section: Y | text: content"
  */
 export function formatForEmbedding(chunk: {
   docTitle?: string;
   headingPath?: string[];
-  tags?: string[];
   content: string;
 }): string {
   const parts: string[] = [];
   if (chunk.docTitle) parts.push(`title: ${chunk.docTitle}`);
   if (chunk.headingPath?.length)
     parts.push(`section: ${chunk.headingPath.join(" > ")}`);
-  if (chunk.tags?.length) parts.push(`tags: ${chunk.tags.join(", ")}`);
   parts.push(`text: ${chunk.content}`);
   return parts.join(" | ");
 }

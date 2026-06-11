@@ -1,9 +1,13 @@
 import { Command } from "commander";
 import { search, type SearchMode } from "../search/hybrid";
-import { resolveVaultRoot, loadGlobalConfig } from "../core/config";
+import { resolveVaultRoot, resolveVaultName } from "../core/config";
+import { ensureVaultSynced } from "../core/sync";
 import { success, error, render, type OutputFormat } from "../core/output";
 import { KnError, ErrorCode } from "../core/errors";
-import { setVerbose, logger } from "../core/logger";
+import { setVerbose } from "../core/logger";
+import type { SearchScope } from "../stores/meta-store";
+
+const SEARCH_SCOPES: SearchScope[] = ["llm-wiki", "artifacts", "sources", "all"];
 
 export function resolveHybridMinOption(options: { hybridMin?: string; threshold?: string }): number | undefined {
   const hybridMinRaw = options.hybridMin;
@@ -24,11 +28,14 @@ export function registerSearchCommand(program: Command): void {
     .option("--keyword-min <f>", "Minimum keyword score")
     .option("--hybrid-min <f>", "Minimum hybrid score")
     .option("--threshold <f>", "Deprecated alias for --hybrid-min")
-    .option("--tag <tag...>", "Filter by tags")
     .option("--after <date>", "Results after date")
     .option("--before <date>", "Results before date")
     .option("--lang <lang>", "Filter by language (ko/ja/zh→cjk, en→latin, or cjk/latin)")
-    .option("--include-artifacts", "Include generated artifacts in search results")
+    .option(
+      "--scope <scope>",
+      "Search scope: llm-wiki (semantic+keyword), artifacts/sources/all (keyword only)",
+      "llm-wiki",
+    )
     .action(async (query, options, cmd) => {
       try {
         const globalOpts = cmd.optsWithGlobals?.() || {};
@@ -37,11 +44,18 @@ export function registerSearchCommand(program: Command): void {
 
         const vaultOpt = globalOpts.vault;
         const vaultRoot = await resolveVaultRoot(vaultOpt);
-        let vaultName = vaultOpt;
-        if (!vaultName) {
-          const config = await loadGlobalConfig();
-          vaultName = config.activeVault || "default";
+        const vaultName = await resolveVaultName(vaultOpt);
+
+        const scope = options.scope as SearchScope;
+        if (!SEARCH_SCOPES.includes(scope)) {
+          throw new KnError(
+            ErrorCode.CONFIG_INVALID,
+            `Invalid --scope. Use one of: ${SEARCH_SCOPES.join(", ")}.`,
+          );
         }
+
+        // Pick up direct file edits before querying.
+        await ensureVaultSynced(vaultRoot, vaultName);
 
         // Map language codes to buckets
         let lang = options.lang;
@@ -57,15 +71,15 @@ export function registerSearchCommand(program: Command): void {
           semanticMin: options.semanticMin ? parseFloat(options.semanticMin) : undefined,
           keywordMin: options.keywordMin ? parseFloat(options.keywordMin) : undefined,
           hybridMin: resolveHybridMinOption(options),
-          tags: options.tag,
           after: options.after,
           before: options.before,
           lang,
-          includeArtifacts: !!options.includeArtifacts,
+          scope,
         });
 
         const envelope = success("search", {
           query,
+          scope,
           mode: result.mode,
           totalFound: result.totalFound,
           strongSignal: result.strongSignal,
@@ -77,7 +91,6 @@ export function registerSearchCommand(program: Command): void {
             heading: r.heading,
             headingPath: r.headingPath,
             content: r.content.substring(0, 200) + (r.content.length > 200 ? "..." : ""),
-            tags: r.tags,
             createdAt: r.createdAt,
             score: r.score,
             scoreDetail: r.scoreDetail,

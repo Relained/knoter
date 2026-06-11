@@ -39,13 +39,14 @@ export const BM25_STRONG_GAP = 0.10;
 
 // ─── Schema factory ───────────────────────────────────────────────────────────
 /**
- * Vault zvec collection schema (v3).
+ * Vault zvec collection schema (v4).
+ *
+ * Only llm-wiki artifact chunks are embedded and stored here; everything else
+ * is keyword-search (FTS5) only.
  *
  * Structure:
  *   - embedding (dense FP32): semantic search dense vector
  *   - scalar fields: chunk metadata including structural linking
- *
- * Sparse vector field is removed from active schema (keyword search is FTS5 only).
  */
 export function createChunkSchema(
   vaultName: string,
@@ -96,11 +97,6 @@ export function createChunkSchema(
           enableExtendedWildcard: true,
         },
       },
-      {
-        name: "layer",
-        dataType: ZVecDataType.STRING,
-        indexParams: { indexType: ZVecIndexType.INVERT },
-      },
 
       // Chunk content
       {
@@ -139,14 +135,6 @@ export function createChunkSchema(
         name: "doc_title",
         dataType: ZVecDataType.STRING,
         nullable: true,
-      },
-
-      // Tags (array)
-      {
-        name: "tags",
-        dataType: ZVecDataType.ARRAY_STRING,
-        nullable: true,
-        indexParams: { indexType: ZVecIndexType.INVERT },
       },
 
       // Timestamps (Unix epoch milliseconds)
@@ -200,8 +188,6 @@ export interface ChunkInput {
   filePath: string;
   /** Note title */
   title?: string;
-  /** Document layer: rewritten/artifact chunks are indexed, source is metadata-only. */
-  layer?: "rewritten" | "artifact";
   /** Immediate heading */
   heading?: string;
   /** Heading ancestry path (serialized JSON) */
@@ -217,8 +203,6 @@ export interface ChunkInput {
   seqIndex: number;
   /** Document-level title (propagated from note) */
   docTitle?: string;
-  /** Tag list */
-  tags?: string[];
   /** Creation time (Date or epoch ms) */
   createdAt?: Date | number;
   /** Dense embedding (float[]) */
@@ -227,18 +211,16 @@ export interface ChunkInput {
 
 /**
  * Format chunk with structural context for embedding.
- * "title: X | section: Y | tags: Z | text: content"
+ * "title: X | section: Y | text: content"
  */
 export function formatForEmbedding(chunk: {
   docTitle?: string;
   headingPath?: string[];
-  tags?: string[];
   content: string;
 }): string {
   const parts: string[] = [];
   if (chunk.docTitle) parts.push(`title: ${chunk.docTitle}`);
   if (chunk.headingPath?.length) parts.push(`section: ${chunk.headingPath.join(" > ")}`);
-  if (chunk.tags?.length) parts.push(`tags: ${chunk.tags.join(", ")}`);
   parts.push(`text: ${chunk.content}`);
   return parts.join(" | ");
 }
@@ -260,7 +242,6 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
       note_id: chunk.noteId,
       file_path: chunk.filePath,
       title: chunk.title ?? "",
-      layer: chunk.layer ?? "rewritten",
       heading: chunk.heading ?? "",
       heading_path: chunk.headingPath ? JSON.stringify(chunk.headingPath) : "",
       content: chunk.content,
@@ -269,7 +250,6 @@ export function toZVecDoc(chunk: ChunkInput): ZVecDocInput {
       token_count: chunk.tokenCount,
       seq_index: chunk.seqIndex,
       doc_title: chunk.docTitle ?? "",
-      tags: chunk.tags ?? [],
       created_at: createdEpoch,
       indexed_at: now,
     },
@@ -282,7 +262,6 @@ const DEFAULT_OUTPUT_FIELDS = [
   "note_id",
   "file_path",
   "title",
-  "layer",
   "heading",
   "heading_path",
   "content",
@@ -291,7 +270,6 @@ const DEFAULT_OUTPUT_FIELDS = [
   "token_count",
   "seq_index",
   "doc_title",
-  "tags",
   "created_at",
 ] as const;
 
@@ -326,7 +304,6 @@ export interface SearchResult {
   offsetEnd: number;
   tokenCount: number;
   seqIndex: number;
-  tags: string[] | null;
   createdAt: number | null;
   score: number;
   scoreDetail?: { semantic?: number; keyword?: number; rerank?: number };
@@ -352,7 +329,6 @@ export function toSearchResult(doc: ZVecDoc): SearchResult {
     offsetEnd: doc.fields.offset_end,
     tokenCount: doc.fields.token_count,
     seqIndex: doc.fields.seq_index ?? 0,
-    tags: doc.fields.tags,
     createdAt: doc.fields.created_at,
     score: doc.score,
   };
@@ -414,7 +390,6 @@ export function mergeByLinearFusion(
           offsetEnd: 0,
           tokenCount: 0,
           seqIndex: 0,
-          tags: null,
           createdAt: null,
           score: 0,
         },
@@ -595,12 +570,6 @@ export function hybridSearch(
 }
 
 // ─── Filter expression helpers ────────────────────────────────────────────────
-
-/** Tag filter — documents containing ALL specified tags. */
-export function tagFilter(tags: string[]): string {
-  const values = tags.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(", ");
-  return `tags CONTAIN_ALL (${values})`;
-}
 
 /** Date range filter (epoch ms). */
 export function dateFilter(after?: Date, before?: Date): string {
