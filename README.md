@@ -4,12 +4,15 @@ Monorepo for the knoter CLI, shared project docs, and web frontend.
 
 ## Projects
 
-- `cli/`: TypeScript/Bun CLI, MCP server, indexing, search, report tooling, and
-  the explicit `kn llm rewrite` (Codex) workflow.
-- `docs/`: shared architecture, planning, testing, and artifact workflow docs.
+- `cli/`: TypeScript/Bun CLI — vault management, indexing, agent work queue,
+  search, launchd scheduling. `kn sync` spawns the configured external agent
+  (codex/claude CLI) which maintains vault artifacts plus their HTML displays.
+- `res/templates/`: vault seed content (workflow contract + per-artifact
+  templates with default HTML), copied into each vault at `kn vault init`.
+- `docs/`: shared architecture, planning, and testing docs.
 - `web/`: React/Vite HTML workbench frontend with an Electron development shell
-  and CLI-backed IPC. No web test harness currently exists; `npm run check` is
-  the verification baseline.
+  and CLI/fs-backed IPC. No web test harness currently exists; `npm run check`
+  is the verification baseline.
 
 Agent guides: root `agents.md` routes to `cli/agents.md` and `web/agents.md`.
 
@@ -28,12 +31,13 @@ that OpenAI-compatible embedding endpoint.
 cd cli
 # Current ad hoc typecheck; package metadata/check script is P1 work.
 bunx tsc --noEmit
-bun test
 ```
 
 ```sh
 cd web
 npm install
 npm run check
-npm run dev   # test vault bootstrap + Vite + Electron shell
 ```
+
+The CLI/web test harnesses were removed during the queue-architecture rewrite;
+manual smoke steps live in `docs/testing.md`.

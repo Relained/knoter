@@ -12,7 +12,7 @@ own areas and must be read before changing code in those areas.
 
 Before doing package-specific work, read the matching guide:
 
-- CLI/MCP/indexing/search/LLM-rewrite work: `cli/agents.md`
+- CLI/MCP/indexing/search/agent-queue work: `cli/agents.md`
 - Web/frontend/Electron work: `web/agents.md`
 
 If a task touches both packages, read both guides before planning or editing.
@@ -24,10 +24,11 @@ explicitly approves a different direction.
 
 | Path | Role |
 | --- | --- |
-| `cli/` | Bun/TypeScript CLI, MCP server, indexing, retrieval, storage, and the explicit `kn llm` agent workflow. |
-| `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI-backed IPC. |
-| `docs/` | Shared architecture, codebase, planning, testing, and template documentation. |
-| `testdata/` | Markdown fixture corpus for live tests and the local test vault (`KN_TESTDATA_ROOT`). |
+| `cli/` | Bun/TypeScript CLI: vault management, indexing, agent work queue, search, launchd scheduling. |
+| `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI/fs-backed IPC. |
+| `res/templates/` | Vault seed content: workflow contract + per-artifact templates (markdown + default HTML). |
+| `docs/` | Shared architecture, codebase, planning, and testing documentation. |
+| `testdata/` | Markdown fixture corpus for manual smoke runs. |
 | `README.md` | Root project overview. |
 
 ## Shared Documentation
@@ -36,13 +37,12 @@ Read the smallest relevant set under `docs/` before larger changes:
 
 - `docs/architecture.md` — product model and boundary source of truth.
 - `docs/codebase.md` — code reading entry point for both packages.
-- `docs/testing.md` — test commands and `.env` environment catalog.
+- `docs/testing.md` — verification commands, config files, manual smoke flow.
 - `docs/plan/progress.md` — implemented current state and verification baseline.
 - `docs/plan/roadmap.md` — active decisions and P0–P2 planned work.
-- `docs/template.md` — the artifact workflow contract delivered to external
-  agents at runtime through `kn template get` / `kn report context`. It is
-  validated content, not prose documentation; changing it changes agent
-  behavior and template tests.
+- `res/templates/workflow.md` — the agent workflow contract seeded into every
+  vault's `templates/workflow.md` by `kn vault init`. It is runtime content,
+  not prose documentation; changing it changes agent behavior for new vaults.
 
 ## Shared Rules
 
@@ -91,7 +91,7 @@ Read the smallest relevant set under `docs/` before larger changes:
 - Web-affecting changes: baseline in `web/agents.md` plus `docs/testing.md`.
 - Documentation-only changes: a read-through and `git diff --check` are usually
   sufficient unless the edited document defines executable commands or
-  contracts (`docs/template.md` changes need the template tests in `cli/`).
+  contracts (`res/templates/workflow.md` is the runtime agent contract).
 
 ## Agent Workflow
 

@@ -1,200 +1,90 @@
 # knoter testing and environment
 
-## Env Loading
+테스트 스위트(`cli/tests/`)는 재구성과 함께 제거됐다. 재도입 전까지
+커버리지를 주장하지 않는다. 현재 기준은 typecheck + build + 수동 스모크다.
 
-CLI environment is centralized in package-local `cli/.env` by default.
+## Configuration
 
-- Bun automatically loads `.env` from the current package directory for
-  `bun run` and `bun test`; the documented CLI commands assume `cwd=cli/`.
-- Do not add `dotenv`.
-- CLI shell scripts source `cli/.env` explicitly because they use env values
-  before starting Bun.
-- Override the env file for scripts with `KN_ENV_FILE=/path/to/env`.
+환경변수 방식은 폐기됐다. 설정은 파일로만 한다:
 
-`.env` is intentionally gitignored. Keep machine-specific endpoint, model, and
-timeout values there.
+- 전역: `~/.config/knoter/config.json` — vault 레지스트리, `defaultVaultDir`,
+  `agent.backends`/`agent.backend`, embedding 기본값, `sync.intervalMinutes`.
+  처음 실행 시 기본값으로 생성된다.
+- vault별: `<vault>/config.json` — embedding/agent/search 부분 오버라이드.
 
-## Env Catalog
+스모크 시 머신 전역 config가 그대로 쓰이므로, 테스트 vault는 `kn vault
+delete <name> --confirm`으로 레지스트리에서 정리한다 (`.db`만 삭제되고 유저
+파일은 남는다 — 임시 경로면 디렉토리째 지우면 된다).
 
-Core:
+## Verification Commands
 
-- `KN_HOME`: global kn config directory. Defaults to `~/.kn`; tests usually set
-  it to an isolated temp directory.
-- `KN_TESTDATA_ROOT`: markdown fixture corpus used by live tests and local test
-  vault bootstrap. From `cli/`, the default is `../testdata`, i.e. the
-  repository-root `testdata/` directory. Set it in `.env` when using private,
-  large, or machine-specific test data.
+```bash
+cd cli && bunx tsc --noEmit
+cd web && npm run check
+```
 
-Embedding provider and test vault bootstrap:
+## Manual Smoke
 
-- `KN_EMBED_BASE_URL`: OpenAI-compatible embedding endpoint for script-created
-  vaults. Defaults to `http://127.0.0.1:39280`.
-- `KN_EMBED_MODEL`: embedding model id.
-- `KN_EMBED_API_KEY`: bearer token if the endpoint requires one.
-- `KN_TEI_PORT`: local `text-embeddings-router` port for
-  `scripts/test-env.sh tei-start`. Defaults to `39280`.
-
-Live TEI/Codex integration tests:
-
-- `KN_TEI_BASE_URL`: OpenAI-compatible TEI endpoint. Defaults to
-  `http://127.0.0.1:39280` in `scripts/tei-e2e-test.sh`.
-- `KN_TEI_MODEL`: model sent to `/v1/embeddings`.
-- `KN_TEI_API_KEY`: bearer token if needed.
-- `KN_TEI_DIM`: expected embedding dimension.
-- `KN_CODEX_CLI_E2E`: `1` enables real Codex CLI agent execution.
-- `KN_CODEX_BIN`: Codex executable name/path.
-- `KN_CODEX_TIMEOUT_MS`: single Codex CLI call timeout.
-- `KN_TEI_ALL_TESTDATA_TIMEOUT_MS`: full `testdata/**/*.md` corpus timeout.
-
-Explicit LLM rewrite command:
-
-- `kn llm rewrite --source <vault-relative-source>` calls Codex CLI, asks it to
-  write `rewritten.md` plus any template-justified `artifacts/**/*.md` files in
-  an isolated agent workspace, then imports those Markdown files into the
-  active vault. Artifacts are durable scenario documents chosen from
-  `docs/template.md`; the command must not force one daily artifact per source.
-- The command is intentionally under `kn llm`; normal `kn add`, `kn search`,
-  and report/template commands do not generate prose.
-- Importing the Codex-authored outputs still indexes chunks and therefore needs
-  the vault embedding provider to be reachable.
-- `KN_CODEX_BIN` or `--codex-bin` selects the Codex executable. Use
-  `--workspace` to keep the raw agent inputs/outputs for inspection.
-- `--test-embeddings` is a local smoke-test escape hatch: Codex still generates
-  the prose, but indexing uses deterministic vectors instead of calling the
-  embedding endpoint.
-
-Web:
-
-- Vite dev and preview use `http://127.0.0.1:39281`.
-- Web unit and Playwright E2E harnesses are currently removed. Use
-  `npm run check` for web TypeScript/build verification until tests are
-  reintroduced.
-
-## Commands
-
-CLI hermetic unit/integration suite:
+소스 투입 → sync 인덱싱/큐 → 검색 → 에이전트 패스 순서로 확인한다:
 
 ```bash
 cd cli
-bun test
+
+# 1. vault 생성 (templates/ 시딩 포함; 기본 위치는 ~/Documents/<name>)
+bun run src/cli.ts vault init smoke --path /tmp/kn-smoke \
+  --model dragonkue/snowflake-arctic-embed-l-v2.0-ko
+
+# 2. source 투입 후 인덱스+큐 (에이전트 생략)
+mkdir -p /tmp/kn-smoke/sources/$(date +%F)
+echo '# memo' > /tmp/kn-smoke/sources/$(date +%F)/memo.md
+bun run src/cli.ts sync --no-agent --format json
+# -> index.added=1, index.queued=1, queue.remaining=1
+
+# 3. 키워드 검색 (sources scope; 임베딩 불필요)
+bun run src/cli.ts search "memo" --scope sources --format json
+
+# 4. 기본 hybrid 검색은 llm-wiki 한정 + embedding endpoint 필요
+#    (artifacts/llm-wiki.md가 인덱싱된 후에 결과가 나온다)
+bun run src/cli.ts search "memo" --format json
+
+# 5. 에이전트 패스: 전역 config의 agent.backend를 설정하면 sync가 spawn한다.
+#    백엔드 미설정이면 agent.skippedReason으로 보고되고 큐는 유지된다.
+bun run src/cli.ts sync --format json
+
+# 정리
+bun run src/cli.ts vault delete smoke --confirm
+rm -rf /tmp/kn-smoke
 ```
 
-TypeScript check:
+동작 메모:
+
+- `kn vault status`/`kn search` 앞단의 implicit sync는 meta.db `sync_state`로
+  10초 debounce된다. 직후 재실행 시 파일 변경이 안 보이면 debounce 때문이다.
+- llm-wiki 임베딩과 기본(hybrid/semantic) 검색은 embedding endpoint
+  (`http://127.0.0.1:39280` 기본)가 살아 있어야 한다. source/일반 artifact
+  인덱싱과 키워드 검색, 큐 적재는 endpoint 없이 동작한다 (llm-wiki 인덱싱
+  실패는 sync 결과의 `errors`에 기록되고 다음 sync에서 재시도된다).
+- macOS Metal 가속 로컬 TEI는 별도 터미널에서 직접 띄운다:
+  `text-embeddings-router --model-id <model> --port 39280`.
+
+## Service (launchd)
 
 ```bash
-cd cli
-bunx tsc --noEmit
+bun run src/cli.ts service status --check   # 등록 상태 + endpoint probe
+bun run src/cli.ts service install --interval 10
+bun run src/cli.ts service uninstall
 ```
 
-This is the current ad hoc check command. `cli/package.json` does not yet have a
-package-local `check` script or pinned TypeScript dev dependency; that belongs
-to the P1 package metadata cleanup.
+`install`은 `~/Library/LaunchAgents/com.knoter.sync.plist`를 쓰고 launchctl로
+로드한다. 로그는 `~/.config/knoter/logs/`. 실제 등록이 필요 없는 스모크에서는
+실행하지 않는다.
 
-Live TEI/Codex embedding E2E:
-
-```bash
-cd cli
-scripts/tei-e2e-test.sh
-```
-
-Local test vault setup:
-
-```bash
-cd cli
-scripts/test-env.sh tei-start
-scripts/test-env.sh setup
-scripts/test-env.sh ensure
-scripts/test-env.sh demo
-scripts/test-env.sh teardown
-scripts/test-env.sh kn <args...>   # run kn against the test KN_HOME
-```
-
-`scripts/test-env.sh ensure` is the idempotent development path. It creates or
-selects the `testvault` vault under `cli/.test-vault`, runs
-`kn add "$KN_TESTDATA_ROOT" --recursive --vault testvault`, then installs
-deterministic rewritten/artifact fixtures from the indexed source notes. The
-fixture step (`src/core/agent-fixtures.ts`, also runnable standalone via
-`bun scripts/agent-fixtures.ts --vault <name>`) copies `docs/template.md` into
-`.kn/template.md`, writes agent-style rewritten notes with source lineage, and
-creates durable artifacts for diet, workout, task, study, reflection, project,
-progress, and idea scenarios.
-
-For macOS Metal acceleration, run local TEI in one terminal:
-
-```bash
-cd cli
-scripts/test-env.sh tei-start
-```
-
-Then run tests or create the test vault from another terminal:
-
-```bash
-cd cli
-scripts/tei-e2e-test.sh
-scripts/test-env.sh setup
-```
-
-The CLI stores and calls an embedding server API endpoint only. It does not
-create, start, or own TEI containers. Local service lifecycle is future
-packaged-app work and is not implemented in the current `web/` renderer.
-
-Endpoint health checks:
-
-```bash
-cd cli
-bun run src/cli.ts service status --check
-bun run src/cli.ts vault status --check-providers
-```
-
-`service status --check` is the preferred narrow endpoint probe. `vault status
---check-providers` remains useful when the same output should include vault
-metadata and provider health.
-
-Testdata corpus behavior:
-
-- `scripts/test-env.sh setup` runs `kn add "$KN_TESTDATA_ROOT" --recursive`, so
-  it indexes every `**/*.md` file under that root.
-- `tests/tei-integration.test.ts` has a live corpus test that scans
-  `new Bun.Glob("**/*.md")`, creates source rows under `sources/testdata/`,
-  creates rewritten fixtures under `rewritten/testdata/`, embeds all generated
-  chunks through TEI, then checks FTS, zvec fetch, semantic search, and hybrid
-  search.
-- If `KN_TESTDATA_ROOT` does not exist, the corpus tests print a skip reason and
-  return successfully. The smaller shared TEI fixture still runs when
-  `KN_TEI_BASE_URL` is set.
-
-Web verification:
+## Web verification
 
 ```bash
 cd web
 npm run check
+npm run dev   # Vite(127.0.0.1:39281) + Electron shell, active vault 사용
 ```
 
-`npm run dev` first attempts `cli/scripts/test-env.sh ensure` and passes the
-test `KN_HOME` to Electron so the web IPC bridge can load the test vault,
-including source, rewritten, and artifact layers. Set
-`KNOTER_DEV_TEST_VAULT=0` to skip this bootstrap, or
-`KNOTER_DEV_TEST_VAULT=1` to make bootstrap failure stop dev startup.
-
-Do not claim web unit or Playwright E2E coverage while the web test harness is
-removed.
-
-## Template Delivery To Agents
-
-`docs/template.md` is not read magically by the model. It reaches an external
-agent through `kn`/MCP payloads:
-
-1. `src/core/template.ts` resolves the effective template:
-   - vault override: `<vault_root>/.kn/template.md`
-   - fallback: repo `docs/template.md`
-2. `kn template get` returns the resolved template content and metadata.
-3. `kn report context --date YYYY-MM-DD` embeds the resolved template object in
-   the JSON context bundle under `template`.
-4. MCP exposes the same paths through `kn_template_get` and
-   `kn_report_context`.
-5. The external agent reads that template text, then uses `kn`/MCP retrieval
-   such as search/get/report context to decide whether to create new artifacts
-   or update existing artifact documents.
-
-The current fallback template is an artifact workflow contract, not a single
-daily-report-only output contract.
+Web unit test와 Playwright E2E harness는 제거된 상태다.

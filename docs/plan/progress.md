@@ -1,103 +1,69 @@
 # knoter progress (current state)
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 Implemented state of the monorepo (`cli/`, `web/`, shared `docs/`).
 Remaining work and decisions live in `docs/plan/roadmap.md`.
 
-## Implemented Backbone
+## 2026-06-11 Final-Structure Rewrite
 
-CLI:
+하루 동안 두 단계 재구성을 거쳐 최종 구조가 구현됐다. 이전 마일스톤 서술은
+git 히스토리를 본다.
 
-- vault/add/sync/search/get/tag/template/report/mcp/service/llm command surfaces
-- `kn get batch` and MCP batch retrieval for agent workflows
-- source/rewritten/artifact DB metadata
-- source metadata-only ingest
-- rewritten/artifact chunking, FTS, vector indexing
-- artifact default search exclusion
-- explicit raw `kind` storage without auto type inference
-- OpenAI-compatible embedding provider path
-- CLI-owned embedding container/runtime code removed; the CLI stores and calls
-  an external embedding server API endpoint
-- CJK chunking/search fallback improvements
-- MCP stdio tools for template/report/rewrite/add-note
-- `kn report context` JSON bundle with previous 7-day continuity
-- optional TEI integration test harness for OpenAI-compatible local embeddings
-- CLI document graph projection table and refresh path for lineage,
-  template/artifact, note/chunk containment, and chunk adjacency edges
-- `kn llm rewrite`: an external agent authors rewritten + template-justified
-  artifact notes in an isolated workspace, then the CLI imports and indexes
-  them. Selectable runtimes: Codex CLI (`--agent codex`, default) and Claude
-  Code CLI (`--agent claude`)
-- deterministic agent scenario fixtures (`src/core/agent-fixtures.ts`,
-  `scripts/agent-fixtures.ts`) installed by `scripts/test-env.sh ensure`
-- expanded artifact workflow template (`docs/template.md` v3) letting the agent
-  choose scenario artifacts instead of forcing one daily artifact per source
-- TypeScript check passes for the active CLI codebase
+핵심 구조:
 
-Web:
+- **Vault**: `<dir>/{templates, sources, artifacts, .db}` (+선택
+  `config.json`). 기본 위치 `~/Documents/<name>`, `--path`로 지정 가능,
+  다중 vault. `kn vault init`이 `res/templates/`(workflow.md 계약 +
+  llm-wiki/calendar/todo/kanban md·html)를 시딩.
+- **Config**: 환경변수 폐기. `~/.config/knoter/config.json` 전역(vault
+  레지스트리, defaultVaultDir, agent.backends/backend, embedding 기본값,
+  sync.intervalMinutes) + `<vault>/config.json` 부분 오버라이드.
+- **레이어/인덱싱**: `source | artifact`만 존재 (rewritten 완전 제거). 모든
+  `.md`는 청킹+FTS; `kind: llm-wiki`만 임베딩(zvec) — 시맨틱 검색은 구조적으로
+  llm-wiki 한정. HTML은 인덱싱하지 않음. 태그 시스템 없음.
+- **sync**: `kn sync` = 인덱스 패스 → source 변경 큐 적재(`agent_queue`,
+  경로당 pending 1건 병합) → config의 에이전트 백엔드(codex `exec`/claude
+  `-p`)를 vault cwd에서 spawn → exit 0 시 재인덱스 + 큐 done. 읽기
+  surface(search/vault status)는 index-only implicit sync(10초 debounce,
+  `sync_state`).
+- **service**: `kn service install`이 launchd
+  (`~/Library/LaunchAgents/com.knoter.sync.plist`)에 주기 `kn sync` 등록.
+- **검색**: `kn search --scope llm-wiki(기본·hybrid)|artifacts|sources|all
+  (키워드 전용)`.
+- **MCP**: 폐기·삭제. MCP/skill 노출은 future plan.
+- **DB CRUD 통합**: `meta-store.ts`(SQLite 단일 소스) +
+  `vault-store.ts`(meta+zvec+embedder 파사드).
 
-- React/Vite web renderer on dedicated local port `39281`
-- Electron-backed web development shell; `npm run dev` bootstraps the CLI test
-  vault, starts Vite, and launches an Electron BrowserWindow through preload
-  IPC; macOS hidden-titlebar shell with a tab-row drag region
-- HTML-first workbench renderer (`web/src/workbench/`): sandboxed HTML page
-  tabs, overlay menu/tab bars, command palette, source draft modal, settings
-  page
-- command registry as the single action source: every UI button runs the same
-  `executeCommand` path as the palette; parameterized commands open a
-  two-stage option form (design: `docs/design/web-commands.md`)
-- keybinding system: chord→command bindings with defaults, settings recorder
-  UI, palette shortcut hints
-- right-side widget bar (pin any view, ratio split with drag resize) and bell
-  notifications with transient toasts (design: `docs/design/widget-bar.md`)
-- workbench wired to the CLI-backed Electron bridge: vault documents open as
-  dynamic palette commands rendered with `marked` through the sandbox
-  sanitize path
-- typed web API/IPC contracts for vault (getActive/switch/list/status),
-  explorer, graph, search, sync, add-source picker, note save, template, tag,
-  report context, llm rewrite, and sanitized external HTML windows
-- Electron IPC handlers call the CLI JSON surface; this is an interim
-  CLI-backed bridge, not a packaged daemon
+CLI surface: `kn vault | sync | search | service`.
+
+Web: source 추가/노트 저장은 vault로 직접 파일 복사 후 `vault status`로
+인덱싱 트리거. 템플릿은 `<vault>/templates/` 직접 읽기. Explorer 레이어
+`source|artifact|template`. vault 생성은 `kn vault init`.
+
+검증 완료 (2026-06-11):
+
+- `bunx tsc --noEmit`(cli), `npm run check`(web) 통과.
+- 스모크: vault init(시딩 9파일) → source 투입 → `kn sync --no-agent`
+  (added 1, queued 1) → `--scope sources` 키워드 검색 1건 → TEI 기동 후
+  llm-wiki 인덱싱 + 기본 hybrid 검색(semantic 0.565) → noop 백엔드로
+  에이전트 패스(spawn→exit 0→큐 completed 1, remaining 0) → vault delete.
+- 임베딩 endpoint 다운 시: source/일반 artifact 인덱싱·키워드 검색·큐는
+  정상, llm-wiki 인덱싱 실패는 sync errors에 기록되고 재시도 대상.
 
 ## Removed / Replaced
 
-- The previous pane/tab/floating-window workspace, sidebar surface host,
-  renderer registry, old keybinding modules, Graph 3D template preview, and
-  the web Playwright/unit harness were removed with the workbench rewrite. Do
-  not claim that coverage or resurrect those modules.
-- `web/docs/*` design notes and the old `web/agents.md` GPT harness are gone;
-  `web/agents.md` is now the package agent guide and shared docs live in root
-  `docs/`.
+- 2026-06-11: `kn add|get|tag|template|report|llm|mcp` 명령, MCP 서버,
+  rewritten 레이어, 태그 시스템, `KN_*` 환경변수, `docs/template.md`
+  (→`res/templates/workflow.md`), report-*/template-*/add-note/rewrite-context
+  core 모듈, agent fixtures, `cli/tests/`, `cli/scripts/`, `cli/templates/`.
+- 구 web workspace/Playwright harness는 workbench 재작성 때 제거됨.
 
 ## Verification Baseline
 
-Use these before code-affecting commits:
-
 ```bash
-cd cli
-# Current ad hoc typecheck; package metadata/check script is P1 work.
-bunx tsc --noEmit
-bun test
-git diff --check
+cd cli && bunx tsc --noEmit
+cd web && npm run check
 ```
 
-For web-affecting changes:
-
-```bash
-cd web
-npm run check
-```
-
-Web dev smoke:
-
-```bash
-cd web
-npm run dev
-```
-
-This bootstraps the CLI test vault (skip with `KNOTER_DEV_TEST_VAULT=0`),
-starts or reuses the Vite renderer server on `127.0.0.1:39281`, and launches
-the Electron shell.
-
-Detailed test and environment instructions live in `docs/testing.md`.
+수동 스모크는 `docs/testing.md`를 따른다.
