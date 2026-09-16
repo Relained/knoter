@@ -1,27 +1,24 @@
 # Project memory
 
-Keep information that cannot be recovered reliably from the current code:
-decisions and their reasons, user constraints, failures and fixes, verification
-limits, and unimplemented plans. Package guides and code own implementation
-details; Git history owns completed-work inventories.
+Keep what cannot be recovered reliably from code: design reasons, user
+constraints, failures and remedies, verification limits, and unimplemented plans.
+READMEs own setup/use instructions, agents files own work rules, and code owns
+implementation details. Git history owns completed-work inventories.
 
 | Document | Purpose |
 | --- | --- |
-| [Decisions and lessons](architecture.md) | Legacy CLI/web boundaries, UI failure records, operational cautions, and unresolved work |
-| [Desktop rewrite brief](plan/desktop-rewrite.md) | English handoff: product intent, library/format choices, macOS/Windows constraints, and implementation gates |
+| [Decisions and lessons](architecture.md) | Legacy boundaries, UI failures, operational cautions, and unresolved work |
+| [Desktop rewrite brief](plan/desktop-rewrite.md) | English handoff: product intent, library/format choices, platform constraints, and implementation gates |
 
-For setup, commands, and package-specific rules, use the
-[root guide](../agents.md), [CLI guide](../cli/agents.md),
-[web guide](../web/agents.md), and [rewrite guide](../v2/agents.md).
-The [prototype README](../v2/README.md) holds its manual verification evidence
-and tool limitations.
+Use the [project README](../README.md) for package entry points and the
+[root agent guide](../agents.md) for work rules. The
+[prototype README](../v2/README.md#failure-evidence-and-verification-limits)
+retains its failure evidence and unverified paths.
 
 [res/templates/workflow.md](../res/templates/workflow.md) is a runtime contract
-seeded into vaults, not ordinary documentation. Preserve existing users'
-customized vault contracts when changing seed templates.
+seeded into vaults; preserve existing users' customized copies.
 
-Do not add file maps, API/command catalogs, copied type definitions, routine
-PASS logs, or completed-feature checklists here. Record a failed attempt with
-its date, scope, cause, resolution or remaining uncertainty. Keep historical
-verification limits dated; do not present them as current defects. Consolidate
-related decisions instead of opening another status document.
+Do not duplicate file maps, API/type catalogs, routine PASS logs, or completed
+checklists. Record failures with date, scope, cause, and resolution or remaining
+uncertainty; do not present dated verification limits as new defects. Consolidate
+related decisions instead of opening more status documents.

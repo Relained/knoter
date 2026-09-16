@@ -1,35 +1,23 @@
-# knoter web
+# knoter Web workbench
 
-HTML-first workbench frontend for knoter: React 18 + TypeScript + Vite 5, with
-an Electron development shell whose IPC handlers call the CLI in `../cli`.
+The legacy Electron UI for CLI-managed vaults. For the isolated browser rewrite,
+see [V2](../v2/README.md).
 
-## Quick Commands
+Use npm and make Bun available for the [CLI](../cli/README.md).
+From the repository root:
 
-```bash
+```sh
+cd web
 npm install
-npm run check   # tsc --noEmit && vite build — verification baseline
-npm run dev     # Vite on 127.0.0.1:39281 + Electron shell
+npm run dev
 ```
 
-`npm run dev` starts Vite and the Electron shell against the active vault
-registered in `~/.config/knoter/config.json`. The old test-vault bootstrap was
-removed with the test environment.
+This starts Vite at `http://127.0.0.1:39281` and Electron against the active vault
+in `~/.config/knoter/config.json`. It does not create an isolated test vault;
+manual actions affect the selected vault. Use disposable data for walkthroughs.
 
-There is currently no web unit-test or E2E harness; `npm run check` is the only
-automated verification.
+For code changes, run `npm run check` here (TypeScript + production build).
+Build success does not establish GUI behavior; follow the
+[manual verification guidance](../docs/architecture.md#verification-evidence-and-operational-cautions).
 
-## Layout
-
-- `src/workbench/`: workbench UI — HTML page tabs, overlay bars, command
-  palette, source modal, settings page.
-- `src/core/`: typed renderer API, IPC contracts, preload adapter shape,
-  global settings runtime.
-- `src/shared/`: semantic icons, Base16 theming, token/component CSS.
-- `electron/`: Electron main process, preload bridge, CLI-backed IPC handlers.
-- `scripts/dev-electron.mjs`: `npm run dev` orchestration.
-
-## Docs
-
-- `agents.md` (agent work guide for this package)
-- [Documentation index](../docs/README.md)
-- [Legacy decisions, UI failures, and verification limits](../docs/architecture.md)
+Read [agents.md](agents.md) before changing the renderer, IPC, or HTML handling.

@@ -1,21 +1,29 @@
-# knoter v2 Agent Guide
+# knoter V2 agent guide
 
-This directory is the isolated rewrite. The current delivery is a browser-based
-frontend prototype with a replaceable mock API, not an Electron/backend release.
-Root repository rules apply. Legacy `web/agents.md` HTML-first and command-registry
-rules describe the old application and do not define this new frontend.
+Apply the [root rules](../agents.md). This is the isolated rewrite; legacy Web
+HTML-first and command-registry rules do not apply here. The user assigned a
+frontend prototype first. Keep real backend/OS/PDF/LLM work outside that delivery
+unless the next milestone is assigned; label simulated operations clearly.
 
-- Use React, TypeScript, Vite, Tailwind, and composable UI primitives.
-- Keep service calls behind `KnoterClient` in `packages/contracts`; UI components
-  must not access localStorage, Electron IPC, files, or LLM providers directly.
-- The mock adapter owns seeded data, async behavior, and local persistence.
-- Keep original/source data and user-edited document content untrusted; never
-  render raw HTML or execute model-produced markup.
-- Do not add automated tests, test runners, Playwright suites, or CI workflows.
-  The user explicitly deferred test automation on 2026-09-16. Verify with
-  `npm run check`, a manual browser walkthrough, and `git diff --check`.
-- Use npm from `v2/`. Run `npm run dev` for the prototype on port 39282.
-- Keep backend, OS registration, PDF extraction, and real LLM work out of this
-  frontend-only delivery. Clearly label simulated operations in the interface.
+- Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
+  composable primitives. Reuse Radix for accessible interaction/focus behavior
+  and the shared icon system rather than adding parallel UI conventions.
+- All service calls go through `KnoterClient` in `packages/contracts`.
+  Components do not access localStorage, Electron IPC, files, or providers;
+  the mock adapter owns seed data, async simulation, and persistence.
+- Treat source and edited document content as untrusted; never execute
+  model-produced markup or enable raw HTML rendering.
+- Preserve existing preview data, stable document identities, revisions, and
+  drafts. Follow the [rewrite brief](../docs/plan/desktop-rewrite.md) for
+  navigation, compact/Zen layout, wiki links, and recoverable deletion policy.
+  Deleting a note must keep source files, tasks, other notes' Markdown, and
+  historic chat intact; retain references so restoration can reconnect it.
+- Before real service integration, define source byte/handle transfer, validated
+  wire messages, cancellation IDs, provenance, and storage migrations.
+  The frontend contract is not a finished IPC protocol; `AbortSignal` is not
+  a wire payload. Keep real and mock evidence distinct.
 
-See `../docs/plan/desktop-rewrite.md` for the complete rewrite direction.
+Use npm. Follow [README.md](README.md) for setup/check commands and retained
+failure evidence. Manually exercise affected browser flows and report limits;
+the root no-test-automation/CI instruction applies. Do not treat browser checks
+as native-platform verification.

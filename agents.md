@@ -1,111 +1,55 @@
-# knoter Root Agent Guide
+# knoter root agent guide
 
-Last updated: 2026-06-10
-Project: `Documents/knoter`
-Language for this file: English
+## Scope and routing
 
-This is the root routing guide for agent work in the `knoter` monorepo. It is
-intentionally short. Package-specific instructions are authoritative for their
-own areas and must be read before changing code in those areas.
+Read the relevant guide before planning or editing:
+[CLI](cli/agents.md), [legacy Web/Electron](web/agents.md), or
+[isolated rewrite](v2/agents.md). Root rules apply throughout the repository;
+package rules govern their own files. Read every affected guide for cross-package
+work and preserve the stricter boundary unless the user directs otherwise.
+Legacy Web rules do not govern V2.
 
-## Required Package Guides
+Use [project memory](docs/README.md) for the smallest relevant set of decisions,
+failures, and plans. READMEs own setup/use instructions; agents files own work
+rules. Keep code maps, copied APIs/types, and completed-feature inventories out
+of both. Record dated failures and verification limits instead of routine PASS
+logs; preserve decisions and user constraints when compressing documents.
 
-Before doing package-specific work, read the matching guide:
+## Work and verification
 
-- CLI/MCP/indexing/search/agent-queue work: `cli/agents.md`
-- Web/frontend/Electron work: `web/agents.md`
-- Isolated rewrite under `v2/`: `v2/agents.md` (legacy web rules describe `web/`).
+- Keep scope and acceptance criteria explicit; prefer small patches and existing
+  patterns. Preserve architecture and user decisions unless a change is authorized.
+- Do not discard unrelated user work. Treat source files and existing vaults as
+  user data, including during manual verification.
+- Update the owning guide or decision record when a contract changes; link to
+  shared explanations rather than copying them into each package.
+- For code changes, run the package README's check command and the narrowest
+  relevant manual checks; broaden for storage, retrieval, persistence, or UI
+  interaction changes. Use disposable data. Report exact checks and remaining
+  uncertainty; never imply that an unrun check passed.
+- Run `git diff --check`. Ordinary documentation changes need a read-through and
+  link checks, not an application build.
+- Test automation and CI were deferred by the user's 2026-09-16 instruction;
+  reintroduce them only when requested. Static checks/builds remain required.
+- [res/templates/workflow.md](res/templates/workflow.md) is executable agent
+  policy, not ordinary prose. Keep the CLI work prompt consistent with changes;
+  preserve customized copies in existing vaults and document new-vault scope.
+- Report the change's intent, affected files, validation, and material risks.
 
-If a task touches both packages, read both guides before planning or editing.
-When package guides conflict, follow the guide for the files being changed. For
-cross-package behavior, preserve the stricter constraint unless the user
-explicitly approves a different direction.
+## Git
 
-## Repository Map
-
-| Path | Role |
-| --- | --- |
-| `cli/` | Bun/TypeScript CLI: vault management, indexing, agent work queue, search, launchd scheduling. |
-| `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI/fs-backed IPC. |
-| `v2/` | Isolated React frontend rewrite with a replaceable mock service adapter. |
-| `res/templates/` | Vault seed content: workflow contract + per-artifact templates (markdown + default HTML). |
-| `docs/` | Shared decisions, failure records, and rewrite planning. |
-| `testdata/` | Markdown fixture corpus for manual smoke runs. |
-| `README.md` | Root project overview. |
-
-## Shared Documentation
-
-Read the smallest relevant set under `docs/` before larger changes:
-
-- `docs/README.md` — documentation index and retention policy.
-- `docs/architecture.md` — legacy decisions, failure records, verification
-  limits, operational cautions, and unresolved work.
-- `docs/plan/desktop-rewrite.md` — rewrite rationale, platform/format contracts,
-  and implementation gates.
-- Package guides and READMEs — setup, check commands, and package-specific
-  implementation instructions.
-- `res/templates/workflow.md` — the agent workflow contract seeded into every
-  vault's `templates/workflow.md` by `kn vault init`. It is runtime content,
-  not prose documentation; changing it changes agent behavior for new vaults.
-
-## Shared Rules
-
-- Keep changes scoped to the user's request.
-- Prefer existing patterns and local helper APIs over new abstractions.
-- Do not rewrite architecture or user decisions without explicit approval.
-- Update shared docs when behavior or contracts change across packages.
-- Run the narrowest relevant verification first, then broaden when touching
-  shared behavior, persistence, storage, retrieval, or UI interaction.
-- Never claim verification that was not actually run. If a command cannot run,
-  document the reason.
-
-## Git Management
-
-- Branch model (current): single long-lived branch `dev`.
-  - `dev` is the default branch and the only long-lived branch. There is no
-    `main` for now; a stable/release branch may be reintroduced later.
-  - Topic branches start from `dev` and merge back into `dev` through a PR
-    (use a local `--no-ff` merge when working without the remote).
-  - Topic branch names are free-form. Prefix grouping such as
-    `features/<name>`, `webs/<name>`, `backs/<name>`, `refactoring/<name>` is
-    a useful convention, not a requirement.
-- Do not use branch names under `dev/...` when a local or remote `dev` branch
-  exists. Git refs cannot cleanly contain both `dev` and `dev/<name>` at the
-  same time.
-- Branch new work from `dev` unless the user explicitly approves a different
-  base. Continue on an existing active topic branch when it already matches
-  the requested work.
-- Keep CLI and web implementation commits on separate topic branches unless
-  the change is inherently cross-package.
-- Commit related changes in small, reviewable units after appropriate
-  verification. Documentation-only commits usually need a read-through and
-  `git diff --check`.
-- Before committing, check the active branch and working tree with
+- `dev` is the only long-lived branch and the default base; there is no `main`.
+  Start topic branches from `dev` unless another base is authorized, or continue
+  an active topic branch that matches the task.
+- Topic names are otherwise free-form. Never use `dev/...`: Git cannot keep both
+  a `dev` ref and refs beneath it.
+- Keep CLI and Web implementation on separate topic branches unless the change
+  is inherently cross-package. Merge into `dev` through a PR, or a local
+  `--no-ff` merge when working without the remote.
+- Commit related changes in small verified units. Before committing, inspect
   `git branch --show-current` and `git status --short --branch`.
-- Never rewrite, reset, or discard user changes unless the user explicitly asks
-  for that operation. If unrelated local changes are present, leave them alone.
-- Do not push or delete remote branches unless the user explicitly asks.
-- When branch history needs cleanup, prefer local branch correction first:
-  create the correct branch from the intended base, cherry-pick or reapply only
-  the required commits, verify, and ask before any destructive remote action.
-
-## Verification Routing
-
-- CLI-affecting changes: baseline in `cli/agents.md` plus operational cautions
-  in `docs/architecture.md`.
-- Web-affecting changes: baseline in `web/agents.md` plus UI failure records
-  and manual verification guidance in `docs/architecture.md`.
-- Rewrite changes: `v2/agents.md` and the evidence in `v2/README.md`.
-- Documentation-only changes: a read-through and `git diff --check` are usually
-  sufficient unless the edited document defines executable commands or
-  contracts (`res/templates/workflow.md` is the runtime agent contract).
-
-## Agent Workflow
-
-1. Identify the affected package or packages.
-2. Read this root guide and the required package guide(s).
-3. Read the smallest relevant docs under `docs/`.
-4. Plan the change with explicit acceptance criteria.
-5. Implement a minimal patch.
-6. Verify with package-appropriate commands.
-7. Report changed files, intent, risk, and exact verification results.
+- Never rewrite, reset, or discard user changes without explicit instruction.
+  Do not push or delete remote branches unless requested.
+- Correct branch history locally first: create from the intended base and
+  cherry-pick/reapply only the required commits, then verify. Ask before any
+  destructive remote correction.

@@ -1,201 +1,45 @@
-# knoter Web Agent Guide
+# knoter Web agent guide
 
-Last updated: 2026-06-10
-Project: `Documents/knoter/web`
-Language for this file: English
+Apply the [root rules](../agents.md). These rules concern legacy `web/`, not V2.
+Use npm; setup/check commands live in [README.md](README.md). Before changing
+interactions, read the [UI failure records](../docs/architecture.md#ui-failures-and-remedies)
+and preserve their remedies instead of reproducing old bugs.
 
-This is the single active agent instruction file for the `web/` package. The
-previous GPT harness document and `web/docs/*` design notes were removed; root
-`docs/` is the only shared documentation location.
+## Runtime and security boundaries
 
-## Project Snapshot
+- Keep the renderer behind `window.knoterApi`: no Node/Electron imports, direct
+  filesystem access, or database ownership in `src/`. Native handlers belong in
+  `electron/`, with shared contracts in `src/core/`.
+- All UI actions use the command registry and `executeCommand`, including buttons
+  and shortcuts. Parameterized actions share the palette's option form; do not
+  introduce divergent handlers.
+- Treat artifact HTML and converted Markdown as untrusted. In-app content must
+  use the existing sanitized `HtmlPageView` iframe (`sandbox=""`, no scripts).
+- Detached content must use `html:openWindow`: strip executable/embedded content,
+  event handlers, and external/`javascript:`/`data:` URLs; retain the deny-all
+  CSP and sandbox. Never bypass these wrappers with raw `dangerouslySetInnerHTML`.
+- Validate theme snapshots before interpolating document styles. Reuse
+  `getSandboxTheme` for fonts/colors rather than hardcoding a separate palette.
 
-- Stack: React 18, TypeScript, Vite 5, Electron development shell.
-- Dev/preview URL: `http://127.0.0.1:39281` with `strictPort`.
-- The renderer is an HTML-first workbench: documents open as HTML page tabs
-  (`HtmlTab`) driven by a command palette and overlay bars. The earlier
-  pane/tab/floating-window workspace, sidebar surface host, renderer registry,
-  keybinding system, workspace reducer, and Graph 3D preview were removed. Do
-  not resurrect those modules or reference their docs.
-- A right-side widget bar pins any view as an always-visible widget
-  (equal-ratio vertical split, drag resize); status messages surface through a
-  bell icon in the overlay menu bar plus a 4s transient toast. Design notes:
-  `docs/architecture.md` (legacy decisions and UI failure records).
-- When the backend is connected but no vault exists, the Create Vault modal
-  opens automatically (`VaultCreateModal`, also via the "New Vault..."
-  palette command). It submits the `vault.bootstrap` command: `kn vault init`
-  (templates seeded, default location when no folder picked) + switch →
-  optional bulk source add.
-- There is no web unit-test or Playwright harness. `npm run check`
-  (TypeScript + Vite build) is the only automated verification. Do not claim
-  test coverage that does not exist.
-- The workbench is wired to `window.knoterApi` (CLI-backed Electron IPC):
-  vault documents load on mount and surface as dynamic "Open:" palette
-  commands; builtin fixture views (`src/workbench/fixtures.ts`) remain as
-  demo tabs/widgets. All actions run through the command registry
-  (`src/workbench/commands/registry.ts`) — every UI button calls
-  `executeCommand(id)`, the same path as the command palette. Commands with
-  options open a second palette stage (option form). Design notes:
-  `docs/architecture.md` (legacy command-registry decision).
+## UI constraints
 
-## Code Map
+- Preserve the dense workbench: no marketing sections, nested cards, or
+  decorative backgrounds. Reuse the semantic icon registry and shared
+  color/radius tokens; avoid one-off SVGs and inline-style sprawl.
+- Preserve main-area overlay scoping, popup escape from clipped containers,
+  per-tab scroll retention, and zero padding for fixed-size icon buttons.
+  Only the close button gets a tab hover highlight. The failure record explains
+  the causes and memory tradeoff behind these rules.
+- Reuse `useDialogDismiss` and its container ref for Escape/backdrop dismissal,
+  focus trapping, and trigger restoration. Preserve palette/menu keyboard
+  navigation and tab semantics when adding controls.
+- Long operations use `beginOperation`/`endOperation` so progress stays visible;
+  connection/vault state must remain available after transient toasts vanish.
+- Bind shortcuts through the command system. Escape only dismisses. Avoid
+  Electron-owned defaults (`Mod+W/R/M/Q` and `Mod+Shift+R`); users can customize
+  bindings. Do not revive the retired workspace/3D renderer without a new decision.
 
-| Path | Role |
-| --- | --- |
-| `src/main.tsx` | Renderer mount; installs theme, icon, and global-config runtimes. |
-| `src/workbench/App.tsx` | Workbench shell state: tabs, pinned widgets, tools, palette, modals, notification history, transient toast. |
-| `src/workbench/components/*` | Overlay menu/tab bars, widget bar, notification menu, command palette overlay, HTML page view, settings page, source modal, tool menu. |
-| `src/workbench/components/WidgetBar.tsx` | Right-side pinned widget stack: ratio-based vertical split, divider drag resize, bar width drag resize. |
-| `src/workbench/components/NotificationMenu.tsx` | Bell popup listing the status message history (dismiss/clear). |
-| `src/workbench/fixtures.ts` | Initial tabs, builtin view registry (`builtinViews`), tool items, source draft fixture data. |
-| `src/workbench/types.ts` | Workbench types: `HtmlTab`, `WorkbenchWidget`, `WorkbenchCommand`, `CommandOption`, `SourceRecord`, `ToastMessage`, tool keys. |
-| `src/workbench/commands/registry.ts` | Single command source: declarative UI + backend commands with option schemas, dynamic open/pin/document commands, result-tab HTML builders. |
-| `src/workbench/commands/keybindings.ts` | Chord→command keybinding store: defaults (`Mod+K` palette, `Mod+S` note save, tab cycling), platform `Mod` expansion, conflict-resolving assignment, localStorage persistence. |
-| `src/workbench/utils/widgets.ts` | Widget pin/unpin/resize state helpers and localStorage layout persistence. |
-| `src/workbench/utils/markdown.ts` | `marked`-based markdown→HTML conversion and frontmatter stripping for vault documents. |
-| `src/workbench/utils/html.ts` | `sourceToHtml`, sandbox document builder (page/compact), HTML escaping. |
-| `src/core/api/*` | Typed renderer API contract (`KnotenApiClient`). |
-| `src/core/ipc/contracts.ts` | IPC channel/request/response contracts. |
-| `src/core/preload/knoterApi.ts` | Preload adapter shape shared with `electron/preload.cjs`. |
-| `src/core/settings/*` | Global settings: JSONC text model, normalization, localStorage persistence, optional config-file bridge. |
-| `src/shared/icons/*` | Semantic icon registry and runtime (lucide-based). |
-| `src/shared/theming/*` | Base16 theme runtime. |
-| `src/shared/styles/*` | Token CSS plus `components/html-workbench.css`, the active layout/interaction styles. |
-| `electron/main.mjs` | Electron shell, CLI-backed IPC handlers, external HTML window. |
-| `electron/preload.cjs` | `window.knoterApi` context bridge. |
-| `electron/cli-contract.mjs` | CLI argument building and input validation shared by handlers. |
-| `scripts/dev-electron.mjs` | `npm run dev` orchestration: test vault bootstrap, Vite, Electron. |
-
-## IPC And Backend Boundary
-
-- Renderer code stays behind `window.knoterApi`. Never import Node or Electron
-  APIs inside `src/`; Electron-side changes belong in `electron/` and the
-  contracts in `src/core/`.
-- Current IPC surface (preload + main handlers):
-  - `vault.getActive`, `vault.switch`, `vault.list`, `vault.status`,
-    `vault.create` (kn vault create + switch; validated name, path =
-    picked directory + name)
-  - `dialog.pickDirectory` (native directory picker)
-  - `explorer.list`, `explorer.read`, `explorer.refresh`
-  - `graph.get`, `graph.refresh` (lightweight Explorer projection; edges are
-    currently empty)
-  - `search.query`
-  - `source.addFromPicker` (native dialog → copy files into the active
-    vault's `sources/<date>/`), `source.addFromFolder` (recursive `.md` copy
-    into `sources/`), `note.save` (direct write into `sources/<date>/`).
-    After copying, main runs `kn vault status` to trigger the CLI's implicit
-    sync, which indexes the files and queues agent work. There is no `kn add`.
-  - `template.get` (vault `templates/workflow.md`), `template.list` /
-    `template.getDocument` (files in `<vault>/templates/`, read directly
-    from disk — there is no template CLI surface)
-  - `html.openWindow` (optional `theme` snapshot; the main process validates
-    hex colors and the font-family charset before interpolating styles)
-  - Removed surfaces: `sync.run`, `tag.*`, `report.context`, `llm.rewrite`,
-    `template.scaffold` (tags removed; indexing is sync-driven; the
-    maintenance agent is spawned by `kn sync`, not the web shell).
-- Electron main handlers shell out to the CLI as
-  `bun <repo>/cli/src/cli.ts --format json ...`. Override with
-  `KNOTER_CLI_ENTRY`, `KNOTER_CLI_RUNNER`, `KNOTER_CLI_TIMEOUT_MS`.
-  Index-triggering calls (`vault status` after source drops) use a 120s
-  timeout; transient SQLite `database is locked` errors are retried twice.
-- Explorer items combine the vault's `templates/*.md`, `sources/**/*.md`, and
-  `artifacts/**/*.md` (layers: template | source | artifact). This is an
-  interim CLI/fs-backed bridge, not a packaged daemon; the renderer never
-  owns SQLite or vault files directly.
-- The settings runtime accepts an optional `window.knoterConfigFile` JSONC
-  file bridge. The current preload does not expose it, so global settings
-  persist through renderer `localStorage` only.
-
-## HTML Safety Rules
-
-Agent/artifact HTML is untrusted input:
-
-- In-app rendering must go through the sandboxed iframe in
-  `src/workbench/components/HtmlPageView.tsx` (`sandbox=""`, no scripts).
-  Vault markdown is converted with `marked`
-  (`src/workbench/utils/markdown.ts`) and then flows through the same
-  sandbox/sanitize path — never render converted markdown outside it.
-- Detached windows must go through `html:openWindow` in `electron/main.mjs`,
-  which strips script/iframe/object/embed/link/meta tags, inline event
-  handlers, and external/`javascript:`/`data:` URLs, then applies a deny-all
-  CSP in a sandboxed window.
-- Keep both paths intact when changing HTML rendering. Never render raw agent
-  HTML with `dangerouslySetInnerHTML` outside these wrappers.
-
-## UI Conventions
-
-- Keep the dense workbench design: no landing-page sections, marketing blocks,
-  nested cards, or decorative backgrounds.
-- Use the semantic icon registry (`src/shared/icons/registry.tsx`) instead of
-  one-off SVGs.
-- Style through the token CSS under `src/shared/styles/tokens/` and component
-  CSS under `src/shared/styles/components/`; avoid inline style sprawl.
-- New functionality goes through `src/workbench/commands/registry.ts` as a
-  `WorkbenchCommand` (with option schemas when it takes parameters). Buttons
-  must call `executeCommand(id)` instead of bespoke handlers so every action
-  stays reachable and identical from the command palette.
-- Overlay placement: the menu bar, tab bar, and transient toast are
-  absolute-positioned inside `.workbench-main` (the main HTML view area), so
-  they never overlap the widget bar. Tool-menu/notification popups are
-  fixed-positioned from the open slot's rect because `.overlay-bar` clips its
-  contents (`overflow: hidden`) — do not switch them back to absolute.
-  Fixed-size icon buttons need explicit `padding: 0`, or the UA button padding
-  shifts grid-centered icons. Tab surfaces show no hover color; the circular
-  close button is the only per-tab hover affordance.
-- Sandboxed and external HTML documents take colors and font from
-  `getSandboxTheme()` in `src/workbench/utils/html.ts` (active base16 scheme +
-  UI font stack) — do not hardcode palette values in generated documents.
-- Dialogs (settings, source modal, command palette) dismiss through the
-  shared `useDialogDismiss` hook (Escape + backdrop pointer-down), which
-  also traps Tab focus inside the dialog and restores the opener on close —
-  attach its `containerRef` to any new dialog. Palette results are
-  MRU-ordered (`src/workbench/commands/mru.ts`); ↑/↓ move the selection and
-  hover syncs it. Tool menus follow the ARIA menu pattern (first item
-  focused on open, arrow-key navigation); the tab strip is a `tablist`.
-- Main-page iframe tabs render inside per-tab `.html-page-scroll`
-  containers; the 8 most recently active stay mounted (hidden) to preserve
-  scroll position — keep new tab kinds inside that structure.
-- Border radii come from the `--radius-sm/md/lg/pill` density tokens;
-  do not introduce literal radius values.
-- Long-running backend commands wrap their work in
-  `beginOperation`/`endOperation` (command context) so the bell spinner and
-  the notification popup show progress; the bottom-right `StatusChip` shows
-  the active vault, document count, and connection warnings.
-- Keyboard shortcuts bind chords to command ids through
-  `src/workbench/commands/keybindings.ts`; the dispatcher lives in `App.tsx`.
-  Escape is reserved for dismissal — never bind it or use it to open surfaces.
-  Avoid default chords that the Electron default menu owns (`Mod+W`, `Mod+R`,
-  `Mod+M`, `Mod+Q`, `Mod+Shift+R`). Users edit bindings in Settings →
-  Keyboard Shortcuts.
-- Historical UI failure causes and remedies are retained in
-  `docs/architecture.md` — consult its UI failure records before reworking
-  layout/interaction.
-
-## Commands
-
-Use npm (not bun) inside `web/`:
-
-```bash
-cd web
-npm install
-npm run check   # tsc --noEmit && vite build — verification baseline
-npm run dev     # Vite on 127.0.0.1:39281 + Electron shell
-```
-
-`npm run dev` starts Vite and the Electron shell against the active vault
-registered in `~/.config/knoter/config.json`. The old test-vault bootstrap
-(`cli/scripts/test-env.sh`) was removed with the test environment.
-
-## Verification Baseline
-
-Before web-affecting commits:
-
-```bash
-cd web
-npm run check
-git diff --check
-```
-
-There is no automated behavior harness. For interaction changes, run
-`npm run dev`, exercise the affected flow manually, and report exactly what was
-verified (and what was not).
+For interaction changes, run the app and exercise affected flows manually,
+including keyboard/focus behavior. Report unverified paths; build checks alone
+are not interaction coverage. Operational cautions and unresolved backend
+decisions belong in [project memory](../docs/architecture.md), not an IPC catalog.
