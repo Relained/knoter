@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { WikiDocument } from '@knoter/contracts';
 import { documentHref, internalTarget, remarkWikiLinks, resolveDocument } from '../wiki/links';
+import { DocumentContextMenu } from './DocumentMenu';
 
 export function Markdown({
   children,
@@ -27,26 +28,28 @@ export function Markdown({
             if (target) {
               const doc = resolveDocument(target, documents);
               return doc ? (
-                <a
-                  className="wiki-link"
-                  href={documentHref(doc.id)}
-                  title={`${doc.title}\n${doc.description}`}
-                  onClick={(event) => {
-                    if (
-                      onOpen &&
-                      !event.metaKey &&
-                      !event.ctrlKey &&
-                      !event.shiftKey &&
-                      !event.altKey &&
-                      event.button === 0
-                    ) {
-                      event.preventDefault();
-                      onOpen(doc.id);
-                    }
-                  }}
-                >
-                  {children}
-                </a>
+                <DocumentContextMenu doc={doc}>
+                  <a
+                    className="wiki-link"
+                    href={documentHref(doc.id)}
+                    title={`${doc.title}\n${doc.description}`}
+                    onClick={(event) => {
+                      if (
+                        onOpen &&
+                        !event.metaKey &&
+                        !event.ctrlKey &&
+                        !event.shiftKey &&
+                        !event.altKey &&
+                        event.button === 0
+                      ) {
+                        event.preventDefault();
+                        onOpen(doc.id);
+                      }
+                    }}
+                  >
+                    {children}
+                  </a>
+                </DocumentContextMenu>
               ) : (
                 <span
                   className="wiki-link unresolved-link"

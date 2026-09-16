@@ -3,6 +3,7 @@ import { ArrowUpRight, Focus, Minus, Network, Plus, Search } from 'lucide-react'
 import type { WikiDocument } from '@knoter/contracts';
 import { Button } from '../components/ui/button';
 import { documentHref, type WikiLinks } from '../wiki/links';
+import { DocumentContextMenu } from '../components/DocumentMenu';
 
 type Point = { x: number; y: number };
 type Camera = Point & { scale: number };
@@ -244,45 +245,47 @@ export function GraphView({
                   transform={`translate(${p.x} ${p.y})`}
                   className={`graph-node graph-color-${categories.indexOf(doc.category) % 4} ${dim ? 'dimmed' : ''} ${focus?.id === doc.id ? 'focused' : ''}`}
                 >
-                  <a
-                    href={documentHref(doc.id)}
-                    aria-label={`Open ${doc.title}`}
-                    onClick={(e) => {
-                      if (suppressClick.current) {
-                        e.preventDefault();
+                  <DocumentContextMenu doc={doc}>
+                    <a
+                      href={documentHref(doc.id)}
+                      aria-label={`Open ${doc.title}`}
+                      onClick={(e) => {
+                        if (suppressClick.current) {
+                          e.preventDefault();
+                          suppressClick.current = false;
+                          return;
+                        }
+                        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                          e.preventDefault();
+                          onOpen(doc.id);
+                        }
+                      }}
+                      onFocus={() => setHovered(doc.id)}
+                      onBlur={() => setHovered(null)}
+                      onMouseEnter={() => setHovered(doc.id)}
+                      onMouseLeave={() => setHovered(null)}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        const start = position(e.clientX, e.clientY);
+                        drag.current = { ...start, id: doc.id, initial: p, moved: false };
                         suppressClick.current = false;
-                        return;
-                      }
-                      if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-                        e.preventDefault();
-                        onOpen(doc.id);
-                      }
-                    }}
-                    onFocus={() => setHovered(doc.id)}
-                    onBlur={() => setHovered(null)}
-                    onMouseEnter={() => setHovered(doc.id)}
-                    onMouseLeave={() => setHovered(null)}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      e.stopPropagation();
-                      const start = position(e.clientX, e.clientY);
-                      drag.current = { ...start, id: doc.id, initial: p, moved: false };
-                      suppressClick.current = false;
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    }}
-                  >
-                    <title>
-                      {doc.title} · {count} connections. Click to open; drag to arrange.
-                    </title>
-                    <circle className="node-halo" r={29 + Math.min(10, count)} />
-                    <circle r={12 + Math.min(7, count)} />
-                    <text y={43} textAnchor="middle">
-                      {doc.title.length > 31 ? `${doc.title.slice(0, 29)}…` : doc.title}
-                    </text>
-                    <text y={60} textAnchor="middle" className="node-category">
-                      {doc.category}
-                    </text>
-                  </a>
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      }}
+                    >
+                      <title>
+                        {doc.title} · {count} connections. Click to open; drag to arrange.
+                      </title>
+                      <circle className="node-halo" r={29 + Math.min(10, count)} />
+                      <circle r={12 + Math.min(7, count)} />
+                      <text y={43} textAnchor="middle">
+                        {doc.title.length > 31 ? `${doc.title.slice(0, 29)}…` : doc.title}
+                      </text>
+                      <text y={60} textAnchor="middle" className="node-category">
+                        {doc.category}
+                      </text>
+                    </a>
+                  </DocumentContextMenu>
                 </g>
               );
             })}
@@ -344,20 +347,22 @@ export function GraphView({
         </div>
         {!matches.length && <p className="muted">No notes match this search.</p>}
         {matches.map((doc) => (
-          <a
-            key={doc.id}
-            href={documentHref(doc.id)}
-            onClick={(e) => {
-              if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-                e.preventDefault();
-                onOpen(doc.id);
-              }
-            }}
-          >
-            <span>{doc.title}</span>
-            <small>{doc.category}</small>
-            <ArrowUpRight size={14} />
-          </a>
+          <DocumentContextMenu doc={doc} key={doc.id}>
+            <a
+              key={doc.id}
+              href={documentHref(doc.id)}
+              onClick={(e) => {
+                if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                  e.preventDefault();
+                  onOpen(doc.id);
+                }
+              }}
+            >
+              <span>{doc.title}</span>
+              <small>{doc.category}</small>
+              <ArrowUpRight size={14} />
+            </a>
+          </DocumentContextMenu>
         ))}
       </div>
     </div>

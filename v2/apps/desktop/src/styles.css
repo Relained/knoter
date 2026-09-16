@@ -3214,3 +3214,166 @@ select:focus {
   width: auto;
   white-space: nowrap;
 }
+
+.library-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.document-card {
+  position: relative;
+}
+.document-card-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.document-card-top {
+  padding-right: 30px;
+}
+.document-card > .document-more {
+  position: absolute;
+  top: 15px;
+  right: 13px;
+}
+.document-card:focus-within {
+  border-color: var(--primary);
+}
+.document-menu {
+  z-index: 160;
+  width: 236px;
+  max-width: calc(100vw - 20px);
+  max-height: min(
+    420px,
+    var(
+      --radix-context-menu-content-available-height,
+      var(--radix-dropdown-menu-content-available-height, 80vh)
+    )
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 35px #0002,
+    0 2px 8px #0001;
+}
+.document-menu-label {
+  padding: 8px 9px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-menu-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+.document-menu-item[data-highlighted] {
+  background: var(--accent);
+  color: var(--primary);
+}
+.document-menu-item svg {
+  flex-shrink: 0;
+}
+.document-menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px;
+}
+.menu-destructive,
+.delete-draft-warning {
+  color: #ac4943;
+}
+[data-theme='dark'] .menu-destructive,
+[data-theme='dark'] .delete-draft-warning {
+  color: #efaaa3;
+}
+.menu-destructive[data-highlighted] {
+  background: color-mix(in srgb, #ac4943 12%, var(--background));
+  color: #ac4943;
+}
+[data-theme='dark'] .menu-destructive[data-highlighted] {
+  color: #efaaa3;
+}
+.destructive-button {
+  background: #ac4943;
+  color: white;
+}
+.destructive-button:hover {
+  background: #923d38;
+}
+.delete-note-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 0;
+  color: var(--foreground);
+}
+.delete-note-summary strong {
+  overflow-wrap: anywhere;
+}
+.delete-note-summary svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.delete-draft-warning {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0 0 18px;
+}
+.trash-list {
+  max-height: 55vh;
+  overflow: auto;
+  margin-top: 24px;
+}
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.trash-row > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.trash-row > div {
+  flex: 1;
+  min-width: 0;
+}
+.trash-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+}
+.trash-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.trash-row > button {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .library-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .document-card > .document-more {
+    top: 10px;
+    right: 9px;
+  }
+}

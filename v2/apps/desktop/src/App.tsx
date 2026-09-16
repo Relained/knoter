@@ -29,10 +29,12 @@ import {
   Settings2,
   Sparkles,
   Sun,
+  Trash2,
+  Undo2,
   UploadCloud,
   X,
 } from 'lucide-react';
-import type { KnoterClient, View, WorkspaceSnapshot } from '@knoter/contracts';
+import type { KnoterClient, View, WikiDocument, WorkspaceSnapshot } from '@knoter/contracts';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
 import { ContextPanel, type PanelTab } from './components/ContextPanel';
@@ -48,6 +50,8 @@ import { useWorkspaceHistory } from './components/useWorkspaceHistory';
 import { SidebarResizeHandle } from './components/SidebarResizeHandle';
 import { GraphView } from './views/GraphView';
 import { buildWikiLinks } from './wiki/links';
+import { DocumentActionsProvider, DocumentContextMenu } from './components/DocumentMenu';
+import { copyDocumentLink } from './api/clipboard';
 
 const navigation = [
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
@@ -69,7 +73,11 @@ export function App({ client }: { client: KnoterClient }) {
   const layoutLoaded = useRef(false);
   const [panelTab, setPanelTab] = useState<PanelTab>('chat');
   const [mobileNav, setMobileNav] = useState(false);
-  const [modal, setModal] = useState<'import' | 'settings' | 'search' | 'activity' | null>(null);
+  const [modal, setModal] = useState<
+    'import' | 'settings' | 'search' | 'activity' | 'trash' | null
+  >(null);
+  const [deleteTarget, setDeleteTarget] = useState<WikiDocument | null>(null);
+  const [documentPending, setDocumentPending] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
@@ -196,6 +204,37 @@ export function App({ client }: { client: KnoterClient }) {
       setModal(null);
       setSourceId(null);
     });
+  const editDocument = (id: string) => {
+    if (editing && documentId === id) return;
+    navigate(() => {
+      historyNav.push({ view: 'wiki', documentId: id });
+      setModal(null);
+      setSourceId(null);
+      setEditing(true);
+    });
+  };
+  const restoreDocument = async (id: string) => {
+    setDocumentPending(true);
+    await run(
+      () => client.restoreDocument(id),
+      'Note restored with its connections and revision history.',
+    );
+    setDocumentPending(false);
+  };
+  const deleteDocument = async () => {
+    if (!deleteTarget || documentPending) return;
+    setDocumentPending(true);
+    const id = deleteTarget.id;
+    const success = await run(
+      () => client.deleteDocument(id),
+      'Note moved to Trash. You can restore it from the wiki.',
+    );
+    setDocumentPending(false);
+    if (!success) return;
+    setDeleteTarget(null);
+    if (documentId === id) historyNav.replace({ view: 'wiki' });
+    else if (focusId === id) historyNav.replace({ view: 'graph' });
+  };
   const openView = (next: View) =>
     navigate(() => {
       historyNav.push({ view: next });
@@ -237,6 +276,7 @@ export function App({ client }: { client: KnoterClient }) {
     );
   const doc =
     view === 'wiki' && documentId ? snapshot.documents.find((d) => d.id === documentId) : undefined;
+  const trashedDoc = snapshot.trashedDocuments.find((d) => d.id === documentId);
   const source = snapshot.sources.find((s) => s.id === sourceId);
   const categories = [...new Set(snapshot.documents.map((d) => d.category))];
   const currentLabel = navigation.find((n) => n.id === view)!.label;
@@ -295,7 +335,7 @@ export function App({ client }: { client: KnoterClient }) {
     viewportWidth > 1050 ? viewportWidth - navWidth - 360 : viewportWidth - 24,
   );
 
-  return (
+  const content = (
     <div
       className={`app-shell ${panel ? 'has-panel' : ''} ${sidebarCompact ? 'sidebar-compact' : ''} ${zenMode ? 'zen-mode' : ''}`}
       style={
@@ -400,15 +440,17 @@ export function App({ client }: { client: KnoterClient }) {
           {snapshot.documents
             .filter((d) => d.favorite)
             .map((d) => (
-              <button
-                className={`sidebar-note ${doc?.id === d.id ? 'note-selected' : ''}`}
-                key={d.id}
-                title={d.title}
-                onClick={() => openDocument(d.id)}
-              >
-                <DocIcon doc={d} size={14} />
-                <span>{d.title}</span>
-              </button>
+              <DocumentContextMenu doc={d} key={d.id}>
+                <button
+                  className={`sidebar-note ${doc?.id === d.id ? 'note-selected' : ''}`}
+                  key={d.id}
+                  title={d.title}
+                  onClick={() => openDocument(d.id)}
+                >
+                  <DocIcon doc={d} size={14} />
+                  <span>{d.title}</span>
+                </button>
+              </DocumentContextMenu>
             ))}
         </div>
         <div className="sidebar-group">
@@ -443,6 +485,10 @@ export function App({ client }: { client: KnoterClient }) {
             <ChevronRight size={13} />
           </button>
           <div className="sidebar-bottom-actions">
+            <button aria-label="Trash" title="Trash" onClick={() => setModal('trash')}>
+              <Trash2 size={16} />
+              <span>Trash</span>
+            </button>
             <button aria-label="Settings" title="Settings" onClick={() => setModal('settings')}>
               <Settings2 size={16} />
               <span>Settings</span>
@@ -601,8 +647,22 @@ export function App({ client }: { client: KnoterClient }) {
           ) : documentId ? (
             <div className="empty-state">
               <BookOpen />
-              <h2>Note not found</h2>
-              <p>This link does not match a document in this workspace.</p>
+              <h2>{trashedDoc ? 'This note is in Trash' : 'Note not found'}</h2>
+              <p>
+                {trashedDoc
+                  ? trashedDoc.title
+                  : 'This link does not match a document in this workspace.'}
+              </p>
+              {trashedDoc && (
+                <Button
+                  variant="outline"
+                  disabled={documentPending}
+                  onClick={() => void restoreDocument(trashedDoc.id)}
+                >
+                  <Undo2 />
+                  Restore note
+                </Button>
+              )}
               <Button onClick={() => openView('wiki')}>Browse the wiki</Button>
             </div>
           ) : (
@@ -611,6 +671,7 @@ export function App({ client }: { client: KnoterClient }) {
               category={category}
               onOpen={openDocument}
               onNew={createNote}
+              onTrash={() => setModal('trash')}
             />
           ))}
         {view === 'sources' && (
@@ -675,6 +736,77 @@ export function App({ client }: { client: KnoterClient }) {
           </button>
         </div>
       )}
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !documentPending) setDeleteTarget(null);
+        }}
+        title="Move note to Trash?"
+        description="You can restore it later. Original source files and saved revisions will be kept."
+      >
+        <div className="delete-note-summary">
+          <Trash2 size={22} />
+          <strong>{deleteTarget?.title}</strong>
+        </div>
+        {editing && deleteTarget?.id === documentId && (
+          <p className="delete-draft-warning">
+            Your unsaved edits will be discarded. The last saved version will be kept in Trash.
+          </p>
+        )}
+        <div className="dialog-actions">
+          <Button variant="ghost" disabled={documentPending} onClick={() => setDeleteTarget(null)}>
+            Keep note
+          </Button>
+          <Button
+            className="destructive-button"
+            disabled={documentPending}
+            onClick={() => void deleteDocument()}
+          >
+            {documentPending ? <Loader2 className="spin" /> : <Trash2 />}Move to Trash
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={modal === 'trash'}
+        onOpenChange={(open) => {
+          if (!open) setModal(null);
+        }}
+        title="Trash"
+        description="Deleted notes stay here until you restore them. Sources and revision history are preserved."
+      >
+        <div className="trash-list">
+          {snapshot.trashedDocuments.map((item) => (
+            <div className="trash-row" key={item.id}>
+              <DocIcon doc={item} size={20} />
+              <div>
+                <strong>{item.title}</strong>
+                <small>
+                  {item.category} · Deleted {relativeTime(item.deletedAt)}
+                </small>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Restore ${item.title}`}
+                disabled={documentPending}
+                onClick={() => void restoreDocument(item.id)}
+              >
+                <Undo2 />
+                Restore
+              </Button>
+            </div>
+          ))}
+          {!snapshot.trashedDocuments.length && (
+            <div className="empty-state">
+              <Trash2 />
+              <h3>Trash is empty</h3>
+              <p>Deleted notes will appear here.</p>
+            </div>
+          )}
+        </div>
+      </Dialog>
 
       <Dialog
         open={modal === 'import'}
@@ -1007,6 +1139,21 @@ export function App({ client }: { client: KnoterClient }) {
         </div>
       </Dialog>
     </div>
+  );
+  return (
+    <DocumentActionsProvider
+      value={{
+        open: openDocument,
+        edit: editDocument,
+        favorite: (id) => void run(() => client.toggleFavorite(id)),
+        graph: (id) => navigate(() => historyNav.push({ view: 'graph', focusId: id })),
+        copyLink: (id) => void run(() => copyDocumentLink(id), 'Note link copied.'),
+        export: exportMarkdown,
+        delete: setDeleteTarget,
+      }}
+    >
+      {content}
+    </DocumentActionsProvider>
   );
 }
 

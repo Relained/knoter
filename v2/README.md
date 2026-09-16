@@ -31,7 +31,8 @@ workflow is included. Test automation is deferred by the user's instruction.
 
 - **Wiki:** browse collections, search with Cmd/Ctrl+K, pin notes, follow source
   references, create notes, edit with Milkdown, save, restore revisions, and
-  download a note as Markdown. Saving reads the current editor document directly,
+  download a note as Markdown. Delete notes into recoverable Trash and restore them
+  from the sidebar or wiki toolbar. Saving reads the current editor document directly,
   including keystrokes made immediately before clicking Save.
 - **Sources:** select/drop PDF, Markdown, or text files; inspect status and source
   previews; pause/resume simulated processing; follow a generated wiki note.
@@ -92,6 +93,40 @@ compact mode and panel widths. Zen does not enter OS/browser fullscreen, change
 saved layout preferences, or remount the editor/assistant. Drafts stay in place.
 Asking the assistant from a note exits Zen and opens the chat. Zen itself is not
 persisted across page reloads.
+
+## Document actions and Trash
+
+Right-click a wiki card, pinned note, reading surface, internal wiki link,
+backlink, related note, graph node, or graph list entry to act on that document.
+The menu names its target and offers Open, Edit, Add/remove favorite, Explore
+connections, Copy note link, Export Markdown, and Move to Trash. Nested links act
+on the linked note, not the surrounding article. Cards and document headers also
+have a **⋯** button for keyboard and touch access. Menus support arrow keys,
+typeahead, and Escape; text selection, editable fields, and external links keep
+their native browser menus. Menus use the existing Radix primitives family:
+[Context Menu](https://www.radix-ui.com/primitives/docs/components/context-menu)
+and [Dropdown Menu](https://www.radix-ui.com/primitives/docs/components/dropdown-menu).
+
+**Move to Trash** asks for confirmation and identifies the note. Deleting the note
+being edited also explains that unsaved edits will be discarded; cancelling keeps
+the draft. Successful deletion removes it from active views, graph, search, and
+favorite lists. Deleting the current reader returns to the wiki; deleting a focused
+graph's central note returns to the global graph. Old document URLs offer Restore.
+
+Trash persists across reloads. Restoration retains the same ID, saved content,
+favorite state, revision history, and relationships. Original sources and tasks
+are kept. Other notes' Markdown and historic chat text are not rewritten; links to
+deleted targets appear unresolved. The mock adapter retains relationship IDs in
+storage and exposes only active targets in snapshot navigation metadata. Restoring
+a note makes those links available again. Simulated source processing does not
+recreate notes while they are in Trash. Permanent deletion is not exposed.
+
+`KnoterClient.deleteDocument` and `restoreDocument` own these operations.
+`WorkspaceSnapshot.trashedDocuments` holds recoverable notes with `deletedAt`;
+older saved previews default to an empty Trash without replacing existing notes.
+Delete/restore persist the next state before publishing it, so a storage-write
+failure does not remove a live note. `components/DocumentMenu.tsx` shares actions
+across surfaces; browser clipboard access stays in `api/clipboard.ts`.
 
 ## Service boundary
 
@@ -235,6 +270,29 @@ A direct macOS browser walkthrough verified:
   Zen's exit button stayed visible without horizontal overflow. Asking the
   assistant from a note exited Zen and opened chat. The viewport override was
   reset after the walkthrough.
+
+### Document actions verification — 2026-09-17
+
+Direct macOS browser checks covered card right-click menus, matching overflow
+menus, nested wiki-link targeting, graph-node menu actions, favorite toggling,
+copying the exact document URL, keyboard End/Escape and focus restoration, and
+390px menu placement without horizontal overflow. Graph menu pointer events are
+isolated from SVG dragging. Cancelling an edit and reopening it through a menu
+loads the saved body instead of the abandoned draft.
+
+A disposable `Document actions walkthrough` note was created, saved with a wiki
+link, favorited, deleted, reloaded, and restored. Cancellation preserved its
+unsaved title; confirmed deletion kept the saved version. Restore preserved
+revision 2, content, favorite state, and its backlink. Deleting from a focused
+graph returned to the global graph, removed its node/edge, and left 9 original
+notes active. Its old URL showed a recovery action. The disposable note was left
+in Trash after verification; existing user notes were not edited or deleted.
+
+`npm run check` (TypeScript plus Vite build) and `git diff --check` passed. The
+existing bundle-size warning remains: approximately 607 kB main JavaScript and
+1,361 kB lazy editor before gzip. No browser console errors were observed and no
+automated tests were added or run. The viewport override was reset. Windows and
+storage-write failure injection were not exercised in this walkthrough.
 
 ## Handoff
 

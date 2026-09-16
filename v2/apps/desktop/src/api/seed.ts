@@ -99,6 +99,7 @@ const documents: WikiDocument[] = [
 export function createSeed(): WorkspaceSnapshot {
   return {
     documents,
+    trashedDocuments: [],
     sources: [
       {
         id: 'paper-rag',

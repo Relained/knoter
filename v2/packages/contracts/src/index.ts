@@ -71,6 +71,7 @@ export interface ChatMessage {
 }
 export interface WorkspaceSnapshot {
   documents: WikiDocument[];
+  trashedDocuments: (WikiDocument & { deletedAt: string })[];
   sources: Source[];
   tasks: Task[];
   events: CalendarEvent[];
@@ -104,6 +105,9 @@ export interface KnoterClient {
     baseRevision: number;
   }): Promise<void>;
   createDocument(): Promise<string>;
+  /** Move a note to recoverable trash; original sources and revisions are retained. */
+  deleteDocument(id: string): Promise<void>;
+  restoreDocument(id: string): Promise<void>;
   toggleFavorite(id: string): Promise<void>;
   restoreRevision(id: string): Promise<void>;
   importSources(input: SourceImport[]): Promise<void>;

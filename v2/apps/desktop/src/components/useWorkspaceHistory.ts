@@ -87,6 +87,10 @@ export function useWorkspaceHistory(
   return {
     route,
     push,
+    replace: (nextRoute: WorkspaceRoute) => {
+      writeEntry(cursor.current, nextRoute, true);
+      apply(cursor.current, nextRoute);
+    },
     back: () => history.back(),
     forward: () => history.forward(),
     canBack: entry.index > 0,

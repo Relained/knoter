@@ -557,6 +557,13 @@ data boundary. Graph edges derive
 from current Markdown references plus the prototype's existing related-note
 records; this does not implement backend semantic graph extraction.
 
+The document-actions follow-up adds Radix context/overflow menus and recoverable
+per-document deletion. `KnoterClient.deleteDocument` moves a note to persistent
+Trash; `restoreDocument` restores its stable ID, revisions, favorite state, and
+relationships. Original sources are kept, and other documents' Markdown is never
+rewritten by deletion. This remains a browser mock-storage feature; backend
+retention, permanent deletion, and filesystem deletion policies are not implemented.
+
 The original plan was prepared on 2026-09-16 from repository inspection and
 primary vendor documentation. The user's follow-up deferred test automation and
 requested a frontend-only implementation. F0 uses a mock adapter; subsequent

@@ -23,7 +23,10 @@ export function createMockClient(): KnoterClient {
       ) &&
       saved.settings
     )
-      data = saved;
+      data = {
+        ...saved,
+        trashedDocuments: Array.isArray(saved.trashedDocuments) ? saved.trashedDocuments : [],
+      };
   } catch {
     /* A fresh demo is available if storage was cleared or corrupted. */
   }
@@ -34,12 +37,13 @@ export function createMockClient(): KnoterClient {
   const pending = new Set<string>();
   let sending = false;
   const notify = () => listeners.forEach((listener) => listener());
-  const commit = () => {
+  const commit = (next = data) => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(data));
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      data = next;
     } catch {
       throw new Error(
-        'Browser storage is full or unavailable. Changes remain in this session; export important notes before closing.',
+        'Browser storage is full or unavailable. Free some space and try again; export important notes before closing.',
       );
     } finally {
       notify();
@@ -73,14 +77,18 @@ export function createMockClient(): KnoterClient {
     try {
       await delay(900);
       while (data.settings.workerPaused) await delay(600);
-      const source = data.sources.find((s) => s.id === id);
+      let source = data.sources.find((s) => s.id === id);
       if (!source) return;
       source.status = 'extracting';
       commit();
       await delay(1600);
       while (data.settings.workerPaused) await delay(600);
+      // Trash operations publish a new snapshot while this workflow is waiting.
+      source = data.sources.find((s) => s.id === id);
+      if (!source) return;
       const docId = `import-${id}`;
-      if (!data.documents.some((d) => d.id === docId)) {
+      const inTrash = data.trashedDocuments.some((d) => d.id === docId);
+      if (!data.documents.some((d) => d.id === docId) && !inTrash) {
         const body =
           source.type === 'pdf'
             ? `## Ready for a closer look\n\n**${source.title}** has been added to your demo workspace.\n\n> This is a simulated processing result. PDF extraction and AI generation will be connected through the service adapter.\n\n## Your notes\n\nOpen the editor to add your own observations.\n\n[View source](#source-${id})`
@@ -116,7 +124,9 @@ export function createMockClient(): KnoterClient {
       activity({
         kind: 'source',
         title: `Added ${source.title}`,
-        detail: 'Demo processing complete · 1 wiki note created',
+        detail: inTrash
+          ? 'Demo processing complete · existing note remains in Trash'
+          : 'Demo processing complete · 1 wiki note connected',
         documentId: docId,
       });
       commit();
@@ -132,7 +142,24 @@ export function createMockClient(): KnoterClient {
   const client: KnoterClient = {
     mode: 'demo',
     async getSnapshot() {
-      return structuredClone(data);
+      const snapshot = structuredClone(data);
+      const active = new Set(snapshot.documents.map((doc) => doc.id));
+      // Keep relationship IDs in storage for restoration, but expose only active
+      // navigation targets. Other notes' Markdown is never rewritten by deletion.
+      snapshot.documents.forEach((doc) => {
+        doc.relatedIds = doc.relatedIds.filter((id) => active.has(id));
+      });
+      snapshot.sources.forEach((source) => {
+        source.documentIds = source.documentIds.filter((id) => active.has(id));
+      });
+      snapshot.messages.forEach((message) => {
+        message.documentIds = message.documentIds.filter((id) => active.has(id));
+      });
+      [...snapshot.tasks, ...snapshot.activities].forEach((item) => {
+        if (item.documentId && !active.has(item.documentId)) delete item.documentId;
+      });
+      snapshot.revisions = snapshot.revisions.filter((revision) => active.has(revision.documentId));
+      return snapshot;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -184,6 +211,42 @@ export function createMockClient(): KnoterClient {
       const doc = document(id);
       doc.favorite = !doc.favorite;
       commit();
+    },
+    async deleteDocument(id) {
+      const doc = document(id);
+      const next = structuredClone(data);
+      next.documents = next.documents.filter((item) => item.id !== id);
+      next.trashedDocuments.unshift({ ...doc, deletedAt: now() });
+      next.activities.unshift({
+        id: uid(),
+        createdAt: now(),
+        kind: 'document',
+        title: `Moved ${doc.title} to Trash`,
+        detail: 'The note can be restored from Trash.',
+      });
+      next.activities = next.activities.slice(0, 30);
+      // Persist first so a failed write cannot remove a note from the live session.
+      commit(next);
+    },
+    async restoreDocument(id) {
+      const trashed = data.trashedDocuments.find((doc) => doc.id === id);
+      if (!trashed) throw new Error('This note is no longer in Trash.');
+      if (data.documents.some((doc) => doc.id === id))
+        throw new Error('This note is already restored.');
+      const { deletedAt: _, ...doc } = trashed;
+      const next = structuredClone(data);
+      next.trashedDocuments = next.trashedDocuments.filter((item) => item.id !== id);
+      next.documents.unshift(doc);
+      next.activities.unshift({
+        id: uid(),
+        createdAt: now(),
+        kind: 'document',
+        documentId: id,
+        title: `Restored ${doc.title}`,
+        detail: 'Restored from Trash with its revision history.',
+      });
+      next.activities = next.activities.slice(0, 30);
+      commit(next);
     },
     async restoreRevision(id) {
       const revision = data.revisions.find((r) => r.id === id);

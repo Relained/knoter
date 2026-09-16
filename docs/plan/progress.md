@@ -18,6 +18,12 @@ compact navigation; the assistant still supports collapse. Temporary Zen mode
 hides both panels, fills the app with the main workspace, and restores the prior
 layout on exit without remounting the editor or assistant. Graph wheel handling
 covers the entire canvas and its controls so zoom does not scroll the page.
+Document cards, readers, wiki links, pinned notes, and graph entries now expose
+contextual actions through right-click menus and visible overflow controls.
+Per-document deletion moves notes to persistent, recoverable Trash. Restoration
+preserves IDs, favorites, revisions, and connections; original sources and other
+notes' Markdown remain intact. The client contract owns delete/restore and filters
+deleted targets out of active navigation metadata.
 Existing saved documents are not migrated or overwritten. Manual verification
 details are recorded in `v2/README.md`; test automation remains deferred.
 
