@@ -17,7 +17,8 @@ init`이 각 vault `templates/workflow.md`로 시딩한다 (vault별 수정 가�
 | --- | --- |
 | `docs/plan/progress.md` | 구현 완료된 현재 상태(진행상황)와 검증 기준 |
 | `docs/plan/roadmap.md` | 활성 결정사항과 P0–P2 전체 plan |
-| [`docs/plan/desktop-rewrite.md`](plan/desktop-rewrite.md) | macOS·Windows 재작성 제안, 기술·포맷 선택 근거, 단계별 완료 기준과 다음 에이전트 인계문 (미구현) |
+| [`docs/plan/desktop-rewrite.md`](plan/desktop-rewrite.md) | macOS·Windows 재작성 계획과 다음 에이전트 인계문. F0 더미 프론트 구현, 테스트 자동화 보류 |
+| [`v2/README.md`](../v2/README.md) | 새 프론트 실행 방법, API 분리 구조, 더미 기능과 수동 검증 결과 |
 | `docs/plan/web-fix-plan.md` | 워크벤치 디자인 결함 수정 계획과 진행 체크 |
 
 기능 설계 문서는 `docs/design/` 서브디렉토리에 있다.
@@ -34,10 +35,14 @@ init`이 각 vault `templates/workflow.md`로 시딩한다 (vault별 수정 가�
 | `agents.md` (repo root) | 라우팅, 공유 규칙, git/branch 정책 |
 | `cli/agents.md` | CLI(vault/sync/search/service)·인덱싱·작업 큐 작업 지침 |
 | `web/agents.md` | 웹 workbench/Electron 작업 지침 |
+| `v2/agents.md` | 독립 재작성 프론트와 mock API 작업 지침 |
 
 사람용 패키지 개요는 `cli/README.md`, `web/README.md`에 있다.
 
 ## Legacy
+
+아래 목록은 기존 `cli/`·`web/`의 정책이다. 새 `v2/` 재작성 방향은
+`docs/plan/desktop-rewrite.md`를 따른다.
 
 과거 설계/분석/이슈 문서(`docs/archive/`)는 삭제됐다. 필요하면 git 히스토리에서
 찾는다. 옛 문서나 커밋에서 다음 항목을 보더라도 현재 제품 방향이 아니므로

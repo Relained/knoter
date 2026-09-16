@@ -14,6 +14,7 @@ Before doing package-specific work, read the matching guide:
 
 - CLI/MCP/indexing/search/agent-queue work: `cli/agents.md`
 - Web/frontend/Electron work: `web/agents.md`
+- Isolated rewrite under `v2/`: `v2/agents.md` (legacy web rules describe `web/`).
 
 If a task touches both packages, read both guides before planning or editing.
 When package guides conflict, follow the guide for the files being changed. For
@@ -26,6 +27,7 @@ explicitly approves a different direction.
 | --- | --- |
 | `cli/` | Bun/TypeScript CLI: vault management, indexing, agent work queue, search, launchd scheduling. |
 | `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI/fs-backed IPC. |
+| `v2/` | Isolated React frontend rewrite with a replaceable mock service adapter. |
 | `res/templates/` | Vault seed content: workflow contract + per-artifact templates (markdown + default HTML). |
 | `docs/` | Shared architecture, codebase, planning, and testing documentation. |
 | `testdata/` | Markdown fixture corpus for manual smoke runs. |

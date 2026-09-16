@@ -1,9 +1,24 @@
 # knoter progress (current state)
 
-Last updated: 2026-06-11
+Last updated: 2026-09-16
 
-Implemented state of the monorepo (`cli/`, `web/`, shared `docs/`).
-Remaining work and decisions live in `docs/plan/roadmap.md`.
+Implemented state of the monorepo (`cli/`, `web/`, `v2/`, shared `docs/`).
+Legacy work lives in `docs/plan/roadmap.md`; the new rewrite follows
+`docs/plan/desktop-rewrite.md`.
+
+## 2026-09-16 Frontend Prototype (F0)
+
+Added the independent `v2/` npm workspace: React/TypeScript/Vite, Tailwind,
+Radix primitives, Milkdown, and a replaceable `KnoterClient` contract.
+Wiki reading/editing/history, simulated source processing/chat, tasks, calendar,
+search, themes, and local browser persistence are implemented for the preview.
+Backend, extraction, LLM calls, Electron packaging, and native services remain
+unimplemented. Legacy CLI/web code was not changed.
+
+The user explicitly deferred test automation. No automated tests or CI were
+added. Type checking/builds and direct browser walkthroughs are used instead;
+see `v2/README.md` for exact verified flows and the file-chooser tool limitation.
+
 
 ## 2026-06-11 Final-Structure Rewrite
 

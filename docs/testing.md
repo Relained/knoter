@@ -3,6 +3,12 @@
 테스트 스위트(`cli/tests/`)는 재구성과 함께 제거됐다. 재도입 전까지
 커버리지를 주장하지 않는다. 현재 기준은 typecheck + build + 수동 스모크다.
 
+`v2/` 재작성도 사용자의 2026-09-16 지시에 따라 테스트 자동화와 CI를
+보류한다. `cd v2`에서 `npm run check`로 TypeScript와 production build를
+확인하고 브라우저에서 직접 동작을 살펴본다. 구체적인 확인 결과와 미검증
+항목은 [`v2/README.md`](../v2/README.md)에 기록한다. 아래 설정/명령은
+기존 CLI/web 환경에 해당한다.
+
 ## Configuration
 
 환경변수 방식은 폐기됐다. 설정은 파일로만 한다:

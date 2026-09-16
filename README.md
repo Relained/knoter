@@ -13,13 +13,17 @@ Monorepo for the knoter CLI, shared project docs, and web frontend.
 - `web/`: React/Vite HTML workbench frontend with an Electron development shell
   and CLI/fs-backed IPC. No web test harness currently exists; `npm run check`
   is the verification baseline.
+- [`v2/`](v2/README.md): isolated frontend rewrite with interactive wiki, sources,
+  chat, tasks, and calendar. Uses a replaceable mock API; no backend is connected.
 
-Agent guides: root `agents.md` routes to `cli/agents.md` and `web/agents.md`.
+Agent guides: root `agents.md` routes to `cli/agents.md`, `web/agents.md`, and
+`v2/agents.md`.
 
 ## Local Ports
 
 - CLI/local TEI embedding endpoint: `http://127.0.0.1:39280`
 - Web Vite dev/preview server: `http://127.0.0.1:39281`
+- New frontend prototype: `http://127.0.0.1:39282` (`cd v2`, then `npm run dev`)
 
 The CLI does not create or manage TEI containers. On macOS, run
 `text-embeddings-router` locally for Metal acceleration and point the vault at

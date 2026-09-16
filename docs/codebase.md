@@ -3,6 +3,12 @@
 이 문서는 코드를 처음 읽을 때의 진입점이다. 정책과 제품 방향은
 `docs/architecture.md`, 실행 환경과 검증은 `docs/testing.md`를 우선한다.
 
+새 재작성 프론트는 독립된 `v2/` npm workspace에 있다. 실행 및 코드 진입점은
+[`v2/README.md`](../v2/README.md), 다음 구현 방향은
+[`desktop-rewrite.md`](plan/desktop-rewrite.md)를 읽는다. 현재는
+`KnoterClient`를 주입받는 React UI와 로컬 mock adapter까지 구현되어 있다.
+아래 Runtime Shape와 Entry Points는 기존 `cli/`·`web/` 설명이다.
+
 ## Runtime Shape
 
 `knoter`는 Bun 기반 TypeScript CLI와 React/Vite web renderer를 함께 둔

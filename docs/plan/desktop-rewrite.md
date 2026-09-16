@@ -2,7 +2,7 @@
 
 - Prepared: 2026-09-16
 - Language: English
-- Status: Proposed rewrite plan and agent handoff; implementation has not started.
+- Status: Rewrite plan; frontend-only prototype is the current implementation scope.
 
 ## 1. Assignment and scope
 
@@ -15,8 +15,11 @@ four complete workflows:
 4. Maintain structured documents such as tasks and calendar events through both
    background processing and manual interaction.
 
-This brief records the user's requested rewrite plan. The current task only
-produces documentation. When assigned to implement the rewrite, work through the
+This brief records the user's requested rewrite plan. The current task builds
+a frontend-only prototype with a replaceable mock API. Automated tests and CI
+are deferred by explicit user instruction on 2026-09-16; use type checking,
+production builds, and manual walkthroughs for now. When assigned to implement
+the rewrite, work through the
 milestones below; do not interpret this document as authorization to deploy,
 publish, purchase services, delete the legacy application, or migrate user data
 in place.
@@ -39,7 +42,7 @@ rules to new code. Repository-wide Git and user-data preservation rules remain.
 | Agent maintains Markdown and HTML together | Application renders trusted components from document data | Consistent appearance and real editing/interaction |
 | macOS launchd integration only | Explicit macOS and Windows background-host adapters | Background behavior must work in installed builds on both OSes |
 
-Reuse source files, useful workflow rules, and test examples. Review legacy
+Reuse source files, useful workflow rules, and manual examples. Review legacy
 algorithms before reusing small helpers; do not copy old orchestration, HTML
 generation, database migrations, or UI state wholesale.
 
@@ -135,7 +138,7 @@ is not implied and must be tested separately if added.
 | Credentials | Keychain item accessible to the signed service/helper identity | Current-user DPAPI-encrypted credential blob with user-only file access |
 | First distribution | Signed/notarized `.app` in DMG; ZIP for updater tooling | Signed per-user Squirrel `Setup.exe` and update artifacts |
 | Native binaries | Build/test separately for arm64 and x64 | Build/test for x64 and selected Node ABI |
-| Verification | Native macOS CI and clean installed-app smoke | Native Windows CI and clean installed-app smoke |
+| Verification | Manual clean installed-app walkthrough | Manual clean installed-app walkthrough |
 
 Apple's current API can register bundled LaunchAgents and expose their approval
 status; avoid copying the legacy loose-plist installer into the new app.
@@ -231,7 +234,6 @@ unchanged; use an isolated npm workspace for the TypeScript rewrite.
 | Docling | PDF layout/table/OCR extraction and a structured intermediate document | Provisional: Python/model footprint and paper extraction quality must pass a packaged CPU-only spike |
 | PDF.js | In-app original PDF rendering and navigation to cited pages | Viewing is distinct from high-quality paper extraction; do not assume it solves OCR |
 | Electron Forge | Packaging, platform installers, signing hooks, and publishing integration | Separate native helpers, service lifecycle, and update feeds still need explicit work |
-| Node test runner + Playwright | Domain/job tests plus user-flow verification | Playwright Electron support is experimental; native installed-app smoke remains necessary |
 
 Keep the editor integration behind a small component boundary. If Milkdown fails
 the defined document round-trip fixture, record the failing capability before
@@ -256,8 +258,7 @@ Other decision references:
 [better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
 [sqlite-vec Node bindings](https://alexgarcia.xyz/sqlite-vec/js.html),
 [AI SDK](https://ai-sdk.dev/docs/ai-sdk-core/overview),
-[PDF.js](https://mozilla.github.io/pdf.js/getting_started/),
-[Playwright Electron](https://playwright.dev/docs/api/class-electron).
+[PDF.js](https://mozilla.github.io/pdf.js/getting_started/).
 
 ## 5. Storage and format contracts
 
@@ -397,7 +398,7 @@ a new revision rather than deleting history.
   path as the worker and editor.
 - Keep provider/model configuration separate for background generation, chat,
   and embeddings. Implement one real provider first, with explicit capability
-  tests for cancellation, structured output, streaming, and embeddings.
+  checks for cancellation, structured output, streaming, and embeddings.
 - A missing LLM key must not prevent local reading, editing, or keyword search.
   Local-first storage does not imply local inference: show the configured
   provider and which source scope can be sent to it. Preserve imported exclusion
@@ -450,10 +451,7 @@ v2/
                                # provider adapter, search, import/export
     platform/                  # paths, native helpers, credentials, registration
   extractor/                   # pinned Python/Docling environment and entrypoint
-  tests/
-    fixtures/                  # small permitted MD/PDF and legacy-vault fixtures
-    integration/
-    e2e/
+  examples/                    # manual walkthrough data when needed
 ```
 
 Do not create empty abstraction packages beyond these boundaries. Add modules
@@ -465,6 +463,7 @@ extractor builds. Build scripts must work on Windows without Bash.
 
 | Milestone | Deliverable | Acceptance evidence |
 | --- | --- | --- |
+| F0: frontend prototype | Isolated React app, polished Wiki/Sources/Tasks/Calendar/Chat views, typed service interface, persistent mock adapter | Manual navigation/edit/import/chat/task/calendar walkthrough; production build and typecheck. No real service, PDF extraction, or LLM calls |
 | M0: platform/dependency proof | Exact version/OS matrix; packaged skeleton, Node service, native DB/vector load, editor fixture, extractor sample, native credential and background-host spikes | Native macOS arm64/x64 and Windows x64 results; a packaged app uses no developer runtime; record extractor footprint/latency and editor round-trip results. An untested target keeps this milestone partially complete |
 | M1: durable manual documents | Database schema/migrations, document CRUD/revisions, typed API, reader/editor, local export/backup | Create/edit/reopen; stale save conflict; Unicode/IME; backup/restore; crash/restart without lost committed edits |
 | M2: source to wiki | Import/watch MD and PDF, source versions, extraction, durable jobs, one real LLM provider, citation-bearing wiki creation | Real paper produces linked wiki documents; duplicate event creates no duplicate artifact; extraction/LLM failure is recoverable; original bytes stay unchanged |
@@ -473,27 +472,27 @@ extractor builds. Build scripts must work on Windows without Bash.
 | M5: tasks and calendar | Typed records, worker extraction, real UI edits, time-triggered refresh, JSON/Markdown/ICS export | Completion survives re-extraction; no duplicate event; correct date-only/time-zone behavior; task deadline projection and stable exported UID |
 | M6: installed-product release | Full background lifecycle, installers, update coordination, restore, legacy importer | Clean-machine install/run/upgrade; login/wake/crash recovery; UI absent during processing; unregister on uninstall; signing and target-OS evidence |
 
-Build packaging and OS CI in M0, not at M6. After each milestone, keep the current
+Complete F0 first. Build packaging in M0, not at M6. Automated testing and
+CI setup are explicitly out of scope for now. After each milestone, keep the current
 vertical slice runnable. Do not build all infrastructure before showing the
 corresponding user workflow. New domain contracts should include the minimum
-task/event extensibility early, while their full UI waits until M5.
+task/event extensibility early; the F0 UI previews behavior whose real service
+integration follows in M5.
 
-### Test strategy
+### Verification policy (manual for now)
 
-- Use the Node test runner for migrations, revisions, idempotency, job leases,
-  typed updates, and export/import behavior, with temporary on-disk databases.
-- Use deterministic fake providers/extractors for failure and recovery tests.
-  Separately run documented real-provider and real-paper checks; fakes are not
-  evidence of LLM or PDF quality.
-- Use Playwright for renderer flows and selected Electron smoke checks; its
-  Electron API is experimental. Include native installed-app testing for OS
-  registration, helpers, file access, signing, and update behavior.
-- Run native CI on the target OSes/architectures. Test Windows path/file-lock
-  cases, macOS Unicode/case behavior, DST transitions, unavailable watched
-  folders, embedding outage, and retry after a source changes mid-run.
-- Define and measure latency/footprint/quality budgets using the M0 fixtures.
-  Record hardware, corpus, model, and observed values rather than inventing a
-  performance guarantee in this brief.
+- Do not add test runners, automated test suites, browser-test scripts, coverage
+  tooling, or CI workflows. Reintroduce them only when the user requests it.
+- Keep TypeScript checks, production builds, and `git diff --check`; these are
+  build/static validation, not a test automation project.
+- Manually exercise the user workflows affected by each change and record the
+  exact results. Use temporary or demo data rather than modifying user sources.
+- For F0, check navigation, Markdown editing/persistence, source import and
+  simulated processing, mock chat/citations, task completion, and calendar edits.
+- Later milestones still require real-provider, real-paper, and installed-app
+  walkthroughs. Mock operations do not demonstrate backend or platform support.
+- Record unavailable platforms as unverified. Do not substitute a successful
+  browser build for Windows/macOS packaging verification.
 
 ## 11. Migration and handoff
 
@@ -519,17 +518,14 @@ planned milestone as implemented.
 
 ### Suggested assignment for the next agent
 
-> Read `docs/plan/desktop-rewrite.md` and the repository/package agent guides.
-> Implement M0 in an isolated `v2/` workspace, keeping the legacy app intact.
-> First record a concrete OS/runtime/dependency matrix and build a packaged
-> desktop-to-service proof on the available platform. Add native CI definitions
-> for the remaining targets; if remote execution is unavailable, mark those
-> results unverified rather than claiming support. Validate SQLite/vector
-> loading, one Docling PDF conversion, the editor round trip, background-host
-> registration, and service credential access with the UI absent. Keep changes
-> reviewable, run appropriate checks, and report measured results and any failed
-> gates. Do not start a broad legacy refactor, delete user data, publish artifacts,
-> or call a milestone complete without its acceptance evidence.
+> Read `docs/plan/desktop-rewrite.md`, `v2/README.md`, and the agent guides.
+> Continue the isolated `v2/` implementation from its frontend prototype. Keep
+> all backend calls behind `KnoterClient`; the current adapter is a local demo.
+> Follow the next user-assigned milestone rather than starting the whole rewrite.
+> Automated tests and CI are deferred: use type checking, production builds,
+> and manual walkthroughs, and report exactly what was verified. Keep the legacy
+> app intact and do not publish artifacts or modify real vaults without an
+> instruction covering that work.
 
 ### Open implementation gates, with defaults
 
@@ -542,16 +538,18 @@ planned milestone as implemented.
   the agreed paper fixtures. If not, record the failures and evaluate an
   alternative extractor without changing the source/citation contract.
 - **Editor:** Milkdown is the default, subject to the specified round-trip tests.
-- **Provider/model:** implement one configured provider first; use fixture models
-  for CI and record real-model evidence separately. No provider subscription or
-  key is presumed to exist.
+- **Provider/model:** implement one configured provider first; use mock responses
+  for the frontend demo and record real-model evidence separately. No provider
+  subscription or key is presumed to exist.
 - **Release identity/feed:** signing identities, certificates, and update hosting
   are supplied when release work is assigned. Continue local implementation and
   unsigned packaging without claiming signed distribution is complete.
 
-## 12. Verification of this planning change
+## 12. Delivery status
 
-This document is based on repository inspection and primary vendor documentation
-reviewed on 2026-09-16. No rewrite code, dependencies, OS registrations, LLM calls,
-or platform smoke tests were run for this documentation task. Documentation
-verification is a read-through, local-link validation, and `git diff --check`.
+The original plan was prepared on 2026-09-16 from repository inspection and
+primary vendor documentation. The user's follow-up deferred test automation and
+requested a frontend-only implementation. F0 uses a mock adapter; subsequent
+backend, extraction, LLM, packaging, and OS-service milestones remain unimplemented.
+See `v2/README.md` for running the prototype, its API boundary, and recorded manual
+verification. Do not describe simulated responses as actual model output.

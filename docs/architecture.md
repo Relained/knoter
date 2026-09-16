@@ -1,5 +1,11 @@
 # knoter architecture
 
+2026-09-16: 별도 재작성 프론트가 `v2/`에 추가됐다. 현재 React UI →
+`KnoterClient` → localStorage mock adapter로 연결되는 더미 프로토타입이며,
+기존 vault나 CLI를 호출하지 않는다. 새 아키텍처의 구현 계획은
+[`desktop-rewrite.md`](plan/desktop-rewrite.md), 현재 구현 경계는
+[`v2/README.md`](../v2/README.md)를 따른다. 아래 내용은 기존 구현의 정책이다.
+
 ## Goal
 
 `knoter`는 유저의 기존 기록/비즈니스 로직 프로그램을 vault 기반 기록 시스템으로 대체하는 CLI와 React/Vite 웹 프론트엔드를 함께 관리하는 모노레포다. CLI는 `cli/`, 프론트엔드는 `web/`, 공유 문서는 루트 `docs/`, 번들 리소스(vault 시딩용 템플릿)는 루트 `res/`에 둔다.

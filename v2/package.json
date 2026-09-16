@@ -1,0 +1,19 @@
+{
+  "name": "knoter-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @knoter/desktop",
+    "build": "npm run build --workspace @knoter/desktop",
+    "check": "npm run check --workspace @knoter/desktop",
+    "preview": "npm run preview --workspace @knoter/desktop"
+  },
+  "devDependencies": {
+    "prettier": "3.9.7"
+  }
+}
