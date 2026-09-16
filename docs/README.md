@@ -17,6 +17,7 @@ init`이 각 vault `templates/workflow.md`로 시딩한다 (vault별 수정 가�
 | --- | --- |
 | `docs/plan/progress.md` | 구현 완료된 현재 상태(진행상황)와 검증 기준 |
 | `docs/plan/roadmap.md` | 활성 결정사항과 P0–P2 전체 plan |
+| [`docs/plan/desktop-rewrite.md`](plan/desktop-rewrite.md) | macOS·Windows 재작성 제안, 기술·포맷 선택 근거, 단계별 완료 기준과 다음 에이전트 인계문 (미구현) |
 | `docs/plan/web-fix-plan.md` | 워크벤치 디자인 결함 수정 계획과 진행 체크 |
 
 기능 설계 문서는 `docs/design/` 서브디렉토리에 있다.
