@@ -8,6 +8,7 @@ import {
   Clock3,
   FileText,
   Link2,
+  Network,
   Loader2,
   PencilLine,
   Plus,
@@ -21,6 +22,8 @@ import type { KnoterClient, WikiDocument, WorkspaceSnapshot } from '@knoter/cont
 import { Button } from '../components/ui/button';
 import { Markdown } from '../components/Markdown';
 import { DocIcon, relativeTime } from '../components/helpers';
+import { Dialog } from '../components/ui/dialog';
+import { documentHref, documentMarkdownLink, type WikiLinks } from '../wiki/links';
 
 const Editor = lazy(() => import('../components/Editor'));
 export type RunAction = (action: () => Promise<unknown>, message?: string) => Promise<boolean>;
@@ -124,6 +127,8 @@ export function WikiDocumentView({
   onAsk,
   editing,
   onEditing,
+  links,
+  onGraph,
 }: {
   doc: WikiDocument;
   snapshot: WorkspaceSnapshot;
@@ -134,15 +139,28 @@ export function WikiDocumentView({
   onAsk: () => void;
   editing: boolean;
   onEditing: (value: boolean) => void;
+  links: WikiLinks;
+  onGraph: () => void;
 }) {
   const [title, setTitle] = useState(doc.title);
   const [body, setBody] = useState(doc.body);
   const [baseRevision, setBaseRevision] = useState(doc.revision);
   const [saving, setSaving] = useState(false);
   const editor = useRef<EditorHandle>(null);
+  const [linkPicker, setLinkPicker] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
+  const [linkQuery, setLinkQuery] = useState('');
   const sources = snapshot.sources.filter((s) => doc.sourceIds.includes(s.id));
   const related = snapshot.documents.filter((d) => doc.relatedIds.includes(d.id));
+  const outgoing = snapshot.documents.filter((d) =>
+    links.edges.some((e) => e.source === doc.id && e.target === d.id && e.kind === 'link'),
+  );
+  const incoming = snapshot.documents.filter((d) =>
+    links.edges.some((e) => e.source === d.id && e.target === doc.id),
+  );
+  const unresolved = links.unresolved.filter((e) => e.source === doc.id);
   const begin = () => {
+    setEditorReady(false);
     setTitle(doc.title);
     setBody(doc.body);
     setBaseRevision(doc.revision);
@@ -172,6 +190,17 @@ export function WikiDocumentView({
             {doc.category}
           </span>
           <div className="flex gap-1">
+            {!editing && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="View this note in graph"
+                title="View connected graph"
+                onClick={onGraph}
+              >
+                <Network />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -232,6 +261,21 @@ export function WikiDocumentView({
             <div className="editing-note">
               <ShieldCheck size={14} /> Your edits are protected from future automatic updates.
             </div>
+            <div className="wiki-link-toolbar">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setLinkQuery('');
+                  setLinkPicker(true);
+                }}
+                disabled={!editorReady}
+              >
+                <Link2 />
+                Link a note
+              </Button>
+              <span>Connect an idea with [[note title]] or choose a note.</span>
+            </div>
             <Suspense
               fallback={
                 <div className="editor-loading">
@@ -244,6 +288,7 @@ export function WikiDocumentView({
                 key={`${doc.id}-${baseRevision}`}
                 value={body}
                 onChange={setBody}
+                onReady={() => setEditorReady(true)}
               />
             </Suspense>
           </>
@@ -265,7 +310,68 @@ export function WikiDocumentView({
                 </span>
               )}
             </div>
-            <Markdown onSource={onSource}>{doc.body}</Markdown>
+            <Markdown onSource={onSource} onOpen={onOpen} documents={snapshot.documents}>
+              {doc.body}
+            </Markdown>
+            <section className="wiki-connections">
+              <div className="section-heading">
+                <h2>Connected knowledge</h2>
+                <Button variant="ghost" size="sm" onClick={onGraph}>
+                  <Network />
+                  Explore graph
+                </Button>
+              </div>
+              <div className="wiki-connections-grid">
+                <div>
+                  <h3>
+                    Links from this note <span>{outgoing.length}</span>
+                  </h3>
+                  {outgoing.map((item) => (
+                    <a
+                      key={item.id}
+                      href={documentHref(item.id)}
+                      onClick={(e) => {
+                        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                          e.preventDefault();
+                          onOpen(item.id);
+                        }
+                      }}
+                    >
+                      {item.title}
+                      <ArrowUpRight size={13} />
+                    </a>
+                  ))}
+                  {!outgoing.length && <p>Add a link in the editor to connect an idea.</p>}
+                </div>
+                <div>
+                  <h3>
+                    Backlinks <span>{incoming.length}</span>
+                  </h3>
+                  {incoming.map((item) => (
+                    <a
+                      key={item.id}
+                      href={documentHref(item.id)}
+                      onClick={(e) => {
+                        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                          e.preventDefault();
+                          onOpen(item.id);
+                        }
+                      }}
+                    >
+                      {item.title}
+                      <ArrowUpRight size={13} />
+                    </a>
+                  ))}
+                  {!incoming.length && <p>No other notes link here yet.</p>}
+                </div>
+              </div>
+              {!!unresolved.length && (
+                <p className="unresolved-summary">
+                  Unresolved links: {unresolved.map((e) => e.target).join(', ')}. Use a unique note
+                  title or insert a link by choosing a note.
+                </p>
+              )}
+            </section>
             <section className="article-sources">
               <div className="section-heading">
                 <h2>Grounded in your sources</h2>
@@ -319,6 +425,51 @@ export function WikiDocumentView({
           </>
         )}
       </article>
+      <Dialog
+        open={linkPicker}
+        onOpenChange={setLinkPicker}
+        title="Link to another note"
+        description="Choose a note to insert a stable link at your cursor."
+      >
+        <div className="link-picker">
+          <div className="search-field">
+            <Search size={15} />
+            <input
+              autoFocus
+              aria-label="Find a note to link"
+              placeholder="Find a note…"
+              value={linkQuery}
+              onChange={(e) => setLinkQuery(e.target.value)}
+            />
+          </div>
+          <div className="link-picker-results">
+            {snapshot.documents
+              .filter(
+                (d) => d.id !== doc.id && d.title.toLowerCase().includes(linkQuery.toLowerCase()),
+              )
+              .map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    void run(async () => {
+                      if (!editor.current)
+                        throw new Error('The editor is still opening. Please try again.');
+                      editor.current.insertLink(documentMarkdownLink(item));
+                      setLinkPicker(false);
+                    });
+                  }}
+                >
+                  <DocIcon doc={item} />
+                  <span>
+                    {item.title}
+                    <small>{item.category}</small>
+                  </span>
+                  <Link2 size={14} />
+                </button>
+              ))}
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

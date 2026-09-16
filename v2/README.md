@@ -46,6 +46,36 @@ workflow is included. Test automation is deferred by the user's instruction.
 - **Workspace:** inspect activity, switch between light and dark themes, and
   collapse the assistant panel. Narrow screens expose navigation through a menu.
 
+## Navigation, wiki links, and panels
+
+Every main view, collection, document, and focused graph has a hash URL. Browser
+Back/Forward and the toolbar arrows follow the same history. Refreshing or opening
+a document URL in another tab retains the destination. Unsaved edits are guarded;
+choosing Keep editing restores the current URL and preserves the draft and forward
+history. Navigation metadata is session-only and owned by `api/navigationHistory.ts`.
+
+Use **Link a note** in the editor to insert `[Label](#/wiki/document-id)` at the
+cursor. These ID links survive title changes. Typed `[[Title]]`, `[[id]]`, and
+`[[Title|label]]` also work; a title must resolve uniquely, so rename-sensitive or
+ambiguous references are shown as unresolved. The Markdown AST is shared by the
+reader and graph index; code and existing link text do not become accidental
+wiki links. Backlinks include body references and existing related-note records.
+
+**Graph** in the sidebar shows the workspace; **Explore graph** on a note shows
+that note and its immediate neighbors. Select a node to open its document, search
+to highlight matches, drag nodes or the background, and use the zoom/reset
+controls. Solid lines represent body links; dotted lines represent legacy
+`relatedIds` connections. Reciprocal references share one visible line. Existing
+saved documents are not rewritten to add links. The graph is designed for this
+small prototype workspace, not yet tuned for a large corpus.
+
+The top bar contains independent navigation/assistant collapse controls. Drag
+each sidebar's inner border to resize it; focused borders also accept Left/Right
+(10px), Shift+Left/Right (40px), Home/End, and double-click to reset. Widths and
+collapse preferences are saved through `KnoterClient.updateSettings`. Bounds
+preserve the central workspace. On narrow screens navigation becomes a drawer
+and the assistant overlays the document.
+
 ## Service boundary
 
 ```text
@@ -67,6 +97,11 @@ apps/desktop/src/main.tsx
 | `apps/desktop/src/components/ContextPanel.tsx` | Chat, source context, and revision history                                                 |
 | `apps/desktop/src/components/Editor.tsx`       | Lazy-loaded visual Markdown editor with a plain-text fallback                              |
 | `apps/desktop/src/components/ui/`              | Composable Radix primitives and button variants                                            |
+
+Additional frontend entry points: `views/GraphView.tsx` renders the interactive
+graph; `wiki/links.ts` resolves Markdown references; `api/navigationHistory.ts`
+and `components/useWorkspaceHistory.ts` own URL navigation; and
+`components/SidebarResizeHandle.tsx` handles pointer/keyboard resizing.
 
 Views call `KnoterClient` methods and consume `WorkspaceSnapshot`; they do not
 read localStorage or call Electron, databases, or model providers. A later agent
@@ -142,6 +177,23 @@ been verified. Do not infer that these unverified paths passed.
 
 Run `npm run check` and `git diff --check` after changes. Record the result of
 each manual check honestly; do not add test automation unless requested.
+
+### Follow-up verification — 2026-09-17
+
+Direct browser walkthroughs confirmed document-link navigation, browser and
+toolbar Back/Forward, forward history across refresh, and keeping/discarding an
+unsaved edit. A newly created demo note was linked through the picker; its target
+showed the backlink and its local graph included the new note. Typed ID/alias
+wiki links resolved, and a missing target was visibly marked as unresolved.
+Both sidebar borders were dragged (222 → 282px and 326 → 386px), and refresh
+retained those widths. Both panels could be collapsed together, and refresh
+retained the collapsed state. No automated tests were added.
+
+The follow-up `npm run check` passed (TypeScript and Vite production build).
+The existing bundle-size warning remains: about 543 kB for the main JavaScript
+and 1,378 kB for the lazy editor before gzip. Narrow-window navigation was also
+visually checked at 390px. The link picker waits for editor initialization before
+accepting insertions.
 
 ## Handoff
 

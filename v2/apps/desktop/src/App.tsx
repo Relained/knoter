@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ArrowDownToLine,
+  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Bell,
@@ -20,6 +21,7 @@ import {
   Moon,
   Network,
   PanelRight,
+  PanelLeft,
   Plus,
   Search,
   Settings2,
@@ -40,9 +42,14 @@ import { TasksView } from './views/TasksView';
 import { CalendarView } from './views/CalendarView';
 import { createSampleFile, readImports } from './api';
 import { exportMarkdown } from './api/export';
+import { useWorkspaceHistory } from './components/useWorkspaceHistory';
+import { SidebarResizeHandle } from './components/SidebarResizeHandle';
+import { GraphView } from './views/GraphView';
+import { buildWikiLinks } from './wiki/links';
 
 const navigation = [
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
+  { id: 'graph', label: 'Graph', icon: Network },
   { id: 'sources', label: 'Sources', icon: Folder },
   { id: 'tasks', label: 'Tasks', icon: CheckCheck },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
@@ -50,11 +57,13 @@ const navigation = [
 
 export function App({ client }: { client: KnoterClient }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
-  const [view, setView] = useState<View>('wiki');
-  const [documentId, setDocumentId] = useState<string | null>('rag');
-  const [category, setCategory] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [panel, setPanel] = useState(() => window.innerWidth > 1050);
+  const [panel, setPanelVisible] = useState(() => window.innerWidth > 1050);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(222);
+  const [rightWidth, setRightWidth] = useState(326);
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const layoutLoaded = useRef(false);
   const [panelTab, setPanelTab] = useState<PanelTab>('chat');
   const [mobileNav, setMobileNav] = useState(false);
   const [modal, setModal] = useState<'import' | 'settings' | 'search' | 'activity' | null>(null);
@@ -82,13 +91,37 @@ export function App({ client }: { client: KnoterClient }) {
       return false;
     }
   }, []);
+  const setPanel = (visible: boolean) => {
+    setPanelVisible(visible);
+    void run(() => client.updateSettings({ rightSidebarCollapsed: !visible }));
+  };
+  const toggleNavigation = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+    void run(() => client.updateSettings({ leftSidebarCollapsed: !sidebarCollapsed }));
+  };
+  useEffect(() => {
+    const resize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
   useEffect(() => {
     let active = true;
     const load = () =>
       void client
         .getSnapshot()
         .then((value) => {
-          if (active) setSnapshot(value);
+          if (active) {
+            setSnapshot(value);
+            if (!layoutLoaded.current) {
+              layoutLoaded.current = true;
+              setSidebarCollapsed(value.settings.leftSidebarCollapsed ?? false);
+              setPanelVisible(
+                window.innerWidth > 1050 && !(value.settings.rightSidebarCollapsed ?? false),
+              );
+              setLeftWidth(Math.max(184, Math.min(380, value.settings.leftSidebarWidth || 222)));
+              setRightWidth(Math.max(280, Math.min(600, value.settings.rightSidebarWidth || 326)));
+            }
+          }
         })
         .catch((error) => {
           if (active) setToast({ text: String(error), error: true });
@@ -140,28 +173,34 @@ export function App({ client }: { client: KnoterClient }) {
     action();
     setMobileNav(false);
   };
+  const historyNav = useWorkspaceHistory(
+    navigate,
+    () => {
+      setModal(null);
+      setSourceId(null);
+      setMobileNav(false);
+      setEditing(false);
+    },
+    editing,
+  );
+  const { view, documentId, category = null, focusId } = historyNav.route;
+  const wikiLinks = useMemo(() => buildWikiLinks(snapshot?.documents || []), [snapshot?.documents]);
   const openDocument = (id: string) =>
     navigate(() => {
-      setView('wiki');
-      setDocumentId(id);
-      setCategory(null);
+      historyNav.push({ view: 'wiki', documentId: id });
       setModal(null);
       setSourceId(null);
     });
   const openView = (next: View) =>
     navigate(() => {
-      setView(next);
-      setDocumentId(null);
-      setCategory(null);
+      historyNav.push({ view: next });
       setModal(null);
     });
   const createNote = () =>
     navigate(() => {
       void run(async () => {
         const id = await client.createDocument();
-        setView('wiki');
-        setDocumentId(id);
-        setCategory(null);
+        historyNav.push({ view: 'wiki', documentId: id });
         setModal(null);
         setEditing(true);
       });
@@ -178,8 +217,7 @@ export function App({ client }: { client: KnoterClient }) {
       setFiles([]);
       setModal(null);
       navigate(() => {
-        setView('sources');
-        setDocumentId(null);
+        historyNav.push({ view: 'sources' });
       });
     }
   };
@@ -231,10 +269,36 @@ export function App({ client }: { client: KnoterClient }) {
     sources: snapshot.sources.length,
     tasks: snapshot.tasks.filter((t) => !t.done).length,
     calendar: 0,
+    graph: 0,
   };
+  const navWidth =
+    viewportWidth <= 760 || sidebarCollapsed
+      ? 0
+      : Math.min(leftWidth, viewportWidth - 360 - (panel && viewportWidth > 1050 ? 280 : 0));
+  const contextWidth = Math.min(
+    rightWidth,
+    viewportWidth > 1050 ? viewportWidth - navWidth - 360 : viewportWidth - 24,
+  );
+  const leftMax = Math.min(
+    380,
+    viewportWidth - 360 - (panel && viewportWidth > 1050 ? contextWidth : 0),
+  );
+  const rightMax = Math.min(
+    600,
+    viewportWidth > 1050 ? viewportWidth - navWidth - 360 : viewportWidth - 24,
+  );
 
   return (
-    <div className={`app-shell ${panel ? 'has-panel' : ''}`}>
+    <div
+      className={`app-shell ${panel ? 'has-panel' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+      style={
+        {
+          '--nav-width': `${navWidth}px`,
+          '--context-width': `${panel && viewportWidth > 1050 ? contextWidth : 0}px`,
+          '--overlay-width': `${contextWidth}px`,
+        } as CSSProperties
+      }
+    >
       {mobileNav && (
         <button
           className="nav-scrim"
@@ -243,6 +307,14 @@ export function App({ client }: { client: KnoterClient }) {
         />
       )}
       <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
+        <SidebarResizeHandle
+          side="left"
+          width={navWidth}
+          min={184}
+          max={leftMax}
+          onChange={setLeftWidth}
+          onCommit={(value) => void run(() => client.updateSettings({ leftSidebarWidth: value }))}
+        />
         <a
           className="brand"
           href="#"
@@ -287,6 +359,7 @@ export function App({ client }: { client: KnoterClient }) {
             <button
               className={view === item.id ? 'nav-item active' : 'nav-item'}
               key={item.id}
+              aria-current={view === item.id ? 'page' : undefined}
               onClick={() => openView(item.id)}
             >
               <item.icon size={18} strokeWidth={1.7} />
@@ -324,9 +397,7 @@ export function App({ client }: { client: KnoterClient }) {
               key={name}
               onClick={() =>
                 navigate(() => {
-                  setView('wiki');
-                  setDocumentId(null);
-                  setCategory(name);
+                  historyNav.push({ view: 'wiki', category: name });
                 })
               }
             >
@@ -377,6 +448,16 @@ export function App({ client }: { client: KnoterClient }) {
       >
         <header className="topbar">
           <Button
+            className="desktop-nav-toggle"
+            size="icon"
+            variant="ghost"
+            aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-expanded={!sidebarCollapsed}
+            onClick={toggleNavigation}
+          >
+            <PanelLeft />
+          </Button>
+          <Button
             className="mobile-menu"
             size="icon"
             variant="ghost"
@@ -385,6 +466,26 @@ export function App({ client }: { client: KnoterClient }) {
           >
             <Menu />
           </Button>
+          <div className="history-controls">
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Go back"
+              disabled={!historyNav.canBack}
+              onClick={historyNav.back}
+            >
+              <ArrowLeft />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Go forward"
+              disabled={!historyNav.canForward}
+              onClick={historyNav.forward}
+            >
+              <ArrowRight />
+            </Button>
+          </div>
           <div className="breadcrumbs">
             <button onClick={() => openView(view)}>{currentLabel}</button>
             {(doc || category) && (
@@ -441,6 +542,8 @@ export function App({ client }: { client: KnoterClient }) {
               run={run}
               onSource={setSourceId}
               onOpen={openDocument}
+              links={wikiLinks}
+              onGraph={() => navigate(() => historyNav.push({ view: 'graph', focusId: doc.id }))}
               onAsk={() => {
                 setPanel(true);
                 setPanelTab('chat');
@@ -448,6 +551,13 @@ export function App({ client }: { client: KnoterClient }) {
               editing={editing}
               onEditing={setEditing}
             />
+          ) : documentId ? (
+            <div className="empty-state">
+              <BookOpen />
+              <h2>Note not found</h2>
+              <p>This link does not match a document in this workspace.</p>
+              <Button onClick={() => openView('wiki')}>Browse the wiki</Button>
+            </div>
           ) : (
             <WikiLibrary
               snapshot={snapshot}
@@ -470,6 +580,16 @@ export function App({ client }: { client: KnoterClient }) {
           <TasksView snapshot={snapshot} client={client} run={run} onOpen={openDocument} />
         )}
         {view === 'calendar' && <CalendarView snapshot={snapshot} client={client} run={run} />}
+        {view === 'graph' && (
+          <GraphView
+            key={focusId || 'all'}
+            documents={snapshot.documents}
+            links={wikiLinks}
+            focusId={focusId}
+            onOpen={openDocument}
+            onGlobal={() => openView('graph')}
+          />
+        )}
       </main>
       {panel && (
         <ContextPanel
@@ -482,6 +602,18 @@ export function App({ client }: { client: KnoterClient }) {
           onOpen={openDocument}
           tab={panelTab}
           setTab={setPanelTab}
+          resizeHandle={
+            <SidebarResizeHandle
+              side="right"
+              width={contextWidth}
+              min={Math.min(280, rightMax)}
+              max={rightMax}
+              onChange={setRightWidth}
+              onCommit={(value) =>
+                void run(() => client.updateSettings({ rightSidebarWidth: value }))
+              }
+            />
+          }
         />
       )}
       {toast && (
@@ -610,7 +742,9 @@ export function App({ client }: { client: KnoterClient }) {
               {source.type === 'pdf' && <span className="demo-tag">Demo excerpt</span>}
             </div>
             <div className="source-preview">
-              <Markdown>{source.excerpt}</Markdown>
+              <Markdown onOpen={openDocument} onSource={setSourceId} documents={snapshot.documents}>
+                {source.excerpt}
+              </Markdown>
             </div>
             <div className="section-heading">
               <h3>Connected notes</h3>

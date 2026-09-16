@@ -547,6 +547,12 @@ planned milestone as implemented.
 
 ## 12. Delivery status
 
+The 2026-09-17 frontend follow-up adds URL/history navigation, inline wiki links,
+backlinks, global/local document graphs, and persistent resizable/collapsible
+sidebars. These continue to use the F0 mock data boundary. Graph edges derive
+from current Markdown references plus the prototype's existing related-note
+records; this does not implement backend semantic graph extraction.
+
 The original plan was prepared on 2026-09-16 from repository inspection and
 primary vendor documentation. The user's follow-up deferred test automation and
 requested a frontend-only implementation. F0 uses a mock adapter; subsequent

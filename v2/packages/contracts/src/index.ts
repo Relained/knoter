@@ -1,4 +1,4 @@
-export type View = 'wiki' | 'sources' | 'tasks' | 'calendar';
+export type View = 'wiki' | 'sources' | 'tasks' | 'calendar' | 'graph';
 export type SourceStatus = 'queued' | 'extracting' | 'ready' | 'failed';
 export interface WikiDocument {
   id: string;
@@ -77,7 +77,14 @@ export interface WorkspaceSnapshot {
   revisions: Revision[];
   activities: Activity[];
   messages: ChatMessage[];
-  settings: { theme: 'light' | 'dark'; workerPaused: boolean };
+  settings: {
+    theme: 'light' | 'dark';
+    workerPaused: boolean;
+    leftSidebarWidth?: number;
+    rightSidebarWidth?: number;
+    leftSidebarCollapsed?: boolean;
+    rightSidebarCollapsed?: boolean;
+  };
 }
 export interface SourceImport {
   filename: string;

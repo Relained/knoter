@@ -1,12 +1,20 @@
 # knoter progress (current state)
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 Implemented state of the monorepo (`cli/`, `web/`, `v2/`, shared `docs/`).
 Legacy work lives in `docs/plan/roadmap.md`; the new rewrite follows
 `docs/plan/desktop-rewrite.md`.
 
 ## 2026-09-16 Frontend Prototype (F0)
+
+2026-09-17 follow-up: document/view hash routes and browser history now support
+Back/Forward with an unsaved-edit guard. The wiki supports inline document links,
+a link picker, backlinks, unresolved references, and a global/local graph derived
+from Markdown links and related-note records. Both sidebars can be collapsed or
+resized by pointer/keyboard, with preferences saved by the existing mock client.
+Existing saved documents are not migrated or overwritten. Manual verification
+details are recorded in `v2/README.md`; test automation remains deferred.
 
 Added the independent `v2/` npm workspace: React/TypeScript/Vite, Tailwind,
 Radix primitives, Milkdown, and a replaceable `KnoterClient` contract.

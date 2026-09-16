@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
   ArrowUp,
@@ -31,6 +31,7 @@ export function ContextPanel({
   onOpen,
   tab,
   setTab,
+  resizeHandle,
 }: {
   snapshot: WorkspaceSnapshot;
   doc?: WikiDocument;
@@ -41,6 +42,7 @@ export function ContextPanel({
   onOpen: (id: string) => void;
   tab: PanelTab;
   setTab: (tab: PanelTab) => void;
+  resizeHandle?: ReactNode;
 }) {
   const [question, setQuestion] = useState('');
   const [scoped, setScoped] = useState(true);
@@ -74,6 +76,7 @@ export function ContextPanel({
   const revisions = snapshot.revisions.filter((r) => !doc || r.documentId === doc.id);
   return (
     <aside className="context-panel">
+      {resizeHandle}
       <div className="panel-heading">
         <span>
           <Sparkles size={16} /> A little perspective
@@ -133,7 +136,12 @@ export function ContextPanel({
                         <span>Demo</span>
                       </div>
                     )}
-                    <Markdown compact onSource={onSource}>
+                    <Markdown
+                      compact
+                      onSource={onSource}
+                      onOpen={onOpen}
+                      documents={snapshot.documents}
+                    >
                       {message.content || 'Finding a few connections…'}
                     </Markdown>
                     {message.role === 'assistant' &&

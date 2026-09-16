@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',
+  // Prebundle these together so the editor and insertion commands share context keys.
+  optimizeDeps: { include: ['@milkdown/crepe', '@milkdown/kit/utils'] },
   // Milkdown's embedded controls use Vue's bundler build internally.
   define: {
     __VUE_OPTIONS_API__: true,

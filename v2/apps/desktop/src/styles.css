@@ -2740,3 +2740,419 @@ select:focus {
     scroll-behavior: auto !important;
   }
 }
+
+/* Adjustable workspace columns keep the reading area usable at every width. */
+.app-shell,
+.app-shell.has-panel {
+  grid-template-columns: var(--nav-width, 222px) minmax(0, 1fr) var(--context-width, 0px);
+}
+.app-shell > .sidebar {
+  grid-column: 1;
+  position: relative;
+}
+.app-shell > .main-workspace {
+  grid-column: 2;
+  min-width: 0;
+}
+.app-shell > .context-panel {
+  grid-column: 3;
+  position: relative;
+}
+.app-shell.sidebar-collapsed > .sidebar {
+  display: none;
+}
+.sidebar-resizer {
+  position: absolute;
+  z-index: 60;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+.resizer-left {
+  right: 0;
+}
+.resizer-right {
+  left: 0;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible,
+.sidebar-resizer:active {
+  background: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.history-controls {
+  display: flex;
+  gap: 1px;
+}
+.desktop-nav-toggle {
+  flex-shrink: 0;
+}
+.topbar {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.breadcrumbs {
+  min-width: 0;
+  flex: 1;
+}
+.wiki-link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  text-underline-offset: 3px;
+  font-weight: 550;
+  border-radius: 3px;
+}
+.wiki-link:hover {
+  background: var(--accent);
+  text-decoration-color: var(--primary);
+}
+.unresolved-link {
+  color: var(--muted);
+  text-decoration-style: dashed;
+  cursor: help;
+}
+.unresolved-link sup {
+  padding-left: 2px;
+}
+.wiki-link-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+.wiki-link-toolbar > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.wiki-connections {
+  margin-top: 45px;
+  padding: 25px 0;
+  border-block: 1px solid var(--border);
+}
+.wiki-connections-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 25px;
+  margin-top: 18px;
+}
+.wiki-connections h3 {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+.wiki-connections h3 span {
+  margin-left: 7px;
+}
+.wiki-connections-grid a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--primary);
+  text-decoration: none;
+}
+.wiki-connections-grid a:hover {
+  text-decoration: underline;
+}
+.wiki-connections-grid a svg {
+  flex-shrink: 0;
+}
+.wiki-connections-grid p,
+.unresolved-summary {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.unresolved-summary {
+  margin-top: 18px;
+  color: var(--amber);
+}
+.link-picker {
+  margin-top: 24px;
+}
+.link-picker .search-field {
+  width: 100%;
+}
+.link-picker-results {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 14px;
+}
+.link-picker-results > button {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 10px;
+  text-align: left;
+  border-radius: 6px;
+}
+.link-picker-results > button:hover {
+  background: var(--accent);
+}
+.link-picker-results span {
+  flex: 1;
+  font-size: 13px;
+}
+.link-picker-results small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.graph-page {
+  padding: 36px 38px;
+  overflow: auto;
+  min-height: 0;
+}
+.graph-page .page-heading {
+  margin-bottom: 25px;
+}
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.graph-toolbar > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.graph-canvas {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 21px 21px,
+    var(--panel);
+  overflow: hidden;
+}
+.graph-canvas > svg {
+  display: block;
+  width: 100%;
+  height: clamp(370px, 58vh, 640px);
+  cursor: grab;
+  touch-action: none;
+}
+.graph-canvas > svg:active {
+  cursor: grabbing;
+}
+.graph-edge {
+  stroke: var(--primary);
+  stroke-opacity: 0.28;
+  stroke-width: 1.5;
+}
+.graph-edge.related {
+  stroke-dasharray: 5 5;
+  stroke-opacity: 0.18;
+}
+.graph-edge.highlighted {
+  stroke-opacity: 0.85;
+  stroke-width: 2;
+}
+.graph-color-0 {
+  --node-color: var(--primary);
+}
+.graph-color-1 {
+  --node-color: var(--purple);
+}
+.graph-color-2 {
+  --node-color: var(--amber);
+}
+.graph-color-3 {
+  --node-color: #609799;
+}
+.graph-node {
+  transition: opacity 0.15s;
+}
+.graph-node.dimmed {
+  opacity: 0.16;
+}
+.graph-node circle {
+  fill: var(--node-color);
+  stroke: var(--background);
+  stroke-width: 3;
+}
+.graph-node .node-halo {
+  fill: var(--node-color);
+  opacity: 0.08;
+  stroke: none;
+}
+.graph-node a {
+  cursor: pointer;
+}
+.graph-node a:hover .node-halo,
+.graph-node a:focus .node-halo {
+  opacity: 0.22;
+}
+.graph-node.focused .node-halo {
+  opacity: 0.2;
+}
+.graph-node text {
+  fill: var(--foreground);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 550;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.graph-node .node-category {
+  font-size: 12px;
+  font-weight: 400;
+  fill: var(--muted);
+}
+.graph-controls {
+  position: absolute;
+  bottom: 17px;
+  right: 17px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+.graph-controls > span {
+  min-width: 38px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+.graph-controls button {
+  width: 28px;
+  height: 28px;
+}
+.graph-hint {
+  position: absolute;
+  bottom: 26px;
+  left: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 0 24px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.graph-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.graph-legend i {
+  width: 17px;
+  border-top: 1px solid var(--primary);
+}
+.graph-legend .dashed {
+  border-top-style: dashed;
+}
+.graph-legend b {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--node-color);
+}
+.graph-note-list a {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 14px 0;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  font-size: 12px;
+}
+.graph-note-list a:hover {
+  color: var(--primary);
+  background: var(--panel);
+}
+.graph-note-list a span {
+  flex: 1;
+}
+.graph-note-list a small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.graph-empty {
+  position: absolute;
+  inset: 45% 0 auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (max-width: 1050px) {
+  .app-shell > .context-panel {
+    position: fixed;
+    width: var(--overlay-width);
+    right: 0;
+    top: 0;
+    bottom: 0;
+  }
+  .topbar {
+    gap: 5px;
+    padding-inline: 12px;
+  }
+  .workspace-state {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell > .sidebar,
+  .app-shell.sidebar-collapsed > .sidebar {
+    display: none;
+  }
+  .app-shell > .sidebar.sidebar-open {
+    display: flex;
+    position: fixed;
+    width: 230px;
+  }
+  .sidebar > .sidebar-resizer,
+  .desktop-nav-toggle {
+    display: none;
+  }
+  .history-controls button {
+    width: 25px;
+  }
+  .topbar-actions button {
+    width: 27px;
+  }
+  .topbar .breadcrumbs > span,
+  .topbar .breadcrumbs > svg {
+    display: none;
+  }
+  .graph-page {
+    padding: 28px 20px;
+  }
+  .graph-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .graph-hint {
+    display: none;
+  }
+  .wiki-connections-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .wiki-link-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
