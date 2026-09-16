@@ -11,8 +11,13 @@ Legacy work lives in `docs/plan/roadmap.md`; the new rewrite follows
 2026-09-17 follow-up: document/view hash routes and browser history now support
 Back/Forward with an unsaved-edit guard. The wiki supports inline document links,
 a link picker, backlinks, unresolved references, and a global/local graph derived
-from Markdown links and related-note records. Both sidebars can be collapsed or
-resized by pointer/keyboard, with preferences saved by the existing mock client.
+from Markdown links and related-note records. Expanded sidebars can be resized by
+pointer/keyboard, with preferences saved by the existing mock client. The latest
+layout refinement replaces full left-sidebar collapse with persistent icon-only
+compact navigation; the assistant still supports collapse. Temporary Zen mode
+hides both panels, fills the app with the main workspace, and restores the prior
+layout on exit without remounting the editor or assistant. Graph wheel handling
+covers the entire canvas and its controls so zoom does not scroll the page.
 Existing saved documents are not migrated or overwritten. Manual verification
 details are recorded in `v2/README.md`; test automation remains deferred.
 

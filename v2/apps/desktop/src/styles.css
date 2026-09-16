@@ -2758,9 +2758,6 @@ select:focus {
   grid-column: 3;
   position: relative;
 }
-.app-shell.sidebar-collapsed > .sidebar {
-  display: none;
-}
 .sidebar-resizer {
   position: absolute;
   z-index: 60;
@@ -2936,6 +2933,7 @@ select:focus {
     radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 21px 21px,
     var(--panel);
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 .graph-canvas > svg {
   display: block;
@@ -3114,8 +3112,7 @@ select:focus {
   }
 }
 @media (max-width: 760px) {
-  .app-shell > .sidebar,
-  .app-shell.sidebar-collapsed > .sidebar {
+  .app-shell > .sidebar {
     display: none;
   }
   .app-shell > .sidebar.sidebar-open {
@@ -3155,4 +3152,65 @@ select:focus {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+/* Compact navigation keeps primary destinations available without a text column. */
+@media (min-width: 761px) {
+  .sidebar-compact > .sidebar {
+    padding: 25px 11px 15px;
+    overflow-x: hidden;
+  }
+  .sidebar-compact .brand,
+  .sidebar-compact .workspace-picker,
+  .sidebar-compact .global-search,
+  .sidebar-compact .nav-item,
+  .sidebar-compact .sidebar-bottom-actions > button {
+    width: 40px;
+    min-height: 40px;
+    flex-shrink: 0;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  .sidebar-compact .brand > span:not(.brand-symbol),
+  .sidebar-compact .workspace-picker > span:not(.workspace-avatar),
+  .sidebar-compact .workspace-picker > svg,
+  .sidebar-compact .global-search > span,
+  .sidebar-compact .global-search > kbd,
+  .sidebar-compact .nav-item > span,
+  .sidebar-compact .nav-item > small,
+  .sidebar-compact .sidebar-group,
+  .sidebar-compact .workspace-pulse,
+  .sidebar-compact .sidebar-bottom-actions > button > span,
+  .sidebar-compact .demo-footnote {
+    display: none;
+  }
+  .sidebar-compact .workspace-picker {
+    margin-top: 15px;
+  }
+  .sidebar-compact .global-search {
+    margin: 8px 0 20px;
+  }
+  .sidebar-compact .primary-nav {
+    gap: 6px;
+  }
+  .sidebar-compact .sidebar-bottom-actions {
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 0 0;
+  }
+}
+
+/* Zen is temporary: mounted panels retain their state while the main fills the app. */
+.app-shell.zen-mode > .sidebar,
+.app-shell.zen-mode > .context-panel,
+.zen-mode .desktop-nav-toggle,
+.zen-mode .mobile-menu,
+.zen-mode .assistant-toggle,
+.zen-mode .panel-divider {
+  display: none;
+}
+.topbar-actions .zen-toggle[aria-pressed='true'] {
+  width: auto;
+  white-space: nowrap;
 }

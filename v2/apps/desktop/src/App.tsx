@@ -17,7 +17,9 @@ import {
   Folder,
   Leaf,
   Loader2,
+  Maximize,
   Menu,
+  Minimize,
   Moon,
   Network,
   PanelRight,
@@ -59,7 +61,8 @@ export function App({ client }: { client: KnoterClient }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [editing, setEditing] = useState(false);
   const [panel, setPanelVisible] = useState(() => window.innerWidth > 1050);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCompact, setSidebarCompact] = useState(false);
+  const [zenMode, setZenMode] = useState(false);
   const [leftWidth, setLeftWidth] = useState(222);
   const [rightWidth, setRightWidth] = useState(326);
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
@@ -96,8 +99,8 @@ export function App({ client }: { client: KnoterClient }) {
     void run(() => client.updateSettings({ rightSidebarCollapsed: !visible }));
   };
   const toggleNavigation = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-    void run(() => client.updateSettings({ leftSidebarCollapsed: !sidebarCollapsed }));
+    setSidebarCompact(!sidebarCompact);
+    void run(() => client.updateSettings({ leftSidebarCompact: !sidebarCompact }));
   };
   useEffect(() => {
     const resize = () => setViewportWidth(window.innerWidth);
@@ -114,7 +117,9 @@ export function App({ client }: { client: KnoterClient }) {
             setSnapshot(value);
             if (!layoutLoaded.current) {
               layoutLoaded.current = true;
-              setSidebarCollapsed(value.settings.leftSidebarCollapsed ?? false);
+              setSidebarCompact(
+                value.settings.leftSidebarCompact ?? value.settings.leftSidebarCollapsed ?? false,
+              );
               setPanelVisible(
                 window.innerWidth > 1050 && !(value.settings.rightSidebarCollapsed ?? false),
               );
@@ -272,9 +277,11 @@ export function App({ client }: { client: KnoterClient }) {
     graph: 0,
   };
   const navWidth =
-    viewportWidth <= 760 || sidebarCollapsed
+    viewportWidth <= 760 || zenMode
       ? 0
-      : Math.min(leftWidth, viewportWidth - 360 - (panel && viewportWidth > 1050 ? 280 : 0));
+      : sidebarCompact
+        ? 64
+        : Math.min(leftWidth, viewportWidth - 360 - (panel && viewportWidth > 1050 ? 280 : 0));
   const contextWidth = Math.min(
     rightWidth,
     viewportWidth > 1050 ? viewportWidth - navWidth - 360 : viewportWidth - 24,
@@ -290,11 +297,11 @@ export function App({ client }: { client: KnoterClient }) {
 
   return (
     <div
-      className={`app-shell ${panel ? 'has-panel' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+      className={`app-shell ${panel ? 'has-panel' : ''} ${sidebarCompact ? 'sidebar-compact' : ''} ${zenMode ? 'zen-mode' : ''}`}
       style={
         {
           '--nav-width': `${navWidth}px`,
-          '--context-width': `${panel && viewportWidth > 1050 ? contextWidth : 0}px`,
+          '--context-width': `${panel && !zenMode && viewportWidth > 1050 ? contextWidth : 0}px`,
           '--overlay-width': `${contextWidth}px`,
         } as CSSProperties
       }
@@ -306,18 +313,26 @@ export function App({ client }: { client: KnoterClient }) {
           aria-label="Close navigation"
         />
       )}
-      <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
-        <SidebarResizeHandle
-          side="left"
-          width={navWidth}
-          min={184}
-          max={leftMax}
-          onChange={setLeftWidth}
-          onCommit={(value) => void run(() => client.updateSettings({ leftSidebarWidth: value }))}
-        />
+      <aside
+        id="workspace-navigation"
+        aria-label="Workspace navigation"
+        className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}
+      >
+        {!sidebarCompact && (
+          <SidebarResizeHandle
+            side="left"
+            width={navWidth}
+            min={184}
+            max={leftMax}
+            onChange={setLeftWidth}
+            onCommit={(value) => void run(() => client.updateSettings({ leftSidebarWidth: value }))}
+          />
+        )}
         <a
           className="brand"
           href="#"
+          aria-label="knoter home"
+          title="knoter home"
           onClick={(e) => {
             e.preventDefault();
             openView('wiki');
@@ -330,7 +345,12 @@ export function App({ client }: { client: KnoterClient }) {
             knoter<span className="brand-period">.</span>
           </span>
         </a>
-        <button className="workspace-picker" onClick={() => setModal('settings')}>
+        <button
+          className="workspace-picker"
+          aria-label="Research space settings"
+          title="Research space settings"
+          onClick={() => setModal('settings')}
+        >
           <span className="workspace-avatar">
             <Leaf size={16} />
           </span>
@@ -342,6 +362,8 @@ export function App({ client }: { client: KnoterClient }) {
         </button>
         <button
           className="global-search"
+          aria-label="Find anything"
+          title="Find anything (⌘/Ctrl K)"
           onClick={() => {
             setModal('search');
             setSearch('');
@@ -359,6 +381,8 @@ export function App({ client }: { client: KnoterClient }) {
             <button
               className={view === item.id ? 'nav-item active' : 'nav-item'}
               key={item.id}
+              aria-label={item.label}
+              title={item.label}
               aria-current={view === item.id ? 'page' : undefined}
               onClick={() => openView(item.id)}
             >
@@ -419,11 +443,15 @@ export function App({ client }: { client: KnoterClient }) {
             <ChevronRight size={13} />
           </button>
           <div className="sidebar-bottom-actions">
-            <button onClick={() => setModal('settings')}>
+            <button aria-label="Settings" title="Settings" onClick={() => setModal('settings')}>
               <Settings2 size={16} />
-              Settings
+              <span>Settings</span>
             </button>
-            <button aria-label="About this demo" onClick={() => setModal('settings')}>
+            <button
+              aria-label="About this demo"
+              title="About this demo"
+              onClick={() => setModal('settings')}
+            >
               <CircleHelp size={16} />
             </button>
           </div>
@@ -450,9 +478,11 @@ export function App({ client }: { client: KnoterClient }) {
           <Button
             className="desktop-nav-toggle"
             size="icon"
-            variant="ghost"
-            aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-            aria-expanded={!sidebarCollapsed}
+            variant={sidebarCompact ? 'soft' : 'ghost'}
+            aria-label={sidebarCompact ? 'Expand navigation' : 'Use compact navigation'}
+            title={sidebarCompact ? 'Expand navigation' : 'Use compact navigation'}
+            aria-pressed={sidebarCompact}
+            aria-controls="workspace-navigation"
             onClick={toggleNavigation}
           >
             <PanelLeft />
@@ -520,8 +550,9 @@ export function App({ client }: { client: KnoterClient }) {
             >
               <Bell />
             </Button>
-            <span className="toolbar-divider" />
+            <span className="toolbar-divider panel-divider" />
             <Button
+              className="assistant-toggle"
               variant={panel ? 'soft' : 'ghost'}
               size="icon"
               aria-label={panel ? 'Hide assistant panel' : 'Show assistant panel'}
@@ -529,6 +560,21 @@ export function App({ client }: { client: KnoterClient }) {
               onClick={() => setPanel(!panel)}
             >
               <PanelRight />
+            </Button>
+            <Button
+              className="zen-toggle"
+              variant={zenMode ? 'soft' : 'ghost'}
+              size={zenMode ? 'sm' : 'icon'}
+              aria-label={zenMode ? 'Exit Zen mode' : 'Enter Zen mode'}
+              title={zenMode ? 'Exit Zen mode' : 'Zen mode — focus on the main workspace'}
+              aria-pressed={zenMode}
+              onClick={() => {
+                setMobileNav(false);
+                setZenMode(!zenMode);
+              }}
+            >
+              {zenMode ? <Minimize /> : <Maximize />}
+              {zenMode && <span>Exit Zen</span>}
             </Button>
           </div>
         </header>
@@ -545,6 +591,7 @@ export function App({ client }: { client: KnoterClient }) {
               links={wikiLinks}
               onGraph={() => navigate(() => historyNav.push({ view: 'graph', focusId: doc.id }))}
               onAsk={() => {
+                setZenMode(false);
                 setPanel(true);
                 setPanelTab('chat');
               }}

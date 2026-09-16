@@ -548,8 +548,12 @@ planned milestone as implemented.
 ## 12. Delivery status
 
 The 2026-09-17 frontend follow-up adds URL/history navigation, inline wiki links,
-backlinks, global/local document graphs, and persistent resizable/collapsible
-sidebars. These continue to use the F0 mock data boundary. Graph edges derive
+backlinks, global/local document graphs, and persistent resizable sidebars.
+Left navigation now toggles an icon-only compact mode instead of disappearing;
+the assistant retains its collapse control. Temporary in-app Zen mode hides both
+panels and restores their prior layout on exit. Graph scrolling is contained to
+the canvas, including controls and zoom limits. These continue to use the F0 mock
+data boundary. Graph edges derive
 from current Markdown references plus the prototype's existing related-note
 records; this does not implement backend semantic graph extraction.
 

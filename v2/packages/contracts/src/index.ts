@@ -82,6 +82,8 @@ export interface WorkspaceSnapshot {
     workerPaused: boolean;
     leftSidebarWidth?: number;
     rightSidebarWidth?: number;
+    leftSidebarCompact?: boolean;
+    /** Legacy preference, read as compact mode until the next navigation toggle. */
     leftSidebarCollapsed?: boolean;
     rightSidebarCollapsed?: boolean;
   };

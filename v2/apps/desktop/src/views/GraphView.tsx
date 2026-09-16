@@ -5,6 +5,16 @@ import { Button } from '../components/ui/button';
 import { documentHref, type WikiLinks } from '../wiki/links';
 
 type Point = { x: number; y: number };
+type Camera = Point & { scale: number };
+function zoomCamera(camera: Camera, value: number): Camera {
+  const scale = Math.max(0.45, Math.min(2.5, value));
+  return {
+    scale,
+    x: 480 - ((480 - camera.x) * scale) / camera.scale,
+    y: 310 - ((310 - camera.y) * scale) / camera.scale,
+  };
+}
+
 function layout(documents: WikiDocument[], links: WikiLinks['edges'], focusId?: string) {
   const points = new Map<string, Point>();
   const center =
@@ -81,18 +91,26 @@ export function GraphView({
   const [hovered, setHovered] = useState<string | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [moved, setMoved] = useState<Record<string, Point>>({});
+  const canvas = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id?: string; x: number; y: number; initial: Point; moved: boolean } | null>(
     null,
   );
   const suppressClick = useRef(false);
   useEffect(() => {
-    const element = svg.current;
-    const preventScroll = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) event.preventDefault();
+    const element = canvas.current;
+    const onWheel = (event: WheelEvent) => {
+      // Own the entire canvas, including overlays and zoom limits. React's
+      // delegated wheel listener is passive and cannot stop page scrolling.
+      event.preventDefault();
+      event.stopPropagation();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element!.clientHeight : 1;
+      const delta = Math.max(-240, Math.min(240, event.deltaY * unit));
+      if (delta)
+        setCamera((current) => zoomCamera(current, current.scale * Math.exp(-delta * 0.002)));
     };
-    element?.addEventListener('wheel', preventScroll, { passive: false });
-    return () => element?.removeEventListener('wheel', preventScroll);
+    element?.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    return () => element?.removeEventListener('wheel', onWheel, true);
   }, []);
   const focus = documents.find((d) => d.id === focusId);
   const neighbors = new Set(
@@ -125,15 +143,7 @@ export function GraphView({
       .filter((e) => e.source === hovered || e.target === hovered)
       .flatMap((e) => [e.source, e.target]),
   ]);
-  const zoom = (value: number) =>
-    setCamera((c) => {
-      const scale = Math.max(0.45, Math.min(2.5, value));
-      return {
-        scale,
-        x: 480 - ((480 - c.x) * scale) / c.scale,
-        y: 310 - ((310 - c.y) * scale) / c.scale,
-      };
-    });
+  const zoom = (value: number) => setCamera((current) => zoomCamera(current, value));
   const position = (clientX: number, clientY: number) => {
     const bounds = svg.current!.getBoundingClientRect();
     const scale = Math.min(bounds.width / 960, bounds.height / 620);
@@ -171,7 +181,7 @@ export function GraphView({
           {visible.length} notes · {displayEdges.length} connections
         </span>
       </div>
-      <div className="graph-canvas">
+      <div className="graph-canvas" ref={canvas}>
         <svg
           ref={svg}
           viewBox="0 0 960 620"
@@ -207,10 +217,6 @@ export function GraphView({
           onPointerCancel={() => {
             drag.current = null;
             suppressClick.current = true;
-          }}
-          onWheel={(e) => {
-            if (e.ctrlKey || e.metaKey) return;
-            zoom(camera.scale * (e.deltaY > 0 ? 0.9 : 1.1));
           }}
         >
           <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>

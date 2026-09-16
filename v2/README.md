@@ -43,8 +43,9 @@ workflow is included. Test automation is deferred by the user's instruction.
   filter open, today, or completed items. Due dates appear in the calendar.
 - **Calendar:** navigate months, choose a day, and create/edit/delete local demo
   events with a time, duration, description, and category.
-- **Workspace:** inspect activity, switch between light and dark themes, and
-  collapse the assistant panel. Narrow screens expose navigation through a menu.
+- **Workspace:** inspect activity, switch themes, use icon-only compact navigation,
+  collapse the assistant panel, or enter Zen mode to fill the app with the main
+  workspace. Narrow screens expose navigation through a menu.
 
 ## Navigation, wiki links, and panels
 
@@ -64,17 +65,33 @@ wiki links. Backlinks include body references and existing related-note records.
 **Graph** in the sidebar shows the workspace; **Explore graph** on a note shows
 that note and its immediate neighbors. Select a node to open its document, search
 to highlight matches, drag nodes or the background, and use the zoom/reset
-controls. Solid lines represent body links; dotted lines represent legacy
+controls. Wheel/trackpad scrolling anywhere inside the graph, including its
+controls, zooms the graph without scrolling the page, even at the zoom limits.
+Scrolling outside the canvas still scrolls the note list. Solid lines represent
+body links; dotted lines represent legacy
 `relatedIds` connections. Reciprocal references share one visible line. Existing
 saved documents are not rewritten to add links. The graph is designed for this
 small prototype workspace, not yet tuned for a large corpus.
 
-The top bar contains independent navigation/assistant collapse controls. Drag
-each sidebar's inner border to resize it; focused borders also accept Left/Right
-(10px), Shift+Left/Right (40px), Home/End, and double-click to reset. Widths and
-collapse preferences are saved through `KnoterClient.updateSettings`. Bounds
-preserve the central workspace. On narrow screens navigation becomes a drawer
-and the assistant overlays the document.
+The top-left control switches between expanded navigation and a 64px icon rail.
+The rail keeps search, primary destinations, and settings available with accessible
+names and hover labels. Expand it to access pinned notes and collections. There
+is no independent control to hide desktop navigation completely. Drag each
+expanded sidebar's inner border to resize it; focused borders also accept
+Left/Right (10px), Shift+Left/Right (40px), Home/End, and double-click to reset.
+Compact mode preserves the expanded width. Widths, `leftSidebarCompact`, and the
+assistant's collapsed preference are saved through `KnoterClient.updateSettings`.
+The legacy `leftSidebarCollapsed` preference is read as compact mode until the
+new preference is saved; existing workspace data is preserved. Bounds preserve
+the central workspace. On narrow screens navigation becomes a drawer and the
+assistant overlays the document.
+
+**Zen mode** in the top-right temporarily hides both sidebars and expands the main
+workspace across the app. **Exit Zen** restores the previous layout, including
+compact mode and panel widths. Zen does not enter OS/browser fullscreen, change
+saved layout preferences, or remount the editor/assistant. Drafts stay in place.
+Asking the assistant from a note exits Zen and opens the chat. Zen itself is not
+persisted across page reloads.
 
 ## Service boundary
 
@@ -194,6 +211,30 @@ The existing bundle-size warning remains: about 543 kB for the main JavaScript
 and 1,378 kB for the lazy editor before gzip. Narrow-window navigation was also
 visually checked at 390px. The link picker waits for editor initialization before
 accepting insertions.
+
+### Compact navigation and Zen refinement — 2026-09-17
+
+`npm run check` and `git diff --check` passed. The existing Vite chunk-size
+warning remains (about 545 kB main JavaScript and 1,378 kB lazy editor before
+gzip). No automated tests were added or run.
+
+A direct macOS browser walkthrough verified:
+
+- Before the fix, wheeling over graph controls moved the page by 134.5px without
+  changing graph zoom. After the fix, the same gesture changed zoom while page
+  scroll stayed at 0, including repeated scrolling at the 45% minimum. Scrolling
+  the margin outside the canvas still moved the page normally.
+- Compact navigation measured 64px with no visible sidebar text, persisted after
+  reload, and restored the previously saved 238px expanded width. The standalone
+  full-hide navigation button was absent.
+- Zen filled the 1334px app width. Exiting restored expanded navigation (238px)
+  and assistant (280px), and also restored the compact rail in a separate pass.
+  An unsent chat draft and unsaved note title/body survived the transitions.
+  Temporary walkthrough edits were discarded without saving a document revision.
+- At 390px, a stored compact preference still opened a full-text mobile drawer.
+  Zen's exit button stayed visible without horizontal overflow. Asking the
+  assistant from a note exited Zen and opened chat. The viewport override was
+  reset after the walkthrough.
 
 ## Handoff
 
