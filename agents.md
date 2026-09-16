@@ -29,7 +29,7 @@ explicitly approves a different direction.
 | `web/` | React/Vite HTML workbench renderer plus Electron development shell with CLI/fs-backed IPC. |
 | `v2/` | Isolated React frontend rewrite with a replaceable mock service adapter. |
 | `res/templates/` | Vault seed content: workflow contract + per-artifact templates (markdown + default HTML). |
-| `docs/` | Shared architecture, codebase, planning, and testing documentation. |
+| `docs/` | Shared decisions, failure records, and rewrite planning. |
 | `testdata/` | Markdown fixture corpus for manual smoke runs. |
 | `README.md` | Root project overview. |
 
@@ -37,11 +37,13 @@ explicitly approves a different direction.
 
 Read the smallest relevant set under `docs/` before larger changes:
 
-- `docs/architecture.md` — product model and boundary source of truth.
-- `docs/codebase.md` — code reading entry point for both packages.
-- `docs/testing.md` — verification commands, config files, manual smoke flow.
-- `docs/plan/progress.md` — implemented current state and verification baseline.
-- `docs/plan/roadmap.md` — active decisions and P0–P2 planned work.
+- `docs/README.md` — documentation index and retention policy.
+- `docs/architecture.md` — legacy decisions, failure records, verification
+  limits, operational cautions, and unresolved work.
+- `docs/plan/desktop-rewrite.md` — rewrite rationale, platform/format contracts,
+  and implementation gates.
+- Package guides and READMEs — setup, check commands, and package-specific
+  implementation instructions.
 - `res/templates/workflow.md` — the agent workflow contract seeded into every
   vault's `templates/workflow.md` by `kn vault init`. It is runtime content,
   not prose documentation; changing it changes agent behavior for new vaults.
@@ -89,8 +91,11 @@ Read the smallest relevant set under `docs/` before larger changes:
 
 ## Verification Routing
 
-- CLI-affecting changes: baseline in `cli/agents.md` plus `docs/testing.md`.
-- Web-affecting changes: baseline in `web/agents.md` plus `docs/testing.md`.
+- CLI-affecting changes: baseline in `cli/agents.md` plus operational cautions
+  in `docs/architecture.md`.
+- Web-affecting changes: baseline in `web/agents.md` plus UI failure records
+  and manual verification guidance in `docs/architecture.md`.
+- Rewrite changes: `v2/agents.md` and the evidence in `v2/README.md`.
 - Documentation-only changes: a read-through and `git diff --check` are usually
   sufficient unless the edited document defines executable commands or
   contracts (`res/templates/workflow.md` is the runtime agent contract).

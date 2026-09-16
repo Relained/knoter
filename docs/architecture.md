@@ -1,148 +1,139 @@
-# knoter architecture
+# Decisions and lessons
 
-2026-09-16: 별도 재작성 프론트가 `v2/`에 추가됐다. 현재 React UI →
-`KnoterClient` → localStorage mock adapter로 연결되는 더미 프로토타입이며,
-기존 vault나 CLI를 호출하지 않는다. 새 아키텍처의 구현 계획은
-[`desktop-rewrite.md`](plan/desktop-rewrite.md), 현재 구현 경계는
-[`v2/README.md`](../v2/README.md)를 따른다. 아래 내용은 기존 구현의 정책이다.
+Consolidated 2026-09-17. These records concern the legacy `cli/` and `web/`
+unless stated otherwise. The [desktop rewrite](plan/desktop-rewrite.md)
+intentionally changes their architecture; do not apply its storage or service
+rules to legacy maintenance. Implementation instructions live in the
+[CLI guide](../cli/agents.md) and [web guide](../web/agents.md).
 
-## Goal
+## Legacy decisions
 
-`knoter`는 유저의 기존 기록/비즈니스 로직 프로그램을 vault 기반 기록 시스템으로 대체하는 CLI와 React/Vite 웹 프론트엔드를 함께 관리하는 모노레포다. CLI는 `cli/`, 프론트엔드는 `web/`, 공유 문서는 루트 `docs/`, 번들 리소스(vault 시딩용 템플릿)는 루트 `res/`에 둔다.
+The June 2026 architecture chose a plain-directory vault and external-agent
+maintenance. Preserve these boundaries until a separately assigned migration:
 
-CLI는 LLM으로 prose를 직접 생성하지 않는다. 저장/인덱싱/검색/작업 큐를 소유하고, `kn sync`가 설정된 외부 에이전트 백엔드(codex/claude CLI)를 vault 작업 디렉토리에서 호출해 artifact와 HTML 디스플레이를 유지보수하게 한다.
+- **Originals and generated artifacts have different owners.** Sources are user
+  evidence; the agent maintains artifacts under the vault's own workflow
+  contract. Task/workout/area/metric extraction belongs to that agent. The CLI
+  stores, indexes, and queues work; it does not generate prose through an LLM API.
+- **Semantic retrieval is wiki-scoped.** Only `llm-wiki` artifacts are embedded;
+  sources and other artifacts use keyword retrieval. Do not restore tags or the
+  discarded `rewritten` layer as an alternative retrieval model.
+- **HTML is a legacy presentation format, not indexed evidence.** Paired
+  Markdown/HTML artifacts allow different document types to supply their own
+  views. Untrusted HTML must remain behind the sandboxed iframe or sanitized
+  external-window path. Renderers never open the filesystem or database directly.
+  Legacy search-result HTML intentionally does not navigate within its sandbox;
+  documents open through app commands. This restriction is separate from the
+  rewrite's navigable wiki links.
+- **Configuration belongs in files.** Global settings register vaults and supply
+  defaults; per-vault settings override them. The old `KN_*` environment-based
+  configuration is retired. This does not remove the dev shell's explicit
+  process-launch overrides.
+- **Embedding infrastructure stays external to the CLI.** Do not restore
+  CLI-owned Docker/Podman TEI lifecycle management. Packaged-app service UX is a
+  separate design task.
+- **Buttons, shortcuts, and the palette execute the same commands.** A single
+  registry keeps behavior, errors, and option forms consistent regardless of
+  entry point; browser-only backend failures must be visible.
+- **Pinned views are independent of active tabs.** Any artifact type can remain
+  beside the current document as a dashboard. Notification history moved to the
+  left menu to avoid competing with the right widget bar. Persist view identity
+  and layout, not generated HTML snapshots.
 
-핵심 데이터 흐름:
+Earlier `ask`, built-in LLM/rewrite, `add/get/report/template/tag` CLI surfaces,
+the old MCP server, and the old pane/floating-window/sidebar/3D-graph workbench
+are retired directions. Their old command tables and smoke recipes are not
+implementation requirements. MCP/skills may be redesigned later; PageIndex is
+only a proposed experiment. Cluster analysis was reserved for a future frontend
+with direct vector access, not another CLI command. Do not resurrect deleted
+implementations simply because they appear in Git history.
 
-1. 유저가 source 파일을 vault `sources/`에 둔다 (web도 파일 복사만 한다).
-2. `kn sync`(주기 실행: `kn service install`로 등록된 launchd, 또는 수동)가
-   변경을 인덱싱하고 source 추가/수정/삭제를 작업 큐(`agent_queue`)에 적재한다.
-3. 큐가 비어있지 않으면 sync가 config의 에이전트 백엔드를 spawn한다. 에이전트는
-   vault에서 직접 파일을 읽고(`templates/workflow.md` 계약, `kn search` 검색)
-   `artifacts/`의 `.md` + `.html`을 생성/수정/삭제한다.
-4. 에이전트 종료(exit 0) 후 sync가 재인덱싱하고 큐 항목을 done 처리한다.
-   llm-wiki만 임베딩되어 시맨틱 검색 대상이 된다.
+## UI failures and remedies
 
-## Configuration
+These are the 2026-06-10 legacy workbench findings, including subsequent user
+corrections. They retain the cause and remedy, not a completed implementation
+checklist. Build checks were recorded, but the full GUI walkthrough was not
+performed at that time.
 
-환경변수 방식은 폐기됐다. 설정은 파일 2계층이다:
-
-- 전역: `~/.config/knoter/config.json` — vault 이름→경로 레지스트리,
-  `defaultVaultDir`(기본 `~/Documents`), 에이전트 백엔드 목록
-  (`agent.backends`: codex→`codex exec`, claude→`claude -p`)과 선택
-  (`agent.backend`), embedding 기본값(`baseUrl`/`model`), `sync.intervalMinutes`.
-- vault별: `<vault>/config.json` — 전역값을 부분 오버라이드
-  (`embedding`, `agent.backend`/`timeoutMs`, `search.fusionAlpha`).
-
-`loadVaultConfig()`가 병합된 유효 설정을 반환한다 (`cli/src/core/config.ts`).
-
-## Vault Layout
-
-다중 vault를 지원하며, 기본 위치는 `~/Documents/<name>`이고 `kn vault init
---path`로 임의 경로를 지정한다.
-
-```
-<vault>/
-  config.json     # 전역 오버라이드 (선택)
-  templates/      # workflow.md 계약 + per-artifact 템플릿(md+기본 html), init 시 res/templates에서 시딩
-  sources/        # 유저 원본 (evidence only)
-  artifacts/      # 에이전트 산출물 .md + 동일 경로 .html
-  .db/            # meta.db(SQLite), vectors/(zvec), vault.lock
-```
-
-## Document Layers
-
-| Layer | 소유자 | 저장 | 인덱싱 | 검색 |
-| --- | --- | --- | --- | --- |
-| `source` | 유저 | `sources/` | 청킹+FTS (임베딩 없음) | `--scope sources|all` 키워드 |
-| `artifact` (일반) | 에이전트 | `artifacts/` | 청킹+FTS (임베딩 없음) | `--scope artifacts|all` 키워드 |
-| `artifact` (`kind: llm-wiki`) | 에이전트 | `artifacts/llm-wiki.md` | 청킹+FTS+임베딩(zvec) | 기본 검색 (semantic/hybrid/keyword) |
-
-- legacy `rewritten` 레이어는 완전히 제거됐다 (스키마 마이그레이션이 잔여
-  행을 삭제한다).
-- 태그 시스템도 제거 상태를 유지한다.
-- HTML 파일은 인덱싱하지 않는다. 에이전트가 직접 쓰고 web이 sandbox로
-  렌더링한다.
-
-## CLI Surface
-
-- `kn vault init <name> [--path <dir>] [--model ...]` — 레이아웃 생성 +
-  `res/templates/` 시딩 + 레지스트리 등록. `list|switch|delete|status`
-  (`status`는 implicit index-only sync를 트리거; `delete`는 `.db`만 지우고
-  유저 파일은 보존).
-- `kn sync [--full] [--no-agent] [--reconcile]` — 인덱스 패스 → 큐 적재 →
-  에이전트 spawn(백엔드 미설정이면 skip 사유 보고) → 재인덱스 → 큐 마감.
-- `kn search <q> [--mode hybrid|semantic|keyword] [--scope llm-wiki|artifacts|sources|all]`
-  — 기본 scope `llm-wiki`(semantic+keyword). 그 외 scope는 키워드 전용이며
-  mode를 keyword로 강제한다.
-- `kn service install [--interval <min>] | uninstall | status [--check]` —
-  macOS launchd에 주기 `kn sync` 등록/해제, embedding endpoint 점검.
-
-MCP/skill 문서 반환 기능은 future plan이다. 이전 MCP 구현은 폐기·삭제됐다.
-
-## Agent Invocation Contract
-
-- `kn sync`가 pending 큐 존재 시 `agent.backend`를 vault cwd에서 spawn한다:
-  `<bin> <args...> "<work prompt>"`.
-- work prompt(`cli/src/core/agent-runner.ts`)는 vault 레이아웃, 큐 항목
-  목록(`[added|updated|deleted] path`), `templates/workflow.md` 계약 참조,
-  llm-wiki/HTML 유지보수 규칙, `artifacts/` 외 쓰기 금지를 담는다.
-- 에이전트는 `kn search`로 인덱스를 조회할 수 있다 (search 앞단의 implicit
-  sync는 debounce되어 동시 실행 간섭이 적다).
-- exit 0 → 재인덱스 후 큐 done. 비정상 종료/타임아웃 → 큐 유지, 다음 주기
-  재시도.
-
-## Agent Work Queue
-
-- `agent_queue`(meta.db): source 변경당 source_path 기준 pending 1건으로
-  병합. 미처리 `added`가 삭제되면 항목 자체를 제거하고, `added` 상태의 수정은
-  `added`를 유지한다.
-- `sync_state`(meta.db): implicit sync의 10초 debounce (프로세스 간 공유).
-
-## Web Boundary
-
-`web/`는 HTML-first workbench renderer와 Electron development shell로
-구성된다.
-
-- Source 추가/노트 저장: Electron main이 파일을 active vault `sources/`로
-  복사·저장 후 `kn vault status`로 인덱싱을 트리거한다.
-- 템플릿: `<vault>/templates/`를 직접 읽는다 (workflow 계약 + 템플릿 파일
-  목록/내용/기본 HTML). 템플릿 CLI surface는 없다.
-- Explorer 레이어: `source | artifact | template`.
-- vault 생성: `kn vault init` (위치 미지정 시 CLI 기본값).
-- Artifact HTML은 sandbox iframe 또는 sanitizer+deny-all CSP Electron 창으로
-  렌더링한다.
-- 검증은 `npm run check` (web 테스트 하니스는 제거 상태).
-
-## Retrieval
-
-- 기본 검색(`--scope llm-wiki`): SQLite FTS5 + zvec hybrid. zvec에는
-  llm-wiki 청크만 존재하므로 시맨틱 검색은 구조적으로 llm-wiki 한정이다.
-- 그 외 scope: FTS5 키워드 전용.
-- CJK 청킹은 `Intl.Segmenter` 기반, 짧은 CJK keyword는 LIKE fallback,
-  zvec score는 similarity로 normalize.
-
-## Code Map
-
-| Path | 역할 |
+| Failure or user correction | Cause / remedy worth retaining |
 | --- | --- |
-| `src/cli.ts` | commander entrypoint (vault, sync, search, service) |
-| `src/commands/sync.ts` | 인덱스→큐→에이전트→재인덱스 orchestration |
-| `src/commands/service.ts` | launchd install/uninstall/status + endpoint probe |
-| `src/core/config.ts` | 전역/볼트 config 파일 로딩·병합 (env 없음) |
-| `src/core/sync.ts` | 파일 스캔/인덱싱, 큐 적재, `ensureVaultSynced` debounce |
-| `src/core/agent-runner.ts` | work prompt 조립 + 에이전트 spawn |
-| `src/stores/meta-store.ts` | SQLite 통합 CRUD: notes, chunks, FTS, agent_queue, sync_state, graph |
-| `src/stores/vault-store.ts` | meta.db+zvec+embedder 통합 note CRUD 파사드 (llm-wiki만 임베딩) |
-| `src/stores/vec-store.ts` | zvec vector store (llm-wiki 청크 전용) |
-| `src/pipeline/*` | parse/chunk/hash/embed/preprocess |
-| `src/search/*` | scope 기반 keyword/semantic/hybrid 검색 |
-| `res/templates/` | vault 시딩용: workflow.md 계약 + llm-wiki/calendar/todo/kanban (md+html) |
+| Source modal broke the page layout | Missing modal CSS let it participate in the main flex row; use a fixed backdrop and a self-contained dialog layout. |
+| Empty pill remained after closing the last tab | The zero-tab render guard had been disabled; empty overlay containers need an explicit empty-state decision. |
+| Tool popup was invisible or covered by a toast | An ancestor's `overflow: hidden` clipped it, and its layer was below the toast. Anchor the popup to the trigger rect using fixed positioning, above toasts and below the palette. |
+| Settings advertised nonfunctional features | The keybinding-profile control had no implementation; sidebar width/collapse settings survived the sidebar removal. Replace an inert control with working behavior or remove it, rather than persisting a misleading preference. |
+| Escape opened the palette | This conflicted with dismissal conventions. Reserve Escape for closing/cancelling; use `Mod+K` for the palette and avoid shortcuts owned by Electron's menu. |
+| Palette lacked keyboard selection and had a dead sort footer | Add arrow navigation, Enter on the selected result, and hover synchronization; MRU ordering replaced the inactive sorting control. |
+| Clicking a menu button appeared to do nothing | Hover opened it before click toggled it closed. Open by click; use hover only to switch an already-open menu. Outside pointerdown, Escape, and window blur handle dismissal, including iframe focus. |
+| Dialogs dismissed inconsistently | Use shared Escape/backdrop behavior; in the palette, leave an option form before closing the whole dialog. |
+| Sandboxed documents ignored theme/font changes | Hardcoded document styles diverged from the app. Pass a validated runtime theme snapshot to iframe and external-window rendering, and refresh it on theme changes. |
+| Overlays and corner radii drifted visually | Literal colors, decoration, and unrelated radius values bypassed tokens. Reuse the overlay token and the small shared radius scale. |
+| Long-running operations appeared stalled | Start/end toasts alone cannot represent a long job. Keep ongoing work visible in notification history and the bell's activity indicator. |
+| Vault connection state disappeared with its toast | Give vault identity/connection state a persistent status surface with a status action. |
+| Unread badge counted messages already seen, or cleared on close | A fully displayed/dismissed toast and messages shown in an open history are seen; a toast interrupted by another message is unread. Clear on opening history, not on every toggle. |
+| Switching tabs lost document scroll | Recreating iframes lost their internal state. Keep per-tab scroll containers and a bounded cache of eight recent document iframes; the bound is a memory tradeoff. |
+| Keyboard focus could not be located | Global outline removal hid focus; restore the existing focus-ring token instead of adding another one. |
+| Dialog focus escaped or disappeared on close | Trap Tab/Shift+Tab, enter at the intended control, and restore the trigger on dismissal. |
+| Menu/tab semantics were incomplete | Menus need arrow/Home/End movement and focus restoration; tabs need selected-state semantics. Notification history is a dialog, not a menu. |
+| User rejected hover coloring on entire tabs | Keep the tab surface/title neutral; highlight only the round close button. |
+| Close icons sat off-center despite grid centering | User-agent button padding reduced the content box below the icon width; fixed-size icon buttons need explicit zero padding. |
+| Centered tab overlays overlapped pinned widgets | Viewport centering ignored the widget bar. Scope tab/menu/toast overlays to the main content area; only escaping popups use viewport positioning. |
 
-## Harness
+## Verification evidence and operational cautions
 
-코드 변경은 `agents.md` 기준으로 진행한다.
+- **2026-06-10:** workbench builds and Electron syntax checks passed; dev-shell
+  startup/vault connection was observed. These did not establish that widget,
+  popup, shortcut, theme, focus, or other GUI flows worked end to end.
+- **2026-06-11:** the manual CLI run exercised vault seeding, source indexing,
+  queued changes, keyword search, and wiki hybrid search with TEI. The agent
+  completion path used a **noop backend**, so it did not validate real-agent
+  document/HTML quality or instruction compliance.
+- **Embedding endpoint outage, 2026-06-11:** source/general-artifact indexing,
+  keyword retrieval, and queueing still worked. Wiki embedding failed visibly
+  in sync errors and remained retryable. Preserve this degraded-mode boundary;
+  a failed derived index must not be mistaken for lost source content.
+- **SQLite lock contention:** the old dev bootstrap could compete with IPC
+  commands and produce `database is locked`. Bounded retries (two retries,
+  600 ms apart) addressed that case; do not hide persistent failures with
+  unlimited retries.
+- **Apparently stale reads:** implicit indexing has a ten-second debounce.
+  An immediate repeat search/status call may not discover a just-edited file;
+  distinguish this delay from indexing failure during manual verification.
+- **Manual runs use real machine configuration.** A smoke vault can change the
+  global registry/active vault. Record the prior active vault, use a fresh
+  disposable location, and restore that selection afterward. Vault deletion
+  unregisters it and removes only its index directory; user files remain.
+  Never reuse the old hardcoded `/tmp/kn-smoke` cleanup recipe blindly.
+- **Environment limits:** keyword/queue checks need no embedding endpoint;
+  wiki semantic checks do. macOS Metal TEI was run independently of the CLI.
+  Do not register a login service merely to check source ingestion.
+- **Historical coverage is limited.** The old CLI/web suites and web bootstrap
+  environment were removed. Typechecks/builds are not interaction coverage.
+  The user's 2026-09-16 instruction defers new test automation and CI; old
+  roadmap requests to recreate harnesses are not authorization to do so.
 
-- 작은 작업 단위로 나눈다.
-- 테스트 또는 검증 명령을 남긴다.
-- code-affecting commit 전 analyzer PASS를 받는다.
+Use package guides for exact check commands and [the prototype README](../v2/README.md)
+for F0 walkthrough evidence, including the file-chooser tooling limitation.
+For a legacy manual pass, use disposable data and cover source import → queued
+sync → keyword search without TEI → wiki retrieval with TEI → real-agent
+output/re-indexing, including endpoint-down behavior. In the desktop shell,
+cover vault creation/switching, source import, note save, template browsing,
+equivalent button/palette actions, widget resizing/restoration, notification
+read state, both tab docks, and keyboard focus/dismissal. A planned walkthrough
+is not a recorded success.
+
+## Unresolved legacy work
+
+Carried forward from the 2026-06-11 roadmap, not revalidated or newly scheduled
+by this consolidation. Check applicability before resuming legacy work; the
+rewrite has its own milestones.
+
+| Original priority | Open decision or acceptance gap |
+| --- | --- |
+| P0 — agent loop | Validate a real codex/claude run and artifact/HTML quality against the vault contract. Decide stdout/result capture and a durable per-run summary rather than relying on inherited logs. |
+| P0 — source semantics | Decide and persist `media_type`, `privacy`, `time_scope`, `wiki_policy`, and `extraction_status`; UI drafts alone do not enforce policy. Design PDF/OCR/text/image-caption projections with confidence and page/region provenance. |
+| P0 — workbench | Complete the actual dev-shell walkthrough against the new vault layout. Decide whether to expose the JSONC config bridge or deliberately keep settings in localStorage; retain only a rebuildable web cache with CLI metadata authoritative. |
+| P1 — packaging | Normalize package naming, `bin.kn`, check scripts, TypeScript pinning, and build layout. A stable executable matters for agents and launchd independently of repository paths. |
+| P1 — retrieval | Evaluate CJK trigram/preprocessing and define the PageIndex experiment. |
+| P1 — graph | Connect real `document_graph_edges` before reviving the legacy 2D/3D graph renderer; an edge-less Explorer projection is not graph evidence. This deferral does not apply to the separate F0 wiki graph. |
+| P1/P2 — platform | Consider Linux/systemd and packaged-app local TEI start/stop/status, including macOS defaults; CLI-owned container lifecycle remains excluded. |
+| P2 — integrations | Redesign MCP/skill exposure when assigned; do not restore the discarded server wholesale. |

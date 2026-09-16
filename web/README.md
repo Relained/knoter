@@ -31,5 +31,5 @@ automated verification.
 ## Docs
 
 - `agents.md` (agent work guide for this package)
-- `../docs/architecture.md`, `../docs/codebase.md`, `../docs/testing.md`,
-  `../docs/plan/` (progress.md, roadmap.md)
+- [Documentation index](../docs/README.md)
+- [Legacy decisions, UI failures, and verification limits](../docs/architecture.md)

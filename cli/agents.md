@@ -16,7 +16,7 @@ Claude-specific guidance was merged here; `CLAUDE.md` is no longer maintained.
 - `../web/`: React/Vite HTML workbench frontend with an Electron dev shell.
 - `../res/templates/`: vault seed content (workflow contract + per-artifact
   templates with default HTML).
-- `../docs/`: shared architecture, codebase, planning, testing docs.
+- `../docs/`: shared decisions, failure records, and rewrite planning.
 
 The CLI never calls an LLM API directly (embedding endpoint only). LLM work
 is done by an external agent process (codex/claude CLI) that `kn sync` spawns
@@ -89,10 +89,9 @@ is tracked as P1 work.
 
 Read these docs before larger changes:
 
-- `../docs/architecture.md`
-- `../docs/codebase.md`
-- `../docs/plan/` (progress.md, roadmap.md)
-- `../docs/testing.md`
+- `../docs/README.md` — documentation index
+- `../docs/architecture.md` — legacy decisions, failure records, operational
+  cautions, manual verification guidance, and unresolved work
 - `../res/templates/workflow.md` (the agent contract seeded into vaults)
 
 ## Storage Invariants
@@ -156,7 +155,7 @@ bunx tsc --noEmit
 git diff --check
 ```
 
-Manual smoke flow lives in `../docs/testing.md` (vault init → source drop →
+Manual smoke guidance lives in `../docs/architecture.md` (vault init → source drop →
 `kn sync --no-agent` → scoped search → agent pass with a configured backend).
 
 ## Development Harness

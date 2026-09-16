@@ -56,7 +56,7 @@ Start with:
 - `agents.md` (agent work guide for this package)
 - `../docs/README.md`
 - `../docs/architecture.md`
-- `../docs/plan/` (progress.md, roadmap.md)
 - `../res/templates/workflow.md` (the seeded agent contract)
 
-Legacy design notes were deleted; recover them from git history if needed.
+Legacy decisions and failure records are consolidated in `../docs/architecture.md`;
+implementation history remains in Git.

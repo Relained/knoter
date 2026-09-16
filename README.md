@@ -9,7 +9,7 @@ Monorepo for the knoter CLI, shared project docs, and web frontend.
   (codex/claude CLI) which maintains vault artifacts plus their HTML displays.
 - `res/templates/`: vault seed content (workflow contract + per-artifact
   templates with default HTML), copied into each vault at `kn vault init`.
-- `docs/`: shared architecture, planning, and testing docs.
+- [`docs/`](docs/README.md): shared decisions, failure records, and rewrite planning.
 - `web/`: React/Vite HTML workbench frontend with an Electron development shell
   and CLI/fs-backed IPC. No web test harness currently exists; `npm run check`
   is the verification baseline.
@@ -44,4 +44,5 @@ npm run check
 ```
 
 The CLI/web test harnesses were removed during the queue-architecture rewrite;
-manual smoke steps live in `docs/testing.md`.
+manual verification guidance and known limits live in
+[docs/architecture.md](docs/architecture.md#verification-evidence-and-operational-cautions).

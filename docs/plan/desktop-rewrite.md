@@ -1,572 +1,346 @@
-# knoter Desktop Rewrite: Implementation Brief
+# Desktop rewrite: decisions and implementation brief
 
-- Prepared: 2026-09-16
-- Language: English
-- Status: Rewrite plan; frontend-only prototype is the current implementation scope.
+Prepared 2026-09-16; consolidated 2026-09-17. English handoff for the isolated
+`v2/` rewrite. This is a design contract, not an implementation-status report.
 
-## 1. Assignment and scope
+## Scope and user constraints
 
-Build a local-first personal knowledge application for macOS and Windows, with
-four complete workflows:
+Build a local-first macOS/Windows application for four workflows:
 
-1. Import or watch Markdown/PDF sources and use an LLM to create and update a wiki.
-2. Answer questions from that wiki with inspectable citations.
-3. Provide a polished wiki reader and manual editor with reliable persistence.
-4. Maintain structured documents such as tasks and calendar events through both
-   background processing and manual interaction.
+1. Watch/import Markdown and PDF sources; use an LLM to create and update wiki documents.
+2. Answer wiki questions with inspectable, versioned citations.
+3. Offer a polished linked wiki reader and manual editor with reliable persistence.
+4. Let workers and users maintain typed tasks and calendar events.
 
-This brief records the user's requested rewrite plan. The current task builds
-a frontend-only prototype with a replaceable mock API. Automated tests and CI
-are deferred by explicit user instruction on 2026-09-16; use type checking,
-production builds, and manual walkthroughs for now. When assigned to implement
-the rewrite, work through the
-milestones below; do not interpret this document as authorization to deploy,
-publish, purchase services, delete the legacy application, or migrate user data
-in place.
+The user assigned a **frontend-only prototype first**, with backend methods behind
+a replaceable `KnoterClient`. Mock responses must be identified as simulated.
+Automated tests and CI are deferred by the explicit 2026-09-16 instruction:
+use typechecks, production builds, `git diff --check`, and manual walkthroughs.
+Do not add test runners, browser-test scripts, coverage tooling, or CI until
+requested. Real providers, papers, and installed builds still need manual proof;
+a browser build cannot establish OS support.
 
-Read `agents.md`, `cli/agents.md`, `web/agents.md`, `docs/architecture.md`, and
-`docs/testing.md` first. Those documents describe the legacy implementation.
-The architectural changes below are scoped to the new application, not to
-maintenance of the legacy packages. Add a scoped guide for the rewrite when
-creating its directory so future agents do not apply conflicting legacy runtime
-rules to new code. Repository-wide Git and user-data preservation rules remain.
+Read the [root guide](../../agents.md), [rewrite guide](../../v2/agents.md),
+and [prototype README](../../v2/README.md) before work. Read
+[legacy decisions](../architecture.md) and the relevant legacy package guide
+only when touching or importing from those packages. Continue the next
+user-assigned milestone; this brief does not authorize deployment, purchases,
+legacy deletion, or in-place user-data migration.
 
-### Intentional changes from the legacy architecture
+Exclude multi-user collaboration, cloud sync, browser-only hosting, a plugin
+marketplace, external calendar sync, and agent-generated executable UI initially.
+Reuse sources, useful workflow policies, and reviewed small helpers; do not copy
+legacy orchestration, HTML generation, migrations, or UI state wholesale.
 
-| Legacy | Rewrite default | Reason |
+## Architecture and reasons
+
+| Decision | Reason / boundary |
+| --- | --- |
+| Persistent local service replaces CLI orchestration | UI, ingestion, and chat need shared durable state and live events. A later CLI can be a thin client. |
+| Provider adapter replaces a coding agent editing files | The application can validate proposals, retry jobs, and protect manual edits before writing. |
+| SQLite owns application documents | Document revisions, citations, task fields, and change application need atomic updates. External Markdown editing becomes explicit import, not automatic two-way sync. |
+| Multiple wiki documents have stable IDs | Focused retrieval, hyperlinks, and incremental maintenance should not depend on one giant file or mutable paths. |
+| App-owned rendering replaces generated HTML | Consistent editing and interactive typed documents; imported/generated executable HTML is disabled. |
+| OS-managed service is independent of Electron | Background processing must continue when the desktop UI exits, if enabled. |
+
+The React renderer owns views and editor state, with no filesystem, DB, shell,
+or credentials. Electron main owns windows, dialogs, menus, notifications, and
+a narrow preload bridge. A separately bundled Node service is the only document
+writer and owns migrations, retrieval, conversations, and jobs. Its job runner
+starts with one ingestion job per workspace; extraction runs in an isolated
+Python child process so chat remains usable. The extractor returns a versioned
+result and never opens the application DB or edits documents.
+
+Use versioned JSON over a Unix socket on macOS and a named pipe on Windows.
+Require current-user access and an authenticated handshake, request IDs,
+cancellation, protocol negotiation, and message-size limits. A pipe name is not
+authorization. Reconnect with authoritative state and durable events after a
+cursor; saved partial answers replace missed transient token events. No public
+HTTP server in the first release; providers are outbound connections. Browser
+development uses an adapter behind the same renderer contract.
+
+An Electron-owned utility process alone cannot satisfy the lifecycle contract.
+Bundle a pinned Node runtime; never depend on the user's Node/Bun/Python, shell
+startup files, or `PATH`. Closing a window or exiting the UI leaves enabled
+background work active. Provide explicit enable/disable/status/start/stop/restart.
+Run only in the logged-in user's session; do not promise work while logged out,
+asleep, or powered off. On login/wake, reconcile files and expired job leases.
+Use a service singleton and leases; unavailable credentials produce a recoverable
+waiting state, not a retry storm or plaintext fallback.
+
+## macOS and Windows
+
+Initial targets: **macOS arm64, macOS x64, Windows 11 x64**. Windows arm64 and
+Windows 10 require separate dependency and installed-app evidence. In M0, pin
+compatible stable releases and record exact OS minimums. The proposed
+`SMAppService` registration API implies macOS 13+, but dependencies may raise
+that floor. These are proposed targets, not tested compatibility claims.
+
+| Concern | macOS | Windows |
 | --- | --- | --- |
-| CLI commands coordinate most operations | A persistent local service owns operations | UI, jobs, and chat need the same durable state and live events |
-| External coding agent edits files | Service calls an LLM through a provider adapter and applies validated changes | Predictable writes, retries, and conflict handling |
-| Markdown files are the generated document store | SQLite is authoritative for application documents | Atomic document, revision, citation, and task-state updates |
-| One principal `llm-wiki.md` | Multiple linked wiki documents with stable IDs | Focused retrieval and incremental updates |
-| Agent maintains Markdown and HTML together | Application renders trusted components from document data | Consistent appearance and real editing/interaction |
-| macOS launchd integration only | Explicit macOS and Windows background-host adapters | Background behavior must work in installed builds on both OSes |
+| Background registration | Bundled per-user LaunchAgent via `SMAppService` | Per-user Task Scheduler logon task |
+| Native helper | Signed ServiceManagement/Keychain helper | Task Scheduler/current-user DPAPI helper |
+| IPC | Owner-only Unix socket + authentication | Current-user-restricted named pipe + authentication |
+| Data / secrets | Application Support / Keychain accessible to the service identity | Local, not roaming, app data / DPAPI-encrypted blob with user-only access |
+| First distribution | Signed/notarized app in DMG; ZIP for updates | Signed per-user Squirrel Setup.exe and update artifacts |
 
-Reuse source files, useful workflow rules, and manual examples. Review legacy
-algorithms before reusing small helpers; do not copy old orchestration, HTML
-generation, database migrations, or UI state wholesale.
+Keep registration, paths, credentials, and native shell behavior behind a
+platform boundary, rather than OS checks throughout domain code. The service
+must retrieve credentials with the UI absent. macOS registration must expose
+approval status instead of copying the legacy loose-plist installer.
+On Windows, specify the user, non-elevated execution, restart policy, single
+instance behavior, battery policy, and execution time limit. Keep a launcher
+attached so Task Scheduler observes failure; launch paths must survive updates.
 
-Initial exclusions: multi-user collaboration, cloud synchronization, browser-only
-hosting, a general plugin marketplace, external calendar synchronization, and
-arbitrary agent-generated executable UI. A CLI can later become a thin client
-of the local service.
+Filesystem and UI constraints:
 
-## 2. Runtime architecture
+- Use OS path APIs and executable argument arrays, never shell interpolation of
+  filenames. Handle spaces, Korean names, Unicode normalization, case-only
+  renames, Windows reserved names/long paths, IME, and Windows display scaling.
+  Use Command on macOS and Control on Windows, native menus, and visible focus.
+- Separate IDs from paths; preserve display names and source mappings while using
+  generated managed-storage names. Watcher events are hints: debounce/hash and
+  reconcile on startup, wake, and periodically. Handle atomic saves, partial
+  copies, locked files, unavailable folders, and cloud placeholders.
+- Losing folder access does not establish deletion. Keep indexed evidence and
+  report the location unavailable. Verify permissions from the actual background
+  helper; a picker and worker may have different macOS/protected-folder access.
+- Keep the live SQLite/WAL database in managed local storage, not a network drive
+  or cloud-sync folder.
 
-```mermaid
-flowchart TB
-  UI[React renderer]
-  MAIN[Electron main and preload]
-  S[Independent Node.js local service]
-  J[Durable job runner]
-  P[Isolated Python document extractor]
-  DB[(SQLite)]
-  FS[Original files and attachments]
-  LLM[Configured LLM and embedding providers]
-  UI <--> MAIN
-  MAIN <--> S
-  S <--> DB
-  S <--> FS
-  S <--> J
-  J <--> P
-  J <--> LLM
-  S <--> LLM
-```
+Package early with Forge and build on each target OS. Bundle service/extractor
+runtimes, native libraries, and model assets explicitly, outside ASAR where
+needed. Service native modules use the bundled **Node ABI**; only Electron-loaded
+modules use its ABI. Include license notices and checksums. Development may use
+unsigned builds; release signing identities/certificates and update hosting are
+later inputs. Sign/notarize embedded macOS helpers/libraries too; Windows signing
+does not guarantee SmartScreen reputation.
 
-- **Renderer:** views, editor state, and user interaction. No filesystem,
-  database, shell, or provider credentials. Use a narrow preload API.
-- **Electron main:** windows, dialogs, menus, notifications, native integration,
-  and the authenticated connection to the service. No duplicate document logic.
-- **Local service:** single authority for document writes, migrations, source
-  metadata, revisions, jobs, retrieval, and conversation persistence.
-- **Job runner:** an internal service module, initially one ingestion job at a
-  time per workspace. LLM calls are asynchronous; CPU-heavy extraction runs in
-  a child process. Chat must remain usable during ingestion.
-- **Extractor:** receives a source reference and returns a versioned extraction
-  result. It never edits application documents or opens the application DB.
+Updates must drain/checkpoint/cancel work, suspend OS restart behavior, stop the
+service/extractor, and take a consistent backup before replacing binaries.
+Refresh background registration, migrate under an exclusive startup lock, and
+restart. Account for Windows executable/DLL locks and installer events. Never
+open an incompatible newer schema with an older binary; preserve a restorable
+pre-update DB and originals after migration failure. An updater requires a
+hosted feed and one real upgrade walkthrough. Uninstall removes registration and
+executables but retains user data unless deletion is explicitly requested.
 
-Use versioned JSON request/response/event contracts over local IPC: a Unix-domain
-socket on macOS and a named pipe on Windows. Electron main forwards a typed API
-to the renderer. Include request IDs, cancellation, protocol version negotiation,
-message-size limits, and current-user endpoint access. Use an authenticated
-handshake; do not treat knowledge of a pipe name as authorization. Reconnect by
-fetching authoritative state and replaying durable events after a cursor.
-Transient token events can be replaced by the saved partial conversation state.
-
-There is no public HTTP server in the first release. Provider integrations use
-outbound requests. Browser development can use a fixture adapter behind the same
-renderer contract; installed-app acceptance must use the real service.
-
-### Background lifecycle contract
-
-The service is independent of the Electron process. A utility process owned by
-Electron alone does not satisfy continued operation after the desktop app exits.
-Ship the service with a pinned Node runtime; never depend on a user's Node, Bun,
-Python, shell startup files, or `PATH`.
-
-- Closing a document window leaves configured background processing active.
-- Exiting the desktop UI leaves the independent service active when background
-  processing is enabled. Provide an explicit control to stop background work.
-- Enable/disable, status, start, stop, and restart are explicit service actions.
-- Run in the logged-in user's session. Work while logged out, asleep, or powered
-  off is not promised. Resume scans and expired job leases after login/wake.
-- A service singleton and job leases prevent two desktop launches or an OS
-  restart from processing the same job simultaneously.
-- Credentials unavailable because of OS state produce a recoverable waiting
-  state rather than a retry storm or a plaintext fallback.
-
-## 3. macOS and Windows requirements
-
-### Target matrix
-
-Initial release architectures: **macOS arm64, macOS x64, Windows x64**.
-Windows arm64 is a later target unless its complete dependency chain passes the
-same packaged tests. Do not claim support based on Electron support alone.
-
-Windows 11 is the initial Windows OS target. In M0, record the exact supported
-macOS releases and minimum version from the selected Electron, Node, Python,
-and extractor dependencies. The proposed macOS registration API requires macOS
-13 or later; the actual application floor may be higher. Windows 10 compatibility
-is not implied and must be tested separately if added.
-
-| Concern | macOS implementation | Windows implementation |
-| --- | --- | --- |
-| Background host | Bundled per-user LaunchAgent, registered through `SMAppService` | Per-user Task Scheduler task with a logon trigger and explicit restart settings |
-| Native bridge | Small signed helper for ServiceManagement and Keychain access | Small helper for Task Scheduler and current-user DPAPI access |
-| Local IPC | Unix-domain socket with owner-only permissions | Named pipe restricted to the current user, plus authenticated handshake |
-| Data root | OS application-support location | Local application-data location, not roaming data |
-| Credentials | Keychain item accessible to the signed service/helper identity | Current-user DPAPI-encrypted credential blob with user-only file access |
-| First distribution | Signed/notarized `.app` in DMG; ZIP for updater tooling | Signed per-user Squirrel `Setup.exe` and update artifacts |
-| Native binaries | Build/test separately for arm64 and x64 | Build/test for x64 and selected Node ABI |
-| Verification | Manual clean installed-app walkthrough | Manual clean installed-app walkthrough |
-
-Apple's current API can register bundled LaunchAgents and expose their approval
-status; avoid copying the legacy loose-plist installer into the new app.
-[Apple SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice)
-
-For Windows, explicitly configure the task's user, non-elevated execution,
-restart-on-failure, instance policy, battery behavior, and execution time limit.
-The default task duration must not terminate an intended persistent service.
-Use a launcher that remains attached to the service process so the scheduler can
-observe failures. Keep launch paths valid across application updates.
-[Microsoft logon triggers](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-logontrigger-triggergroup-element),
-[Microsoft task settings](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings)
-
-Implement a small `platform` boundary for background registration, paths,
-credentials, and native shell behavior. Avoid OS checks throughout domain code.
-The Node service must retrieve credentials with the UI absent; merely storing
-them through an Electron-main-only API is insufficient.
-[Apple Keychain](https://developer.apple.com/documentation/security/adding-a-password-to-the-keychain),
-[Microsoft DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)
-
-### Filesystem and UI differences
-
-- Use OS path APIs and explicit executable argument arrays. Do not construct
-  shell commands from filenames. Account for spaces, Korean filenames, Unicode
-  normalization, case-only renames, Windows reserved names, and long paths.
-- Store object IDs independently of filenames. Keep original display names and
-  source-path mappings; use generated names for managed storage.
-- Treat filesystem events as hints. Combine debounce/content hashes with startup,
-  wake, and periodic reconciliation scans. Handle atomic-save rename patterns,
-  partial copies, locked files, unavailable folders, and cloud placeholder files.
-- A watched folder losing access is not evidence that its files were deleted.
-  Keep its indexed sources and report the unavailable location.
-- Test access from the actual background helper, including macOS file access
-  restrictions and Windows protected folders. The picker process and worker
-  process may have different access behavior.
-- Use Command shortcuts on macOS and Control on Windows, native menu conventions,
-  visible keyboard focus, IME composition, and Windows display scaling.
-- Keep the live DB in managed local storage. Do not support directly sharing a
-  running SQLite/WAL database through a network drive or cloud-sync folder.
-
-### Packaging, updates, and recovery
-
-Use Electron Forge for desktop packaging, makers, and signing integration.
-Forge does not automatically solve independent service/extractor packaging.
-Bundle their runtimes and native modules explicitly, outside ASAR where required.
-Build the service's native modules for the bundled **Node** ABI; only modules
-actually loaded in Electron require the Electron ABI.
-[Forge build lifecycle](https://www.electronforge.io/core-concepts/build-lifecycle)
-
-Produce artifacts on the corresponding OS. Include source/runtime/model license
-notices and checksums. Development builds may be unsigned; public distribution
-requires the release signing setup. macOS signing/notarization includes embedded
-helpers and libraries. Windows signing does not guarantee immediate SmartScreen
-reputation. Signing credentials and an update hosting location are release
-inputs, not prerequisites for implementing the application.
+Platform references retained from the original plan:
+[SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice),
+[Keychain](https://developer.apple.com/documentation/security/adding-a-password-to-the-keychain),
+[logon triggers](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-logontrigger-triggergroup-element),
+[task settings](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings),
+[DPAPI](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata),
+[Forge lifecycle](https://www.electronforge.io/core-concepts/build-lifecycle),
 [macOS signing](https://www.electronforge.io/guides/code-signing/code-signing-macos),
 [Windows signing](https://www.electronforge.io/guides/code-signing/code-signing-windows),
-[Squirrel maker](https://www.electronforge.io/config/makers/squirrel.windows)
+[Squirrel](https://www.electronforge.io/config/makers/squirrel.windows),
+[updates](https://www.electronforge.io/advanced/auto-update).
+Recheck vendor compatibility when selecting versions in M0.
 
-Before an update: stop accepting new jobs, checkpoint/cancel active work, suspend
-OS restarts, stop the service and extractor, and take a consistent backup. Replace
-versioned binaries, update the background registration, migrate under an exclusive
-service startup lock, and restart. On Windows, account for executable/DLL file
-locks and installer startup events. Do not run an older binary against a newer
-incompatible schema. A failed migration must preserve a restorable pre-update
-database and original files.
+## Library choices and gates
 
-Automatic updating needs both client integration and a hosted update feed; select
-the feed when a release destination is assigned. Test one real upgrade before
-claiming updater support. Uninstall removes background registration and executable
-resources; user data is retained unless the user explicitly requests deletion.
-[Forge auto update](https://www.electronforge.io/advanced/auto-update)
+Defaults, not guarantees. Keep legacy package managers unchanged; use isolated
+npm workspaces and committed lockfiles for `v2/`. Pin Python/model dependencies
+separately. Scripts must work without Bash on Windows. Add service/core/platform/
+extractor modules when a milestone needs them, not empty abstraction packages.
 
-## 4. Library decisions and tradeoffs
+| Choice | Why / cost / acceptance gate |
+| --- | --- |
+| [Electron](https://www.electronjs.org/docs/latest) | Consistent Chromium UI and native desktop integration across OSes, at the cost of install size, memory, and embedded-runtime updates. |
+| [React](https://react.dev/learn) + [TypeScript](https://www.typescriptlang.org/docs/) | Composable views and shared typed contracts; runtime validation is still required at IPC/LLM boundaries. |
+| [Vite](https://vite.dev/guide/) | Focused renderer dev/build tooling; keep Node/native imports out of its bundle. |
+| [Tailwind](https://tailwindcss.com/docs/installation/using-vite) | Shared spacing, typography, colors, and states; semantic tokens prevent arbitrary classes becoming a second design system. |
+| [shadcn/ui](https://ui.shadcn.com/docs) | Customizable, accessible component source; the app must maintain imported code and review upstream changes. It is not a finished visual design. |
+| [Milkdown](https://milkdown.dev/docs/guide/why-milkdown) | Markdown-oriented ProseMirror/Remark editor. Keep an integration boundary and validate tables, math, links/citations, IME, undo, and import/export round trips. Record failures before replacing it; do not silently narrow the format. |
+| Node.js | Shared TypeScript service ecosystem and SDK/native support; bundle and pin its runtime/ABI separately from Electron. |
+| [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) + SQLite | Transactions, relational integrity, and FTS5 without a database server. One writer; keep synchronous queries short and verify native packaging. |
+| [sqlite-vec](https://alexgarcia.xyz/sqlite-vec/js.html) | Local vector search in the same DB deployment. Provisional pending native loading, stability, and corpus latency in M0/M4. If it fails, measure a bounded exact-vector fallback or another local index behind the same interface; do not call keyword-only search hybrid. |
+| [AI SDK](https://ai-sdk.dev/docs/ai-sdk-core/overview) | Generation, streaming, structured output, and tools behind an internal provider adapter. Capabilities differ; do not expose SDK types throughout the app or assume an existing key/subscription. |
+| [Docling](https://docling-project.github.io/docling/getting_started/installation/) | Paper layout, tables, and OCR with structured output. Provisional pending CPU-only packaged quality, footprint, and latency. Record failures before selecting a replacement; preserve the source/citation contract. |
+| [PDF.js](https://mozilla.github.io/pdf.js/getting_started/) | Original PDF display and cited-page navigation; viewing does not replace paper extraction/OCR. |
+| Electron Forge | Makers, installers, signing, and publishing hooks; independent service packaging/lifecycle and an update feed remain explicit work. |
 
-These are implementation defaults, not claims of already-tested compatibility.
-Pin compatible versions and commit lockfiles in M0. Choose supported stable
-releases; do not blindly install latest prereleases. Keep legacy package managers
-unchanged; use an isolated npm workspace for the TypeScript rewrite.
+Docling OS documentation is not packaged-product evidence. Bundle a pinned
+runtime and verified model files without requiring pip/Python installation.
+Prefetch models or provide an app-managed first-use download with progress and
+retry; define offline first-run behavior. CPU is the baseline, GPU optional.
+[Model management](https://docling-project.github.io/docling/usage/advanced_options/).
 
-| Library/tool | Why use it here | Cost or acceptance gate |
-| --- | --- | --- |
-| Electron | Consistent Chromium rendering and native desktop integration across both OSes | Larger install/memory footprint; package and update the embedded runtime |
-| React + TypeScript | Shared typed contracts, composable document views, and ecosystem integration | Runtime validation is still required at IPC and LLM boundaries |
-| Vite | Focused renderer development/build tooling | Keep Node/native imports out of the renderer build |
-| Tailwind CSS | Shared spacing, typography, colors, and state styles | Define semantic tokens; avoid arbitrary classes becoming a second design system |
-| shadcn/ui | Accessible composable components whose code can be customized for the workbench | It distributes component source, not a finished design; maintain imported code and inspect upstream updates |
-| Milkdown | Markdown-oriented editing built on ProseMirror/Remark | Validate tables, math, links, citations, IME input, undo, and import/export fidelity before adoption |
-| Node.js | Common TypeScript service runtime and broad SDK/native module support | Bundle its runtime separately from Electron; pin versions and ABI |
-| SQLite + better-sqlite3 | Transactions, relational integrity, FTS5, and a small local deployment | One service owns writes; keep synchronous queries short and test native packaging |
-| sqlite-vec | Vector search in the same local SQLite deployment without a separate vector server | Provisional: native loading, release stability, and real-corpus latency must pass M0/M4 |
-| AI SDK | Common generation, streaming, structured output, and tool-call integration | Provider capabilities differ; keep SDK types behind an internal adapter |
-| Docling | PDF layout/table/OCR extraction and a structured intermediate document | Provisional: Python/model footprint and paper extraction quality must pass a packaged CPU-only spike |
-| PDF.js | In-app original PDF rendering and navigation to cited pages | Viewing is distinct from high-quality paper extraction; do not assume it solves OCR |
-| Electron Forge | Packaging, platform installers, signing hooks, and publishing integration | Separate native helpers, service lifecycle, and update feeds still need explicit work |
+## Storage and format contracts
 
-Keep the editor integration behind a small component boundary. If Milkdown fails
-the defined document round-trip fixture, record the failing capability before
-choosing another editor. Do not silently reduce the supported document format.
+SQLite owns documents, typed fields, revisions, conversations, and jobs.
+Immutable content-addressed files own original bytes and attachments.
+Extraction/search are rebuildable projections with extractor/model versions.
+Export and backup belong in the first durable slice; Markdown export is not a
+complete backup. Use SQLite backup APIs or a quiesced checkpointed snapshot,
+coordinated with blob retention. Stage blobs before committing references and
+clean abandoned staging files on recovery; never just copy an open DB.
 
-Docling's documented OS support is not proof that the packaged application works.
-The app must manage a pinned extraction runtime and verified model files without
-requiring a user to run pip or install Python. Prefetch required models or provide
-an app-managed first-use download with progress/retry. First-run offline behavior
-must be explicit. CPU execution is the baseline; GPU acceleration is optional.
-[Docling installation](https://docling-project.github.io/docling/getting_started/installation/),
-[Docling model management](https://docling-project.github.io/docling/usage/advanced_options/)
+| Format | Purpose and invariant |
+| --- | --- |
+| Original PDF/MD bytes | Immutable evidence versions for re-extraction; never modify a watched original. |
+| Markdown body | Portable canonical wiki text in SQLite; define CommonMark/GFM plus explicit math/citation support, with raw HTML disabled. |
+| YAML frontmatter | Human-readable import/export IDs, kind, title, source references, and schema version; never a second metadata authority. |
+| Typed relational rows | Exact task state, deadlines, event ranges, and links without parsing prose; validate constraints. |
+| Versioned JSON | Validated IPC, LLM change sets, extraction results, and structured exports; reject unknown operations/incompatible schemas. |
+| SQLite DB | Atomic state, foreign keys, short transactions, schema migrations, consistent backups. |
+| Float vectors | Derived retrieval with model, dimension, and content version; never mix embedding spaces. |
+| iCalendar `.ics` | Interoperable export with stable UID, time zones, and all-day semantics; export does not imply live synchronization. |
+| Manifest + snapshot + blobs | Full restore/machine migration with schema version, checksums, and reference validation; exclude machine-bound credentials. |
 
-Other decision references:
-[Electron](https://www.electronjs.org/docs/latest),
-[React](https://react.dev/learn),
-[TypeScript](https://www.typescriptlang.org/docs/),
-[Vite](https://vite.dev/guide/),
-[Tailwind with Vite](https://tailwindcss.com/docs/installation/using-vite),
-[shadcn/ui](https://ui.shadcn.com/docs),
-[Milkdown](https://milkdown.dev/docs/guide/why-milkdown),
-[better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
-[sqlite-vec Node bindings](https://alexgarcia.xyz/sqlite-vec/js.html),
-[AI SDK](https://ai-sdk.dev/docs/ai-sdk-core/overview),
-[PDF.js](https://mozilla.github.io/pdf.js/getting_started/).
+Use UUID entity IDs and SHA-256 blob identities; identical bytes do not merge
+distinct provenance records. Normalize line endings only in derived text.
+Audit timestamps are UTC; preserve intended local times and time-zone IDs for
+events. Date-only deadlines/all-day events remain date-only, never midnight UTC.
+Use exclusive calendar end dates where required. Recurrence may follow simple
+events, but stable exported UIDs are required from the start.
+[iCalendar RFC 5545](https://www.rfc-editor.org/rfc/rfc5545).
 
-## 5. Storage and format contracts
+Minimum model:
 
-### Authority and portability
+- Sources and versions retain location, media type, blob/hash, availability,
+  import policy, and extraction state. Ordered segments retain text/tables,
+  source version, page/region, and warnings; keep structured extraction output
+  so a Markdown projection does not discard layout evidence.
+- Documents retain stable ID, kind, title, body, revision, and protection policy;
+  task/event fields extend the same ID. Calendar deadlines and Kanban columns
+  project tasks rather than creating duplicate records.
+- Revisions/change sets retain user/worker/import authorship, reasons, input
+  versions, and application state. Citations/links reference document revisions
+  or source segments, not mutable paths alone.
+- Jobs/attempts/outbox events retain execution and post-commit work.
+  Chunks/FTS/vectors retain revision/model identity. Conversations/messages keep
+  partial/final answers and the evidence versions behind their citations.
 
-Application documents, tasks, events, revisions, conversations, and jobs are
-authoritative in SQLite. Original input bytes and attachments are authoritative
-in a managed content-addressed file store. Extraction results and search indexes
-are rebuildable projections, with extractor/model versions recorded.
+## Ingestion, conflicts, and recovery
 
-Database-first storage intentionally makes external Markdown editing an import
-operation, not automatic two-way wiki synchronization. Implement explicit export
-and backup from the beginning. A Markdown export alone is not a full backup.
+Pipeline: **discover → snapshot → extract → retrieve → propose → validate →
+apply → index → report**. Persist each stage's input/output versions and a
+separate job status (`queued/running/retry_wait/needs_review/succeeded/failed/
+cancelled`).
 
-Use SQLite's backup API or a quiesced checkpointed snapshot, not an arbitrary copy
-of an open database file. Coordinate the snapshot with immutable blob references
-and retention so every referenced original exists in the backup. Stage new blobs
-before committing their DB references; clean abandoned staging files on recovery.
+1. Stable snapshots from watches and explicit imports enter one ingestion API.
+   Extract deterministic segments and visible warnings; unreadable content must
+   not become invented evidence.
+2. Retrieve related wiki revisions and source evidence. Request a bounded,
+   schema-constrained proposal with citations and reasons. The LLM gets only
+   bounded read/search/proposal tools; source text cannot grant capabilities.
+3. Validate operation, target ID, expected revision, source version, citation
+   existence, and typed fields. Valid JSON cannot establish factual correctness.
+4. Compare-and-swap revisions and atomically apply documents, revisions,
+   citations, and an indexing outbox entry. No DB lock spans an LLM request.
+5. Index committed revisions separately. Embedding failure keeps saved documents
+   intact, exposes retrieval freshness, and retries the derived work. Emit a
+   durable summary of changed documents, warnings, and usage.
 
-| Format | Use and rationale | Required behavior |
-| --- | --- | --- |
-| Original PDF/MD bytes | Preserve evidence and allow re-extraction | Retain immutable source versions; never modify the watched original |
-| Markdown text | Canonical wiki body stored in SQLite; portable text editing/export | Define CommonMark/GFM subset plus explicit math/citation support; raw HTML is disabled |
-| YAML frontmatter | Human-readable metadata on Markdown import/export | IDs, kind, title, source references, and export schema version; not a second metadata authority |
-| Typed relational rows | Task state, dates, event ranges, links | Validate types/constraints; query exact fields instead of parsing prose |
-| Versioned JSON | IPC, LLM change sets, extraction results, and portable structured exports | Validate at boundaries; reject unknown operations and incompatible schemas |
-| SQLite database | Atomic application state and migrations | Foreign keys, short transactions, schema versioning, consistent backup |
-| Embedding float vectors | Derived semantic retrieval data | Record model, dimension, and content version; never mix embedding spaces |
-| iCalendar `.ics` | Calendar export to interoperable tools | Stable UID, correct time zone/all-day semantics; export does not imply live sync |
-| Backup manifest + DB snapshot + blobs | Complete recovery and migration between machines | Versioned manifest, content checksums, restore validation; exclude machine-bound credentials |
+Idempotency covers source identity/version, pipeline version, and operation.
+Record provider request IDs; lost network responses can still incur charges,
+so do not promise exactly-once billing. Lease/heartbeat jobs and reclaim expired
+leases. Persist exponential backoff and finite attempts; expose cancellation,
+manual retry, and terminal failures.
 
-Normalize imported line endings in the derived text representation while keeping
-original bytes unchanged. Do not use OS paths as document IDs. Use generated
-UUIDs for entities and SHA-256 for immutable blob identity; a matching blob alone
-does not erase distinct source records or provenance.
+On modifications, invalidate dependent evidence and schedule targeted review.
+On confirmed deletion, mark the source unavailable and review dependent claims
+without deleting unrelated content or user edits. Retain immutable evidence
+until an explicit retention/deletion policy removes it.
 
-Store audit timestamps as UTC instants. Keep calendar time zone IDs and intended
-local times where relevant. Date-only deadlines and all-day events must stay
-date-only; do not coerce them to midnight UTC. Calendar end dates are exclusive
-where required by the export format. Recurrence can follow after simple events,
-but exported UIDs must already remain stable.
-[iCalendar RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)
+User and worker writes use the same API. A stale revision cannot overwrite a
+newer edit. MVP protection is **document-level**: manual edits protect a generated
+document, routing later worker changes to reviewable suggestions. Users accept/
+reject or restore automatic maintenance. Protect human-controlled completion
+and deadlines across re-extraction; section ownership waits for proven editor
+identity preservation. Start with create, replace-body-at-revision, typed-field
+update, citation link, and proposed archival; avoid line-number patches.
+Undo creates a new revision rather than deleting history.
 
-### Minimum entity model
+## Retrieval, chat, and UI intent
 
-- `sources`, `source_versions`: original location, media type, blob reference,
-  content hash, availability, import policy, and extraction status.
-- `source_segments`: source version, ordered text/table content, page and region
-  when available, and extraction warnings. Preserve the extractor's structured
-  output separately so a Markdown projection does not discard layout evidence.
-- `documents`: ID, kind, title, Markdown body, revision, and protection policy.
-  `task_fields` and `event_fields` extend document IDs with typed domain fields.
-- `document_revisions`, `change_sets`: prior/current contents, author kind
-  (`user`, `worker`, `import`), change reason, input versions, and application state.
-- `citations`, `document_links`: connect a document revision to source segments
-  or another document. Do not point citations only at mutable file paths.
-- `jobs`, `job_attempts`, `outbox_events`: durable execution and post-commit work.
-- `chunks`, FTS/vector projections: document revision and model metadata.
-- `conversations`, `messages`, message citations: persisted partial/final answers
-  with the evidence versions used to generate them.
+Fuse wiki FTS5/vector results and fetch cited source segments as needed.
+Exact task/event queries use typed SQL-backed tools. Preserve evidence revision
+IDs and show superseded citations; clicking opens the original version/PDF page.
+Persist streamed partial turns and cancellation; stopped/failed answers must
+look incomplete. Bound context to relevant evidence/history, support document-
+and workspace-scoped questions, and state when evidence is insufficient.
 
-A calendar view may project a task's deadline without creating a duplicate event.
-A Kanban view may project task status without creating another task record.
+Expose read-only chat tools first; later edits use the shared change-set path.
+Separate generation/chat/embedding provider configuration. Implement one real
+provider with explicit cancellation/structured-output/streaming/embedding
+capability checks. Missing credentials must not block reading, editing, or
+keyword search. Local storage does not imply local inference: show provider and
+outbound source scope; preserve private-source exclusion policies.
 
-## 6. Reliable source-to-document processing
+Use a fixed Korean/English corpus covering short CJK queries, paper titles,
+multi-document and unanswerable questions. Measure recall, citation correctness,
+latency, and cost manually while automation is deferred. Default FTS5 tokenization
+alone is not a Korean relevance strategy.
 
-Pipeline: **discover -> snapshot -> extract -> retrieve -> propose -> validate ->
-apply -> index -> report**.
+Navigation covers Sources, Wiki, Tasks, and Calendar; a collapsible assistant
+panel holds Chat, Sources, and Changes. Shared typography/tokens, keyboard access,
+and empty/loading/error states are required. Sources need import/watch, original
+preview, job status, retry/cancel, and affected-document links. Wiki needs outline,
+citations, save status, revisions, and AI review. Tasks need persisted completion,
+due date, and status. Calendar starts with agenda/month views, simple event edits,
+time zones/all-day semantics, and projected deadlines; add a calendar library
+only for a concrete missing interaction.
 
-Each stage records its input version and output. Suggested job states are
-`queued`, `running`, `retry_wait`, `needs_review`, `succeeded`, `failed`, and
-`cancelled`; record the current pipeline stage separately.
+User refinements from 2026-09-17 remain requirements:
 
-1. Snapshot a stable file version; debounce partial writes. Watcher events and
-   explicit imports feed the same ingestion API.
-2. Extract deterministic source segments. Show extraction warnings; do not turn
-   unreadable content into invented evidence.
-3. Retrieve related documents and their revisions. Use the wiki as the default
-   semantic corpus and source segments for evidence lookup.
-4. Ask the LLM for schema-constrained changes, citations, and a reason. Give it
-   only bounded read/search tools and a change-proposal surface. Source contents
-   are evidence, never instructions granting new capabilities.
-5. Validate supported operations, target IDs, expected revisions, source
-   versions, citation existence, and typed fields. Structural validation cannot
-   prove factual correctness; quality fixtures and user-visible evidence are
-   still required.
-6. Apply document changes, revisions, citation links, and an indexing outbox
-   entry in one DB transaction. Commit only if expected revisions still match.
-7. Index the committed revisions. An embedding failure leaves saved documents
-   intact, marks retrieval freshness, and retries the derived index operation.
-8. Emit a durable run summary with changed documents, warnings, and usage.
+- Back/Forward works for views/documents and respects unsaved edits.
+- Wiki hyperlinks, backlinks, unresolved references, and local/global graphs
+  make document relationships navigable.
+- Expanded sidebars resize; the left sidebar offers icon-only compact mode
+  without a full-hide button. The assistant may collapse. Temporary **in-app
+  Zen mode** fills the main area and restores the prior layout/editor state.
+- Graph scrolling/zooming, including controls and zoom limits, does not scroll
+  the main page.
+- Documents expose relevant right-click actions and discoverable overflow
+  actions. Deletion is recoverable through Trash; restoration preserves identity,
+  revisions, favorites, and connections. Keep original sources and other
+  documents' Markdown intact. Backend retention/permanent-deletion policy needs
+  a separate decision; browser mock deletion does not define filesystem deletion.
 
-Use idempotency keys covering source identity/version, pipeline version, and
-operation identity. Record provider request IDs where available; a lost network
-response can still incur provider cost, so do not promise exactly-once billing.
-Claim jobs with leases, heartbeat them, and reclaim expired leases. Start with
-serial ingestion per workspace; do not hold DB locks during LLM requests.
-Persist exponential retry/backoff and a finite attempt limit. Provide cancellation,
-manual retry, and a visible terminal failure state.
+Use app-owned rendering, Electron context isolation, and a narrow preload bridge.
+Legacy sandboxed HTML may be previewed in isolation, never treated as the new
+editable document format.
 
-On source modification, invalidate dependent evidence and schedule targeted
-re-evaluation. On a confirmed source deletion, mark the source unavailable and
-review dependent claims; preserve unrelated content and user edits. Keep immutable
-evidence history until an explicit retention/deletion policy removes it.
+## Milestones and evidence
 
-### Manual edits and AI conflicts
+Keep each vertical slice runnable. F0 precedes backend work; prove packaging in
+M0 instead of deferring it to release. Introduce minimal task/event extensibility
+early, with full service behavior in M5. Unavailable targets stay unverified.
 
-All user edits and worker changes go through the same application write API.
-Use compare-and-swap on document revisions. A stale base revision must never
-silently overwrite a newer edit.
+| Milestone | Deliverable and acceptance evidence |
+| --- | --- |
+| F0 — frontend | Isolated UI, typed interface, persistent mock adapter; manually navigate/edit/import/chat/complete tasks/edit events, plus typecheck/build. No claim of real extraction, LLM, or OS-service behavior. |
+| M0 — platform proof | Pin runtime/OS matrix; package service, native DB/vector modules, credential/background helpers, editor fixture, and CPU extractor sample. Record native macOS arm64/x64 and Windows x64 results, editor fidelity, extractor footprint/latency, and operation without developer runtimes. Untested targets keep this incomplete. |
+| M1 — durable documents | Schema/migrations, CRUD/revisions, typed API, editor, export/backup. Verify reopen, stale-save conflict, Unicode/IME, restore, and crash/restart without losing committed edits. |
+| M2 — source to wiki | MD/PDF import/watch, versioned extraction, durable jobs, one real provider, linked citation-bearing wiki. Verify a real paper, deduplication, recoverable extraction/LLM failure, and unchanged originals. |
+| M3 — incremental maintenance | Dependencies, source changes/deletion, protected suggestions, cancel/retry. Verify targeted updates, preserved manual edits, killed-service recovery, and no duplicate application on replay. |
+| M4 — wiki chat | Hybrid retrieval, persisted streaming, evidence navigation, measured corpus results. Verify correct version/page, unanswerable questions, stale index, cancellation, quality, and latency. |
+| M5 — tasks/calendar | Typed worker/user updates, time-triggered refresh, JSON/Markdown/ICS export. Verify completion survives re-extraction, no duplicate events, date/time-zone semantics, task projections, and stable UIDs. |
+| M6 — installed product | Background lifecycle, installers, coordinated upgrades, restore, and legacy importer. Verify clean-machine installation/upgrade, login/wake/crash recovery, processing with UI absent, unregister-on-uninstall, signing, and every target OS. |
 
-MVP protection is deliberately document-level: editing a generated document
-marks it protected, so subsequent worker changes become reviewable suggestions.
-Users can accept/reject suggestions or explicitly restore automatic maintenance.
-More granular section ownership can follow after editor identity preservation is
-proven. Human-controlled task fields, such as completion state and a manually
-changed deadline, remain protected across re-extraction.
+Record exact manual results and failed attempts against disposable/demo data,
+not user originals. Follow [the package guide](../../v2/agents.md) for check
+commands and keep run evidence in [the package README](../../v2/README.md);
+do not duplicate completed-feature inventories here.
 
-Use a small operation vocabulary initially: create document, replace body at an
-expected revision, update typed fields, link citation, and propose archival.
-Avoid fragile line-number patches. Every applied change can be undone by creating
-a new revision rather than deleting history.
+## Migration and handoff
 
-## 7. Chat and retrieval
+After the format stabilizes, implement a read-only legacy-vault importer into a
+new workspace. Snapshot sources/artifact Markdown, preserve provenance and old
+paths as metadata, and rebuild derived indexes. Import a single-file wiki as one
+document first; topic splitting is separately reviewable. Map workflow policies
+explicitly or report unsupported ones. Free-form task/calendar text needs
+reviewable typed mappings. Generated legacy HTML is not canonical input.
 
-- Search wiki chunks with FTS5 and embeddings, fuse results, and retrieve cited
-  source segments as needed. Exact task/event filters use SQL-backed domain tools.
-- Preserve document/source revision IDs in the answer's citations. Clicking a
-  citation opens that evidence and its PDF page where available; show when it has
-  since been superseded.
-- Persist conversation turns, cancellation state, and partial streamed text.
-  Bound context length; include only relevant evidence and useful conversation
-  history. Provide document-scoped and workspace-scoped questions.
-- If evidence is insufficient, say so. A stopped or failed stream remains visibly
-  incomplete; it must not look like a verified final answer.
-- Expose read-only tools first. Chat-requested edits later use the same change-set
-  path as the worker and editor.
-- Keep provider/model configuration separate for background generation, chat,
-  and embeddings. Implement one real provider first, with explicit capability
-  checks for cancellation, structured output, streaming, and embeddings.
-- A missing LLM key must not prevent local reading, editing, or keyword search.
-  Local-first storage does not imply local inference: show the configured
-  provider and which source scope can be sent to it. Preserve imported exclusion
-  policies; do not silently make private sources eligible for remote processing.
+Provide a dry-run count/unsupported-record/error report and verify the imported
+workspace. Leave legacy files, DB, configuration, and application runnable;
+rollback means reopening that workspace, not lossy reverse migration. Share
+source parsing with ingestion; keep legacy metadata mapping in the importer.
 
-Evaluate Korean and English retrieval, short CJK queries, paper titles,
-multi-document questions, and unanswerable questions. FTS5's default tokenization
-is not a sufficient Korean relevance strategy by itself. Record evidence recall,
-citation correctness, latency, and cost on a fixed corpus; do not equate a valid
-JSON answer with a correct answer.
-
-## 8. UI and document editing
-
-Primary navigation: Sources, Wiki, Tasks, Calendar. The main area presents the
-selected document/list/calendar. A collapsible side panel contains Chat, Sources,
-and Changes. Use readable typography, restrained colors, shared tokens, keyboard
-navigation, and clear empty/loading/error states.
-
-- Sources: picker/drag-drop/watch folder, extraction/job status, retry/cancel,
-  original preview, and links to affected documents.
-- Wiki: reading and editing in place, outline, links, citations, autosave status,
-  revision history, and AI change review.
-- Tasks: completion, due date, and status with immediate persisted feedback.
-- Calendar: simple event creation/editing, all-day events, local time zones, and
-  projected task deadlines. Start with an agenda and simple month view; choose
-  a full calendar widget only if a concrete interaction requires it.
-- Chat: streamed answer, cancellation, conversation history, current-document
-  context, and citations that open original evidence.
-
-Render document content with application-owned components. Disable executable
-HTML from imported or generated content. Keep Electron context isolation and a
-narrow preload bridge. Reuse the principle of isolated legacy HTML handling only
-when showing a legacy preview, not as the new editable document format.
-
-## 9. Suggested repository layout
-
-Keep the rewrite isolated while the old application remains usable:
-
-```text
-v2/
-  agents.md
-  package.json                 # isolated npm workspaces and common scripts
-  package-lock.json
-  apps/
-    desktop/                   # Electron main/preload, React UI, Forge config
-    service/                   # Node service entrypoint and background lifecycle
-  packages/
-    contracts/                 # runtime schemas and typed IPC/domain messages
-    core/                      # documents, persistence, jobs, extraction adapter,
-                               # provider adapter, search, import/export
-    platform/                  # paths, native helpers, credentials, registration
-  extractor/                   # pinned Python/Docling environment and entrypoint
-  examples/                    # manual walkthrough data when needed
-```
-
-Do not create empty abstraction packages beyond these boundaries. Add modules
-when a milestone uses them. Use npm workspaces without adding another JS package
-manager. Pin Python dependencies and model versions separately for reproducible
-extractor builds. Build scripts must work on Windows without Bash.
-
-## 10. Milestones and acceptance criteria
-
-| Milestone | Deliverable | Acceptance evidence |
-| --- | --- | --- |
-| F0: frontend prototype | Isolated React app, polished Wiki/Sources/Tasks/Calendar/Chat views, typed service interface, persistent mock adapter | Manual navigation/edit/import/chat/task/calendar walkthrough; production build and typecheck. No real service, PDF extraction, or LLM calls |
-| M0: platform/dependency proof | Exact version/OS matrix; packaged skeleton, Node service, native DB/vector load, editor fixture, extractor sample, native credential and background-host spikes | Native macOS arm64/x64 and Windows x64 results; a packaged app uses no developer runtime; record extractor footprint/latency and editor round-trip results. An untested target keeps this milestone partially complete |
-| M1: durable manual documents | Database schema/migrations, document CRUD/revisions, typed API, reader/editor, local export/backup | Create/edit/reopen; stale save conflict; Unicode/IME; backup/restore; crash/restart without lost committed edits |
-| M2: source to wiki | Import/watch MD and PDF, source versions, extraction, durable jobs, one real LLM provider, citation-bearing wiki creation | Real paper produces linked wiki documents; duplicate event creates no duplicate artifact; extraction/LLM failure is recoverable; original bytes stay unchanged |
-| M3: incremental maintenance | Dependency tracking, update/deletion handling, suggestions, protection, cancellation and retry | Change source and update related wiki; preserve manual edits; kill service mid-job and resume; repeat job without duplicate application |
-| M4: wiki chat | Hybrid search, persisted streaming chat, citations, document context, retrieval evaluation | Answer corpus questions; open correct source version/page; handle unanswerable question, stale index, and cancelled stream; report measured quality/latency |
-| M5: tasks and calendar | Typed records, worker extraction, real UI edits, time-triggered refresh, JSON/Markdown/ICS export | Completion survives re-extraction; no duplicate event; correct date-only/time-zone behavior; task deadline projection and stable exported UID |
-| M6: installed-product release | Full background lifecycle, installers, update coordination, restore, legacy importer | Clean-machine install/run/upgrade; login/wake/crash recovery; UI absent during processing; unregister on uninstall; signing and target-OS evidence |
-
-Complete F0 first. Build packaging in M0, not at M6. Automated testing and
-CI setup are explicitly out of scope for now. After each milestone, keep the current
-vertical slice runnable. Do not build all infrastructure before showing the
-corresponding user workflow. New domain contracts should include the minimum
-task/event extensibility early; the F0 UI previews behavior whose real service
-integration follows in M5.
-
-### Verification policy (manual for now)
-
-- Do not add test runners, automated test suites, browser-test scripts, coverage
-  tooling, or CI workflows. Reintroduce them only when the user requests it.
-- Keep TypeScript checks, production builds, and `git diff --check`; these are
-  build/static validation, not a test automation project.
-- Manually exercise the user workflows affected by each change and record the
-  exact results. Use temporary or demo data rather than modifying user sources.
-- For F0, check navigation, Markdown editing/persistence, source import and
-  simulated processing, mock chat/citations, task completion, and calendar edits.
-- Later milestones still require real-provider, real-paper, and installed-app
-  walkthroughs. Mock operations do not demonstrate backend or platform support.
-- Record unavailable platforms as unverified. Do not substitute a successful
-  browser build for Windows/macOS packaging verification.
-
-## 11. Migration and handoff
-
-Implement a read-only legacy-vault importer after the new format is stable.
-Snapshot/import sources and artifact Markdown into a new workspace; preserve
-provenance and original paths as metadata. Import a legacy single-file wiki as
-one document first; topic splitting is a separate reviewable operation. Existing
-workflow policies must be mapped explicitly or reported as unsupported, not
-silently discarded. Treat free-form task/calendar Markdown as potentially
-ambiguous and show proposed structured mappings. Rebuild search projections.
-Generated legacy HTML is not the canonical imported document.
-
-Provide a dry-run report with counts, unsupported records, and errors, then
-verify the imported workspace. Leave the old files, DB, configuration, and
-application runnable. Source parsing is shared with normal ingestion; legacy
-metadata mapping belongs in the importer. A rollback means reopening the old
-workspace, not attempting a lossy reverse migration.
-
-When implementation changes a contract, update this brief and the relevant new
-package guide. Update shared architecture/codebase/testing/progress documents
-when the new application becomes the active implementation. Do not describe a
-planned milestone as implemented.
-
-### Suggested assignment for the next agent
-
-> Read `docs/plan/desktop-rewrite.md`, `v2/README.md`, and the agent guides.
-> Continue the isolated `v2/` implementation from its frontend prototype. Keep
-> all backend calls behind `KnoterClient`; the current adapter is a local demo.
-> Follow the next user-assigned milestone rather than starting the whole rewrite.
-> Automated tests and CI are deferred: use type checking, production builds,
-> and manual walkthroughs, and report exactly what was verified. Keep the legacy
-> app intact and do not publish artifacts or modify real vaults without an
-> instruction covering that work.
-
-### Open implementation gates, with defaults
-
-- **OS/runtime versions:** choose currently supported compatible releases in M0;
-  keep the three initial architecture targets above.
-- **sqlite-vec:** adopt only after native-loading and corpus tests. If it fails,
-  benchmark a bounded exact-vector fallback or another local index behind the
-  same interface; do not quietly ship keyword-only chat as hybrid retrieval.
-- **Docling:** retain as the extraction default if CPU-only packaged results meet
-  the agreed paper fixtures. If not, record the failures and evaluate an
-  alternative extractor without changing the source/citation contract.
-- **Editor:** Milkdown is the default, subject to the specified round-trip tests.
-- **Provider/model:** implement one configured provider first; use mock responses
-  for the frontend demo and record real-model evidence separately. No provider
-  subscription or key is presumed to exist.
-- **Release identity/feed:** signing identities, certificates, and update hosting
-  are supplied when release work is assigned. Continue local implementation and
-  unsigned packaging without claiming signed distribution is complete.
-
-## 12. Delivery status
-
-The 2026-09-17 frontend follow-up adds URL/history navigation, inline wiki links,
-backlinks, global/local document graphs, and persistent resizable sidebars.
-Left navigation now toggles an icon-only compact mode instead of disappearing;
-the assistant retains its collapse control. Temporary in-app Zen mode hides both
-panels and restores their prior layout on exit. Graph scrolling is contained to
-the canvas, including controls and zoom limits. These continue to use the F0 mock
-data boundary. Graph edges derive
-from current Markdown references plus the prototype's existing related-note
-records; this does not implement backend semantic graph extraction.
-
-The document-actions follow-up adds Radix context/overflow menus and recoverable
-per-document deletion. `KnoterClient.deleteDocument` moves a note to persistent
-Trash; `restoreDocument` restores its stable ID, revisions, favorite state, and
-relationships. Original sources are kept, and other documents' Markdown is never
-rewritten by deletion. This remains a browser mock-storage feature; backend
-retention, permanent deletion, and filesystem deletion policies are not implemented.
-
-The original plan was prepared on 2026-09-16 from repository inspection and
-primary vendor documentation. The user's follow-up deferred test automation and
-requested a frontend-only implementation. F0 uses a mock adapter; subsequent
-backend, extraction, LLM, packaging, and OS-service milestones remain unimplemented.
-See `v2/README.md` for running the prototype, its API boundary, and recorded manual
-verification. Do not describe simulated responses as actual model output.
+For the next agent: continue only the assigned milestone behind `KnoterClient`;
+keep mock and real evidence distinct, honor the no-automation instruction, and
+report unavailable platforms honestly. Update this brief when decisions or
+contracts change, and package guides when implementation instructions change.

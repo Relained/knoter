@@ -20,7 +20,7 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
 - A right-side widget bar pins any view as an always-visible widget
   (equal-ratio vertical split, drag resize); status messages surface through a
   bell icon in the overlay menu bar plus a 4s transient toast. Design notes:
-  `docs/design/widget-bar.md`.
+  `docs/architecture.md` (legacy decisions and UI failure records).
 - When the backend is connected but no vault exists, the Create Vault modal
   opens automatically (`VaultCreateModal`, also via the "New Vault..."
   palette command). It submits the `vault.bootstrap` command: `kn vault init`
@@ -36,7 +36,7 @@ previous GPT harness document and `web/docs/*` design notes were removed; root
   (`src/workbench/commands/registry.ts`) — every UI button calls
   `executeCommand(id)`, the same path as the command palette. Commands with
   options open a second palette stage (option form). Design notes:
-  `docs/design/web-commands.md`.
+  `docs/architecture.md` (legacy command-registry decision).
 
 ## Code Map
 
@@ -167,8 +167,8 @@ Agent/artifact HTML is untrusted input:
   Avoid default chords that the Electron default menu owns (`Mod+W`, `Mod+R`,
   `Mod+M`, `Mod+Q`, `Mod+Shift+R`). Users edit bindings in Settings →
   Keyboard Shortcuts.
-- Known design-defect backlog and fix sequencing live in
-  `docs/plan/web-fix-plan.md` — consult it before reworking
+- Historical UI failure causes and remedies are retained in
+  `docs/architecture.md` — consult its UI failure records before reworking
   layout/interaction.
 
 ## Commands
