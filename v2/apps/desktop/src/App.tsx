@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
+import { Link, Outlet, useBlocker, useLocation, useNavigate } from 'react-router';
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -40,15 +49,13 @@ import { Dialog } from './components/ui/dialog';
 import { ContextPanel, type PanelTab } from './components/ContextPanel';
 import { DocIcon, fileSize, relativeTime, SourceIcon } from './components/helpers';
 import { Markdown } from './components/Markdown';
-import { WikiDocumentView, WikiLibrary, type RunAction } from './views/WikiView';
-import { SourcesView } from './views/SourcesView';
-import { TasksView } from './views/TasksView';
-import { CalendarView } from './views/CalendarView';
+import type { RunAction } from './views/WikiView';
 import { createSampleFile, readImports } from './api';
 import { exportMarkdown } from './api/export';
-import { useWorkspaceHistory } from './components/useWorkspaceHistory';
+import { useNavigationHistory } from './components/useNavigationHistory';
 import { SidebarResizeHandle } from './components/SidebarResizeHandle';
-import { GraphView } from './views/GraphView';
+import { useWorkspaceRoute, type WorkspaceContext } from './routing/WorkspaceRoutes';
+import { paths, routePath, type WorkspaceRoute } from './routing/paths';
 import { buildWikiLinks } from './wiki/links';
 import { DocumentActionsProvider, DocumentContextMenu } from './components/DocumentMenu';
 import { copyDocumentLink } from './api/clipboard';
@@ -85,8 +92,17 @@ export function App({ client }: { client: KnoterClient }) {
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
-  const [leaving, setLeaving] = useState(false);
-  const destination = useRef<(() => void) | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const dirtyCheck = useRef<(() => boolean) | null>(null);
+  const pendingEdit = useRef<string | null>(null);
+  const setDirtyCheck = useCallback((check: (() => boolean) | null) => {
+    dirtyCheck.current = check;
+  }, []);
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const blocker = useBlocker(() => dirtyCheck.current?.() ?? false);
+  const historyNav = useNavigationHistory();
+  const { view, documentId, category = null, focusId } = useWorkspaceRoute();
   const fileInput = useRef<HTMLInputElement>(null);
   const searchSelection = useRef<HTMLButtonElement>(null);
   const run: RunAction = useCallback(async (action, message) => {
@@ -167,51 +183,51 @@ export function App({ client }: { client: KnoterClient }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   useEffect(() => {
-    if (!editing) return;
     const beforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
+      if (dirtyCheck.current?.()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
     };
     window.addEventListener('beforeunload', beforeUnload);
     return () => window.removeEventListener('beforeunload', beforeUnload);
-  }, [editing]);
+  }, []);
   useEffect(() => {
     searchSelection.current?.scrollIntoView({ block: 'nearest' });
   }, [searchIndex]);
-  const navigate = (action: () => void) => {
-    if (editing) {
-      destination.current = action;
-      setLeaving(true);
-      return;
-    }
-    action();
+  useLayoutEffect(() => {
+    setEditing(pendingEdit.current === location.pathname + location.search);
+    pendingEdit.current = null;
+    setModal(null);
+    setSourceId(null);
     setMobileNav(false);
-  };
-  const historyNav = useWorkspaceHistory(
-    navigate,
-    () => {
+  }, [location.key, location.pathname, location.search]);
+  const goTo = (route: WorkspaceRoute, edit = false) => {
+    const to = routePath(route);
+    if (to === location.pathname + location.search) {
+      if (edit) setEditing(true);
       setModal(null);
       setSourceId(null);
       setMobileNav(false);
-      setEditing(false);
-    },
-    editing,
-  );
-  const { view, documentId, category = null, focusId } = historyNav.route;
+      return;
+    }
+    pendingEdit.current = edit ? to : null;
+    void routerNavigate(to);
+  };
+  const afterDiscard = (action: () => void) => {
+    if (dirtyCheck.current?.()) setPendingAction(() => action);
+    else action();
+  };
+  const keepEditing = () => {
+    if (blocker.state === 'blocked') blocker.reset();
+    pendingEdit.current = null;
+    setPendingAction(null);
+  };
   const wikiLinks = useMemo(() => buildWikiLinks(snapshot?.documents || []), [snapshot?.documents]);
-  const openDocument = (id: string) =>
-    navigate(() => {
-      historyNav.push({ view: 'wiki', documentId: id });
-      setModal(null);
-      setSourceId(null);
-    });
+  const openDocument = (id: string) => goTo({ view: 'wiki', documentId: id });
   const editDocument = (id: string) => {
     if (editing && documentId === id) return;
-    navigate(() => {
-      historyNav.push({ view: 'wiki', documentId: id });
-      setModal(null);
-      setSourceId(null);
-      setEditing(true);
-    });
+    goTo({ view: 'wiki', documentId: id }, true);
   };
   const restoreDocument = async (id: string) => {
     setDocumentPending(true);
@@ -232,21 +248,19 @@ export function App({ client }: { client: KnoterClient }) {
     setDocumentPending(false);
     if (!success) return;
     setDeleteTarget(null);
-    if (documentId === id) historyNav.replace({ view: 'wiki' });
-    else if (focusId === id) historyNav.replace({ view: 'graph' });
+    if (documentId === id || focusId === id) {
+      // The dedicated delete dialog already confirmed discarding this draft.
+      dirtyCheck.current = null;
+      setEditing(false);
+      void routerNavigate(documentId === id ? paths.wiki : paths.graph, { replace: true });
+    }
   };
-  const openView = (next: View) =>
-    navigate(() => {
-      historyNav.push({ view: next });
-      setModal(null);
-    });
+  const openView = (next: View) => goTo({ view: next });
   const createNote = () =>
-    navigate(() => {
+    afterDiscard(() => {
       void run(async () => {
         const id = await client.createDocument();
-        historyNav.push({ view: 'wiki', documentId: id });
-        setModal(null);
-        setEditing(true);
+        goTo({ view: 'wiki', documentId: id }, true);
       });
     });
   const importFiles = async (selected: File[]) => {
@@ -260,9 +274,7 @@ export function App({ client }: { client: KnoterClient }) {
     if (ok) {
       setFiles([]);
       setModal(null);
-      navigate(() => {
-        historyNav.push({ view: 'sources' });
-      });
+      openView('sources');
     }
   };
 
@@ -276,7 +288,6 @@ export function App({ client }: { client: KnoterClient }) {
     );
   const doc =
     view === 'wiki' && documentId ? snapshot.documents.find((d) => d.id === documentId) : undefined;
-  const trashedDoc = snapshot.trashedDocuments.find((d) => d.id === documentId);
   const source = snapshot.sources.find((s) => s.id === sourceId);
   const categories = [...new Set(snapshot.documents.map((d) => d.category))];
   const currentLabel = navigation.find((n) => n.id === view)!.label;
@@ -368,23 +379,14 @@ export function App({ client }: { client: KnoterClient }) {
             onCommit={(value) => void run(() => client.updateSettings({ leftSidebarWidth: value }))}
           />
         )}
-        <a
-          className="brand"
-          href="#"
-          aria-label="knoter home"
-          title="knoter home"
-          onClick={(e) => {
-            e.preventDefault();
-            openView('wiki');
-          }}
-        >
+        <Link className="brand" to={paths.wiki} aria-label="knoter home" title="knoter home">
           <span className="brand-symbol">
             <Network size={22} strokeWidth={1.8} />
           </span>
           <span>
             knoter<span className="brand-period">.</span>
           </span>
-        </a>
+        </Link>
         <button
           className="workspace-picker"
           aria-label="Research space settings"
@@ -461,11 +463,7 @@ export function App({ client }: { client: KnoterClient }) {
             <button
               className={`collection-link ${category === name ? 'note-selected' : ''}`}
               key={name}
-              onClick={() =>
-                navigate(() => {
-                  historyNav.push({ view: 'wiki', category: name });
-                })
-              }
+              onClick={() => goTo({ view: 'wiki', category: name })}
             >
               <i className={`collection-dot dot-${i % 3}`} />
               <span>{name}</span>
@@ -624,80 +622,36 @@ export function App({ client }: { client: KnoterClient }) {
             </Button>
           </div>
         </header>
-        {view === 'wiki' &&
-          (doc ? (
-            <WikiDocumentView
-              key={doc.id}
-              doc={doc}
-              snapshot={snapshot}
-              client={client}
-              run={run}
-              onSource={setSourceId}
-              onOpen={openDocument}
-              links={wikiLinks}
-              onGraph={() => navigate(() => historyNav.push({ view: 'graph', focusId: doc.id }))}
-              onAsk={() => {
+        <Outlet
+          context={
+            {
+              snapshot,
+              client,
+              run,
+              links: wikiLinks,
+              editing,
+              onEditing: (value) => {
+                setEditing(value);
+                if (!value) dirtyCheck.current = null;
+              },
+              onDirtyCheck: setDirtyCheck,
+              onSource: setSourceId,
+              onOpen: openDocument,
+              onGraph: (id) => goTo({ view: 'graph', focusId: id }),
+              onView: openView,
+              onAsk: () => {
                 setZenMode(false);
                 setPanel(true);
                 setPanelTab('chat');
-              }}
-              editing={editing}
-              onEditing={setEditing}
-            />
-          ) : documentId ? (
-            <div className="empty-state">
-              <BookOpen />
-              <h2>{trashedDoc ? 'This note is in Trash' : 'Note not found'}</h2>
-              <p>
-                {trashedDoc
-                  ? trashedDoc.title
-                  : 'This link does not match a document in this workspace.'}
-              </p>
-              {trashedDoc && (
-                <Button
-                  variant="outline"
-                  disabled={documentPending}
-                  onClick={() => void restoreDocument(trashedDoc.id)}
-                >
-                  <Undo2 />
-                  Restore note
-                </Button>
-              )}
-              <Button onClick={() => openView('wiki')}>Browse the wiki</Button>
-            </div>
-          ) : (
-            <WikiLibrary
-              snapshot={snapshot}
-              category={category}
-              onOpen={openDocument}
-              onNew={createNote}
-              onTrash={() => setModal('trash')}
-            />
-          ))}
-        {view === 'sources' && (
-          <SourcesView
-            snapshot={snapshot}
-            client={client}
-            run={run}
-            onImport={() => setModal('import')}
-            onSource={setSourceId}
-            onOpen={openDocument}
-          />
-        )}
-        {view === 'tasks' && (
-          <TasksView snapshot={snapshot} client={client} run={run} onOpen={openDocument} />
-        )}
-        {view === 'calendar' && <CalendarView snapshot={snapshot} client={client} run={run} />}
-        {view === 'graph' && (
-          <GraphView
-            key={focusId || 'all'}
-            documents={snapshot.documents}
-            links={wikiLinks}
-            focusId={focusId}
-            onOpen={openDocument}
-            onGlobal={() => openView('graph')}
-          />
-        )}
+              },
+              onNew: createNote,
+              onTrash: () => setModal('trash'),
+              onImport: () => setModal('import'),
+              onRestore: restoreDocument,
+              documentPending,
+            } satisfies WorkspaceContext
+          }
+        />
       </main>
       {panel && (
         <ContextPanel
@@ -1116,22 +1070,26 @@ export function App({ client }: { client: KnoterClient }) {
       </Dialog>
 
       <Dialog
-        open={leaving}
-        onOpenChange={setLeaving}
+        open={blocker.state === 'blocked' || pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) keepEditing();
+        }}
         title="Leave this edit?"
         description="Your unsaved changes will be discarded. Your last saved version will stay as it is."
       >
         <div className="dialog-actions">
-          <Button variant="ghost" onClick={() => setLeaving(false)}>
+          <Button variant="ghost" onClick={keepEditing}>
             Keep editing
           </Button>
           <Button
             onClick={() => {
               setEditing(false);
-              setLeaving(false);
+              dirtyCheck.current = null;
               setMobileNav(false);
-              destination.current?.();
-              destination.current = null;
+              if (blocker.state === 'blocked') blocker.proceed();
+              const action = pendingAction;
+              setPendingAction(null);
+              action?.();
             }}
           >
             Discard changes
@@ -1146,7 +1104,7 @@ export function App({ client }: { client: KnoterClient }) {
         open: openDocument,
         edit: editDocument,
         favorite: (id) => void run(() => client.toggleFavorite(id)),
-        graph: (id) => navigate(() => historyNav.push({ view: 'graph', focusId: id })),
+        graph: (id) => goTo({ view: 'graph', focusId: id }),
         copyLink: (id) => void run(() => copyDocumentLink(id), 'Note link copied.'),
         export: exportMarkdown,
         delete: setDeleteTarget,

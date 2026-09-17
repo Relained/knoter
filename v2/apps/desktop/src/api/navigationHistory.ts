@@ -1,70 +1,53 @@
-import type { View } from '@knoter/contracts';
+import type { NavigationType } from 'react-router';
 
-export interface WorkspaceRoute {
-  view: View;
-  documentId?: string;
-  category?: string;
-  focusId?: string;
-}
-export interface HistoryEntry {
-  session: string;
+export interface NavigationJournal {
+  keys: string[];
   index: number;
 }
-const decode = (value: string) => {
+const storageKey = 'knoter.router-history.v1';
+
+export function readNavigationHistory(key: string): NavigationJournal {
   try {
-    return decodeURIComponent(value);
+    const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    if (
+      Array.isArray(saved?.keys) &&
+      saved.keys.every((value: unknown) => typeof value === 'string') &&
+      new Set(saved.keys).size === saved.keys.length
+    ) {
+      const index = saved.keys.indexOf(key);
+      if (index >= 0) return { keys: saved.keys, index };
+    }
   } catch {
-    return value;
+    // Missing/unavailable session storage starts a fresh app navigation boundary.
   }
-};
-
-export function readRoute(): WorkspaceRoute {
-  const [path, query = ''] = location.hash.slice(1).split('?');
-  if (!path) return { view: 'wiki', documentId: 'rag' };
-  const [view, id] = path.replace(/^\//, '').split('/');
-  if (!['wiki', 'sources', 'tasks', 'calendar', 'graph'].includes(view)) return { view: 'wiki' };
-  const params = new URLSearchParams(query);
-  return {
-    view: view as View,
-    ...(view === 'wiki' && id ? { documentId: decode(id) } : {}),
-    ...(view === 'wiki' && params.get('collection') ? { category: params.get('collection')! } : {}),
-    ...(view === 'graph' && params.get('focus') ? { focusId: params.get('focus')! } : {}),
-  };
+  return { keys: [key], index: 0 };
 }
 
-export function routeHref(route: WorkspaceRoute): string {
-  if (route.view === 'wiki' && route.documentId)
-    return `#/wiki/${encodeURIComponent(route.documentId)}`;
-  if (route.view === 'wiki' && route.category)
-    return `#/wiki?collection=${encodeURIComponent(route.category)}`;
-  if (route.view === 'graph' && route.focusId)
-    return `#/graph?focus=${encodeURIComponent(route.focusId)}`;
-  return `#/${route.view}`;
-}
-
-export const historyEntry = (): HistoryEntry | undefined => history.state?.knoterNavigation;
-export function writeEntry(entry: HistoryEntry, route: WorkspaceRoute, replace = false) {
-  history[replace ? 'replaceState' : 'pushState'](
-    { ...history.state, knoterNavigation: entry },
-    '',
-    routeHref(route),
-  );
-}
-// Session-only navigation metadata belongs to this browser adapter, not the workspace store.
-export function readHistoryEnd(entry: HistoryEntry) {
-  try {
-    return Math.max(
-      entry.index,
-      Number(sessionStorage.getItem(`knoter.history.${entry.session}`)) || 0,
-    );
-  } catch {
-    return entry.index;
+export function recordNavigation(
+  previous: NavigationJournal,
+  key: string,
+  action: NavigationType,
+): NavigationJournal {
+  if (previous.keys[previous.index] === key) return previous;
+  if (action === 'PUSH')
+    return {
+      keys: [...previous.keys.slice(0, previous.index + 1), key],
+      index: previous.index + 1,
+    };
+  if (action === 'REPLACE') {
+    const keys = [...previous.keys];
+    keys[previous.index] = key;
+    return { keys, index: previous.index };
   }
+  const index = previous.keys.indexOf(key);
+  // Do not let toolbar arrows traverse unknown/external or pre-router entries.
+  return index >= 0 ? { ...previous, index } : { keys: [key], index: 0 };
 }
-export function writeHistoryEnd(entry: HistoryEntry) {
+
+export function saveNavigationHistory(journal: NavigationJournal) {
   try {
-    sessionStorage.setItem(`knoter.history.${entry.session}`, String(entry.index));
+    sessionStorage.setItem(storageKey, JSON.stringify(journal));
   } catch {
-    /* Navigation also works without storage. */
+    // Router navigation still works; toolbar metadata simply will not survive reload.
   }
 }

@@ -2,7 +2,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import type { WikiDocument } from '@knoter/contracts';
-import { routeHref } from '../api/navigationHistory';
+import { routeHref } from '../routing/paths';
 
 interface MarkdownNode {
   type: string;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorHandle } from '../components/Editor';
 import {
   ArrowUpRight,
@@ -149,6 +149,7 @@ export function WikiDocumentView({
   onAsk,
   editing,
   onEditing,
+  onDirtyCheck,
   links,
   onGraph,
 }: {
@@ -161,11 +162,13 @@ export function WikiDocumentView({
   onAsk: () => void;
   editing: boolean;
   onEditing: (value: boolean) => void;
+  onDirtyCheck: (check: (() => boolean) | null) => void;
   links: WikiLinks;
   onGraph: () => void;
 }) {
   const [title, setTitle] = useState(doc.title);
   const [body, setBody] = useState(doc.body);
+  const savedDraft = useRef({ title: doc.title, body: doc.body });
   const [baseRevision, setBaseRevision] = useState(doc.revision);
   const [saving, setSaving] = useState(false);
   const editor = useRef<EditorHandle>(null);
@@ -181,6 +184,16 @@ export function WikiDocumentView({
     links.edges.some((e) => e.source === d.id && e.target === doc.id),
   );
   const unresolved = links.unresolved.filter((e) => e.source === doc.id);
+  useLayoutEffect(() => {
+    // Read live Markdown: Milkdown's debounced onChange may miss the last keystroke.
+    onDirtyCheck(
+      () =>
+        editing &&
+        (title !== savedDraft.current.title ||
+          (editor.current?.getMarkdown() ?? body) !== savedDraft.current.body),
+    );
+    return () => onDirtyCheck(null);
+  }, [editing, title, body, onDirtyCheck]);
   useEffect(() => {
     if (editing) return;
     // Prepare the next edit while reading so the editor mounts with saved content.
@@ -189,6 +202,7 @@ export function WikiDocumentView({
     setTitle(doc.title);
     setBody(doc.body);
     setBaseRevision(doc.revision);
+    savedDraft.current = { title: doc.title, body: doc.body };
   }, [editing, doc.title, doc.body, doc.revision]);
   const begin = () => onEditing(true);
   const save = async () => {
@@ -315,7 +329,11 @@ export function WikiDocumentView({
                   key={`${doc.id}-${baseRevision}`}
                   value={body}
                   onChange={setBody}
-                  onReady={() => setEditorReady(true)}
+                  onReady={() => {
+                    // Serialization may normalize untouched Markdown when the editor opens.
+                    savedDraft.current.body = editor.current?.getMarkdown() ?? body;
+                    setEditorReady(true);
+                  }}
                 />
               </Suspense>
             </>

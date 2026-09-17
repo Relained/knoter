@@ -59,8 +59,7 @@ and the visual editor remains behind a replaceable component boundary.
 
 ## Failure evidence and verification limits
 
-Historical observations from the macOS in-app browser on 2026-09-16/17; these
-are not new checks performed during documentation cleanup. The initial build
+Observations from the macOS in-app browser on 2026-09-16/17. The build
 environment was Node 22.14.0 with Vite 7.3.6. Manual evidence covered demo flows
 on desktop and a 390px viewport, not an installed application.
 
@@ -68,12 +67,14 @@ on desktop and a 390px viewport, not an installed application.
 | --- | --- |
 | 2026-09-16 — OS file chooser blocked by tooling | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks. |
 | 2026-09-17 — graph wheel events scrolled the page | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case. |
-| 2026-09-16/17 — bundle-size warning persisted | Lazy-loading the editor did not remove Vite's warning. The last recorded build was about 607 kB main JavaScript and 1,361 kB editor before gzip. Dependency trimming and packaged-renderer review remain follow-up work. |
+| 2026-09-16/17 — bundle-size warning persisted | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work. |
 | 2026-09-17 — limits of deletion checks | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery. |
+| 2026-09-17 — Router history key collision | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them. |
 
-The `Document actions walkthrough` sample was left in Trash after the
-2026-09-17 check; original user notes were not edited or deleted. Temporary
-Zen/editor drafts were discarded and viewport overrides reset.
+The `Document actions walkthrough` and `Router migration walkthrough` samples
+were left in Trash after the 2026-09-17 checks; user documents' saved contents
+were unchanged. Temporary editor/chat drafts were discarded and viewport
+overrides reset.
 
 Windows/native installation and large-corpus performance remain unverified by
 these records. Before new interaction work, cover the affected behavior with a

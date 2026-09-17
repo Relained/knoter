@@ -1,6 +1,8 @@
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
+import { RouterProvider } from 'react-router/dom';
+import { createWorkspaceRouter } from './routing/router';
 import { client } from './api';
 import './styles.css';
 
-createRoot(document.getElementById('root')!).render(<App client={client} />);
+const router = createWorkspaceRouter(client);
+createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);

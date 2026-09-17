@@ -300,6 +300,15 @@ User refinements from 2026-09-17 remain requirements:
   documents' Markdown intact. Backend retention/permanent-deletion policy needs
   a separate decision; browser mock deletion does not define filesystem deletion.
 
+Use React Router's hash-based Data Mode to preserve shared `#/wiki/:id` links
+and support navigation blockers without server rewrite rules. Keep services
+behind `KnoterClient`; adopting Data Mode does not move persistence into route
+loaders/actions. A session journal of location keys and URLs exists only to
+bound the toolbar's Back/Forward buttons; unknown browser entries start a new
+boundary. Browser reload/close uses a separate unload guard. Pin Router 7.18.4
+for the Node 22.14 baseline: Router 8.4 requires Node >=22.22 and React >=19.2.7;
+a routing refactor does not authorize a runtime upgrade.
+
 Use app-owned rendering, Electron context isolation, and a narrow preload bridge.
 Legacy sandboxed HTML may be previewed in isolation, never treated as the new
 editable document format.
