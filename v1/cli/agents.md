@@ -1,6 +1,6 @@
 # knoter CLI agent guide
 
-Apply the [root rules](../agents.md). Use Bun and existing Bun-native APIs;
+Apply the [root rules](../../agents.md). Use Bun and existing Bun-native APIs;
 setup and the verification command live in [README.md](README.md).
 Read [legacy decisions](../docs/architecture.md) before changing orchestration,
 retrieval, or storage; those decisions are separate from the V2 rewrite.

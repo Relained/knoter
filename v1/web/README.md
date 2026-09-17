@@ -1,13 +1,13 @@
 # knoter Web workbench
 
 The legacy Electron UI for CLI-managed vaults. For the isolated browser rewrite,
-see [V2](../v2/README.md).
+see [V2](../../v2/README.md).
 
 Use npm and make Bun available for the [CLI](../cli/README.md).
 From the repository root:
 
 ```sh
-cd web
+cd v1/web
 npm install
 npm run dev
 ```

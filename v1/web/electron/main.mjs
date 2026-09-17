@@ -15,8 +15,8 @@ import {
 } from "./cli-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, "..", "..");
-const cliEntry = process.env.KNOTER_CLI_ENTRY ?? join(repoRoot, "cli", "src", "cli.ts");
+const v1Root = join(__dirname, "..", "..");
+const cliEntry = process.env.KNOTER_CLI_ENTRY ?? join(v1Root, "cli", "src", "cli.ts");
 const cliRunner = process.env.KNOTER_CLI_RUNNER ?? "bun";
 const devServerUrl = process.env.KNOTER_DEV_SERVER_URL;
 const cliTimeoutMs = Number.parseInt(process.env.KNOTER_CLI_TIMEOUT_MS ?? "30000", 10);
@@ -566,7 +566,7 @@ async function runCli(args, options = {}) {
 async function runCliOnce(args, options = {}) {
   const childArgs = [cliEntry, "--format", "json", ...args];
   const { stdout, stderr, code } = await spawnToCompletion(cliRunner, childArgs, {
-    cwd: join(repoRoot, "cli"),
+    cwd: join(v1Root, "cli"),
     timeoutMs: options.timeoutMs
   });
 

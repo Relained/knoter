@@ -3,7 +3,7 @@
 ## Scope and routing
 
 Read the relevant guide before planning or editing:
-[CLI](cli/agents.md), [legacy Web/Electron](web/agents.md), or
+[V1 CLI](v1/cli/agents.md), [V1 Web/Electron](v1/web/agents.md), or
 [isolated rewrite](v2/agents.md). Root rules apply throughout the repository;
 package rules govern their own files. Read every affected guide for cross-package
 work and preserve the stricter boundary unless the user directs otherwise.
@@ -31,7 +31,7 @@ logs; preserve decisions and user constraints when compressing documents.
   link checks, not an application build.
 - Test automation and CI were deferred by the user's 2026-09-16 instruction;
   reintroduce them only when requested. Static checks/builds remain required.
-- [res/templates/workflow.md](res/templates/workflow.md) is executable agent
+- [v1/res/templates/workflow.md](v1/res/templates/workflow.md) is executable agent
   policy, not ordinary prose. Keep the CLI work prompt consistent with changes;
   preserve customized copies in existing vaults and document new-vault scope.
 - Report the change's intent, affected files, validation, and material risks.

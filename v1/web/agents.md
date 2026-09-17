@@ -1,6 +1,6 @@
 # knoter Web agent guide
 
-Apply the [root rules](../agents.md). These rules concern legacy `web/`, not V2.
+Apply the [root rules](../../agents.md). These rules concern `v1/web/`, not V2.
 Use npm; setup/check commands live in [README.md](README.md). Before changing
 interactions, read the [UI failure records](../docs/architecture.md#ui-failures-and-remedies)
 and preserve their remedies instead of reproducing old bugs.

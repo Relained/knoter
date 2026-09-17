@@ -7,7 +7,7 @@ implementation details. Git history owns completed-work inventories.
 
 | Document | Purpose |
 | --- | --- |
-| [Decisions and lessons](architecture.md) | Legacy boundaries, UI failures, operational cautions, and unresolved work |
+| [V1 decisions and lessons](../v1/docs/architecture.md) | Legacy boundaries, UI failures, operational cautions, and unresolved work |
 | [Desktop rewrite brief](plan/desktop-rewrite.md) | English handoff: product intent, library/format choices, platform constraints, and implementation gates |
 
 Use the [project README](../README.md) for package entry points and the
@@ -15,7 +15,7 @@ Use the [project README](../README.md) for package entry points and the
 [prototype README](../v2/README.md#failure-evidence-and-verification-limits)
 retains its failure evidence and unverified paths.
 
-[res/templates/workflow.md](../res/templates/workflow.md) is a runtime contract
+[v1/res/templates/workflow.md](../v1/res/templates/workflow.md) is a runtime contract
 seeded into vaults; preserve existing users' customized copies.
 
 Do not duplicate file maps, API/type catalogs, routine PASS logs, or completed

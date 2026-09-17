@@ -1,7 +1,7 @@
 # Decisions and lessons
 
-Consolidated 2026-09-17. These records concern the legacy `cli/` and `web/`
-unless stated otherwise. The [desktop rewrite](plan/desktop-rewrite.md)
+Consolidated 2026-09-17. These records concern `v1/cli/` and `v1/web/`
+unless stated otherwise. The [desktop rewrite](../../docs/plan/desktop-rewrite.md)
 intentionally changes their architecture; do not apply its storage or service
 rules to legacy maintenance. Implementation instructions live in the
 [CLI guide](../cli/agents.md) and [web guide](../web/agents.md).
@@ -111,7 +111,7 @@ performed at that time.
   The user's 2026-09-16 instruction defers new test automation and CI; old
   roadmap requests to recreate harnesses are not authorization to do so.
 
-Use package guides for exact check commands and [the prototype README](../v2/README.md)
+Use package guides for exact check commands and [the prototype README](../../v2/README.md)
 for F0 walkthrough evidence, including the file-chooser tooling limitation.
 For a legacy manual pass, use disposable data and cover source import → queued
 sync → keyword search without TEI → wiki retrieval with TEI → real-agent

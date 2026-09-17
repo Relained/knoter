@@ -7,7 +7,7 @@ Legacy vault storage, search, and queued maintenance by an external agent.
 Use Bun. From the repository root:
 
 ```sh
-cd cli
+cd v1/cli
 bun install
 bun run src/cli.ts --help
 ```
@@ -33,4 +33,4 @@ user files. Manual runs use the machine's real configuration: follow the
 and use disposable data.
 
 For changes, read [agents.md](agents.md); design rationale and unresolved work
-live in [project memory](../docs/README.md).
+live in [V1 decisions and lessons](../docs/architecture.md).

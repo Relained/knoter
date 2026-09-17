@@ -22,7 +22,7 @@ a browser build cannot establish OS support.
 
 Read the [root guide](../../agents.md), [rewrite guide](../../v2/agents.md),
 and [prototype README](../../v2/README.md) before work. Read
-[legacy decisions](../architecture.md) and the relevant legacy package guide
+[legacy decisions](../../v1/docs/architecture.md) and the relevant legacy package guide
 only when touching or importing from those packages. Continue the next
 user-assigned milestone; this brief does not authorize deployment, purchases,
 legacy deletion, or in-place user-data migration.
@@ -50,6 +50,14 @@ writer and owns migrations, retrieval, conversations, and jobs. Its job runner
 starts with one ingestion job per workspace; extraction runs in an isolated
 Python child process so chat remains usable. The extractor returns a versioned
 result and never opens the application DB or edits documents.
+
+`KnoterClient` is the renderer-facing application contract, not a replacement
+IPC transport. Its native adapter calls a narrow preload API exposed through
+`contextBridge`, using Electron's `ipcRenderer.invoke` / `ipcMain.handle` for
+renderer-to-main requests. The separate service connection below bridges main
+to the independently running worker; it is not needed merely to open an Electron
+window. IPC carries requests but does not implement document storage itself.
+See [Electron IPC](https://www.electronjs.org/docs/latest/tutorial/ipc).
 
 Use versioned JSON over a Unix socket on macOS and a named pipe on Windows.
 Require current-user access and an authenticated handshake, request IDs,
