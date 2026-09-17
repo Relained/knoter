@@ -20,6 +20,23 @@ Do not add test runners, browser-test scripts, coverage tooling, or CI until
 requested. Real providers, papers, and installed builds still need manual proof;
 a browser build cannot establish OS support.
 
+On 2026-09-17 the user requested a backend implementation **plan** for a real
+source-to-wiki worker demonstration: Electron main enqueues source additions and
+changes; an OS-managed service periodically invokes a worker with a dedicated
+default skill. The [demo plan](wiki-worker-demo.md) records the agreed slice and
+implementation gates. Planning does not establish implementation or native verification.
+The user selected macOS/Markdown, a 60-second worker interval, topic-based wiki
+integration in Korean, and connection to an existing Codex CLI installation and
+ChatGPT login with a fast model for the demo. Each execution is limited to five
+minutes, with at most two automatic retries and twenty executions per local day.
+The service-owned CLI adapter receives proposals; the application remains the
+only document writer. This narrows the direct-provider adapter choice below for
+the demo without authorizing a coding agent to edit canonical files or the DB.
+For this demo, only Electron main discovers source changes: while it is fully
+exited, the service processes already queued immutable snapshots; new changes
+are discovered when main restarts. This deliberately narrows the background
+discovery scope described for the broader product below.
+
 Read the [root guide](../../agents.md), [rewrite guide](../../v2/agents.md),
 and [prototype README](../../v2/README.md) before work. Read
 [legacy decisions](../../v1/docs/architecture.md) and the relevant legacy package guide

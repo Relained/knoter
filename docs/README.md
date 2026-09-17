@@ -9,6 +9,7 @@ implementation details. Git history owns completed-work inventories.
 | --- | --- |
 | [V1 decisions and lessons](../v1/docs/architecture.md) | Legacy boundaries, UI failures, operational cautions, and unresolved work |
 | [Desktop rewrite brief](plan/desktop-rewrite.md) | English handoff: product intent, library/format choices, platform constraints, and implementation gates |
+| [V2 wiki worker demo plan](plan/wiki-worker-demo.md) | Agreed demo scope: main-owned source discovery, durable queue, OS service, Codex CLI, and default skill |
 
 Use the [project README](../README.md) for package entry points and the
 [root agent guide](../agents.md) for work rules. The
