@@ -128,6 +128,11 @@ source 상태와 job 상태는 분리한다. 예전 버전으로 생성된 wiki�
 처리 중이면 ‘최신화 완료’로 표시하지 않는다. 폴더 접근 실패나 원본 삭제는 별도로
 표시하고 기존 wiki·원본 snapshot을 자동 삭제하지 않는다.
 
+2026-09-18 보완: 처리 완료와 wiki 연결 여부는 다르다. 연결된 활성 문서가 없는
+source의 `no_change`는 성공 대신 `needs_review`로 남긴다. 기존 버전의 잘못된
+무변경 성공은 이유와 재시도 동작을 노출하며, 재처리 중에는 과거 완료 표시보다
+현재 작업 상태를 우선한다. 관련 기존 문서가 없으면 근거가 충분한 새 주제를 생성한다.
+
 ## 5. Worker 실행과 wiki 갱신
 
 실행 순서는 `snapshot 확인 → 텍스트/구간 추출 → 관련 wiki 탐색 → 변경안 생성 →
@@ -247,6 +252,12 @@ adapter가 번들의 본문·필요 참조를 읽어 매 실행에 공급하고 
 | 출력 계약 | 구조화된 변경안만 제출, 존재하는 citation ID 사용, 부족한 근거는 경고, 임의 HTML·실행 코드·출처 생성 금지 |
 | 중단 기준 | 입력 부족, 추출 실패, 모호한 병합, 한도 초과를 구분하여 종료 |
 | 예시 | 첫 생성, 관련 문서 갱신, 동일 내용 무변경, 상충된 source, 보호된 문서, 악의적인 source 지시 |
+
+HTML/JavaScript 학습 자료의 예시는 Markdown inline/fenced code 안에 보존할 수 있다.
+코드 예제 밖의 raw HTML과 위험한 URL·원격 이미지는 Markdown 구문으로 구분해
+거부하며, reader의 raw HTML 비활성화와 URL 정제도 유지한다.
+출력 schema에는 해당 attempt의 source/version ID를 열거해 ID 복사 오류를 줄인다.
+실제 읽기 여부와 source/version/segment 조합은 서비스가 별도로 검증한다.
 
 skill version/hash와 적용된 도구 계약 버전을 job attempt에 기록한다. skill 변경 후
 실패 작업을 다시 실행할 때 새 버전 사용을 명시한다. default skill 갱신이 기존 wiki의

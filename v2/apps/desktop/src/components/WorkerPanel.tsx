@@ -178,6 +178,24 @@ export function WorkerPanel({
                   Source version {j.versionId.slice(0, 8)} · Next eligible {date(j.nextRun)}
                 </small>
                 {j.error && <p>{j.error}</p>}
+                {j.result && (
+                  <div>
+                    <small>
+                      Result:{' '}
+                      {j.result.outcome === 'no_change'
+                        ? 'No changes'
+                        : j.result.outcome === 'needs_review'
+                          ? 'Needs review'
+                          : j.status === 'succeeded'
+                            ? 'Wiki updated'
+                            : 'Changes proposed'}
+                    </small>
+                    <p>{j.result.summary}</p>
+                    {j.result.warnings.map((warning, index) => (
+                      <p key={index}>{warning}</p>
+                    ))}
+                  </div>
+                )}
                 {j.successorId && <small>Replaced by job {j.successorId.slice(0, 8)}</small>}
               </div>
               {['queued', 'running', 'retry_wait'].includes(j.status) ? (
@@ -189,7 +207,15 @@ export function WorkerPanel({
                 >
                   Cancel
                 </Button>
-              ) : ['failed', 'needs_review'].includes(j.status) ? (
+              ) : ['failed', 'needs_review'].includes(j.status) ||
+                (j.status === 'succeeded' &&
+                  j.result?.outcome === 'no_change' &&
+                  snapshot.sources.some(
+                    (s) =>
+                      s.id === j.sourceId &&
+                      s.latestVersionId === j.versionId &&
+                      !s.documentIds.length,
+                  )) ? (
                 <Button
                   disabled={busy || !worker.connected}
                   variant="ghost"

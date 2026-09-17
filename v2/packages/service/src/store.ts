@@ -23,7 +23,7 @@ import {
   localDay,
   nextDay,
 } from './common.js';
-import { extract } from './markdown.js';
+import { extract, validateWikiMarkdown } from './markdown.js';
 
 export interface SourceRow {
   id: string;
@@ -301,7 +301,12 @@ export class Store {
         jobId = this.enqueue(sourceId, source.latest),
         j = this.job(jobId);
       requireThat(j.status !== 'running', 'BUSY', 'This source is already running.');
-      requireThat(j.status !== 'succeeded', 'DONE', 'This version is already processed.');
+      requireThat(
+        j.status !== 'succeeded' ||
+          (this.jobResult(j.id)?.outcome === 'no_change' && !this.hasActiveWiki(sourceId)),
+        'DONE',
+        'This version is already processed.',
+      );
       this.db
         .prepare(
           "UPDATE jobs SET status='queued',stage='manual retry',attempts=0,cancel=0,error=NULL,next_run=? WHERE id=?",
@@ -312,6 +317,18 @@ export class Store {
         .run(now(), jobId);
       this.event('Retry requested', source.filename);
     })();
+  }
+  jobResult(jobId: string): JobInfo['result'] {
+    const row = this.one<{ result: string | null }>(
+      'SELECT result FROM attempts WHERE job_id=? ORDER BY rowid DESC LIMIT 1',
+      jobId,
+    );
+    if (!row?.result) return undefined;
+    const { outcome, summary, warnings } = JSON.parse(row.result) as Proposal;
+    return { outcome, summary, warnings };
+  }
+  hasActiveWiki(sourceId: string) {
+    return this.documents().some((d) => !d.deletedAt && d.sourceIds.includes(sourceId));
   }
   cancel(id: string) {
     const j = this.job(id);
@@ -589,11 +606,7 @@ export class Store {
     );
     const touched = new Set<string>();
     for (const op of proposal.operations) {
-      requireThat(
-        !/<\/?[A-Za-z][^>]*>|!\[[^\]]*\]\((?:https?:|data:)|javascript:/i.test(op.body),
-        'FORMAT',
-        'Worker output contains disallowed markup.',
-      );
+      validateWikiMarkdown(op.body);
       requireThat(op.citations.length > 0, 'EVIDENCE', 'Each change needs source evidence.');
       for (const c of op.citations) {
         const s = manifest.sources.find((s) => s.id === c.versionId && s.sourceId === c.sourceId);
@@ -668,6 +681,17 @@ export class Store {
           'Supporting evidence changed during generation.',
         );
       this.validateProposal(proposal, manifest);
+      if (proposal.outcome === 'no_change' && !this.hasActiveWiki(j.source_id)) {
+        proposal = {
+          ...proposal,
+          outcome: 'needs_review',
+          summary:
+            `No wiki is linked to this source. Retry or review why no topic was created. ${proposal.summary}`.slice(
+              0,
+              3000,
+            ),
+        };
+      }
       const protectedTarget = proposal.operations.some(
         (o) => o.documentId && this.document(o.documentId).protected,
       );
@@ -694,7 +718,7 @@ export class Store {
           )
           .run(protectedTarget ? 'Protected document requires review' : proposal.summary, j.id);
         this.event('Wiki proposal ready', proposal.summary);
-        return;
+        return proposal;
       }
       this.commitOperations(proposal, false);
       this.db.prepare('INSERT INTO applications VALUES (?,?)').run(applicationId, j.id);
@@ -705,6 +729,7 @@ export class Store {
         .run(j.id);
       this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
       this.event('Wiki worker completed', proposal.summary);
+      return proposal;
     })();
   }
   commitOperations(proposal: Proposal, human: boolean) {
@@ -790,13 +815,15 @@ export class Store {
         type: 'md',
         size: readFileSync(join(this.dir, 'blobs', v.hash)).length,
         status:
-          s.processed === s.latest
-            ? 'ready'
-            : job?.status === 'running'
-              ? 'extracting'
+          job?.status === 'running'
+            ? 'extracting'
+            : job && ['queued', 'retry_wait'].includes(job.status)
+              ? 'queued'
               : job && ['failed', 'needs_review', 'cancelled'].includes(job.status)
                 ? 'failed'
-                : 'queued',
+                : s.processed === s.latest
+                  ? 'ready'
+                  : 'queued',
         addedAt: s.added_at,
         excerpt: v.segments
           .map((s) => s.text)
@@ -858,6 +885,7 @@ export class Store {
           error: j.error,
           createdAt: j.created_at,
           successorId: j.successor,
+          result: this.jobResult(j.id),
         })),
         proposals: this.all<{ id: string; job_id: string; data: string; created_at: string }>(
           'SELECT * FROM proposals WHERE resolved_at IS NULL',

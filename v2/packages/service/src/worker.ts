@@ -5,7 +5,15 @@ import { join, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { CLI_VERSION, MODEL, proposalSchema, type Proposal } from '@knoter/contracts/native';
+import {
+  CLI_VERSION,
+  MODEL,
+  proposalSchema,
+  operationSchema,
+  citationSchema,
+  type Proposal,
+  type EvidenceVersion,
+} from '@knoter/contracts/native';
 import { Store, type JobRow, type FrozenManifest } from './store.js';
 import { AppError, now, uuid, secureDir, requireThat } from './common.js';
 const exec = promisify(execFile);
@@ -107,6 +115,19 @@ export async function checkCli(path: string): Promise<CliInfo> {
     };
   }
 }
+export function proposalSchemaForSources(sources: EvidenceVersion[]) {
+  requireThat(sources.length > 0, 'EVIDENCE', 'A worker attempt needs source evidence.');
+  // Constrain identifier spelling at generation time; pair, segment, and read
+  // validation still run against the frozen manifest before any write.
+  const citation = citationSchema.extend({
+    sourceId: z.enum(sources.map((source) => source.sourceId)),
+    versionId: z.enum(sources.map((source) => source.id)),
+  });
+  return proposalSchema.extend({
+    operations: z.array(operationSchema.extend({ citations: z.array(citation).max(300) })).max(12),
+  });
+}
+
 export function workerArgs(input: {
   cwd: string;
   schema: string;
@@ -278,7 +299,11 @@ export class Worker {
     secureDir(cwd);
     const schema = join(cwd, 'proposal.schema.json'),
       output = join(cwd, 'proposal.json');
-    writeFileSync(schema, JSON.stringify(z.toJSONSchema(proposalSchema)), { mode: 0o600 });
+    writeFileSync(
+      schema,
+      JSON.stringify(z.toJSONSchema(proposalSchemaForSources(manifest.sources))),
+      { mode: 0o600 },
+    );
     const capability = randomBytes(32).toString('hex');
     if (!this.store.startAttempt(job)) return;
     this.store.db
@@ -448,10 +473,10 @@ export class Worker {
             'Worker skipped a dependent wiki document.',
           );
       this.store.stage(job, 'validating');
-      this.store.apply(job, manifest, proposal, attemptId);
+      const applied = this.store.apply(job, manifest, proposal, attemptId);
       this.store.db
         .prepare('UPDATE attempts SET result=? WHERE id=?')
-        .run(JSON.stringify(proposal), attemptId);
+        .run(JSON.stringify(applied ?? proposal), attemptId);
     } catch (e) {
       this.store.db
         .prepare('UPDATE attempts SET error=? WHERE id=?')

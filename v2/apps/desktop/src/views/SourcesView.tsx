@@ -44,10 +44,25 @@ export function SourcesView({
   ).length;
   const needsReview = new Set(
     snapshot.sources
-      .filter((source) =>
-        snapshot.worker?.jobs.some(
-          (job) => job.versionId === source.latestVersionId && job.status === 'needs_review',
-        ),
+      .filter(
+        (source) =>
+          snapshot.worker?.jobs.find((job) => job.versionId === source.latestVersionId)?.status ===
+          'needs_review',
+      )
+      .map((source) => source.id),
+  );
+  const noWiki = new Set(
+    snapshot.sources
+      .filter((source) => source.status === 'ready' && !source.documentIds.length)
+      .map((source) => source.id),
+  );
+  const retryNoChange = new Set(
+    snapshot.sources
+      .filter(
+        (source) =>
+          noWiki.has(source.id) &&
+          snapshot.worker?.jobs.find((job) => job.versionId === source.latestVersionId)?.result
+            ?.outcome === 'no_change',
       )
       .map((source) => source.id),
   );
@@ -164,10 +179,12 @@ export function SourcesView({
                 </small>
               </span>
             </button>
-            <span className={`status-badge status-${source.status}`}>
-              {source.status === 'ready' ? (
+            <span
+              className={`status-badge status-${noWiki.has(source.id) ? 'failed' : source.status}`}
+            >
+              {source.status === 'ready' && !noWiki.has(source.id) ? (
                 <Check size={11} />
-              ) : source.status === 'failed' ? (
+              ) : source.status === 'failed' || noWiki.has(source.id) ? (
                 <RefreshCw size={11} />
               ) : (
                 <Loader2 size={11} className="spin" />
@@ -175,17 +192,21 @@ export function SourcesView({
               {needsReview.has(source.id)
                 ? 'Needs review'
                 : source.status === 'ready'
-                  ? 'Connected'
+                  ? noWiki.has(source.id)
+                    ? 'No linked wiki'
+                    : 'Connected'
                   : source.status === 'extracting'
                     ? 'Processing'
                     : source.status === 'queued'
                       ? 'Queued'
                       : 'Needs retry'}
             </span>
-            {source.status === 'failed' && !needsReview.has(source.id) ? (
+            {(source.status === 'failed' && !needsReview.has(source.id)) ||
+            retryNoChange.has(source.id) ? (
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={client.mode === 'connected' && !snapshot.worker?.connected}
                 onClick={() => void run(() => client.retrySource(source.id))}
               >
                 Retry

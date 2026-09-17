@@ -172,6 +172,7 @@ export interface JobInfo {
   error: string | null;
   createdAt: string;
   successorId: string | null;
+  result?: Pick<Proposal, 'outcome' | 'summary' | 'warnings'>;
 }
 export interface WatchInfo {
   id: string;

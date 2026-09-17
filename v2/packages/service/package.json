@@ -10,6 +10,7 @@
   "dependencies": {
     "@knoter/contracts": "0.1.0",
     "better-sqlite3": "12.6.2",
+    "mdast-util-from-markdown": "2.0.3",
     "zod": "4.3.6"
   },
   "devDependencies": {

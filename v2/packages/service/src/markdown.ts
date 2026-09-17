@@ -1,5 +1,49 @@
 import type { Segment } from '@knoter/contracts/native';
+import { fromMarkdown } from 'mdast-util-from-markdown';
 import { requireThat } from './common.js';
+
+export function validateWikiMarkdown(body: string) {
+  const root = fromMarkdown(body);
+  type Node = typeof root | (typeof root.children)[number];
+  const definitions = new Map<string, string>();
+  const collect = (node: Node) => {
+    if (node.type === 'definition' && !definitions.has(node.identifier))
+      definitions.set(node.identifier, node.url);
+    if ('children' in node) node.children.forEach(collect);
+  };
+  collect(root);
+  const visit = (node: Node) => {
+    requireThat(
+      node.type !== 'html',
+      'FORMAT',
+      'Worker output contains raw HTML outside a code example.',
+    );
+    // Code and inlineCode are leaf nodes: their contents are inert examples.
+    const url =
+      'url' in node
+        ? node.url
+        : 'identifier' in node
+          ? definitions.get(node.identifier)
+          : undefined;
+    if (url) {
+      const normalized = url.replace(/[\u0000-\u0020\u007f]/g, '');
+      requireThat(
+        !/^(javascript|vbscript|data):/i.test(normalized),
+        'FORMAT',
+        'Worker output contains an unsafe URL.',
+      );
+      if (node.type === 'image' || node.type === 'imageReference')
+        requireThat(
+          !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(normalized),
+          'FORMAT',
+          'Worker output contains a remote image.',
+        );
+    }
+    if ('children' in node) node.children.forEach(visit);
+  };
+  visit(root);
+}
+
 export function extract(bytes: Buffer): Segment[] {
   let decoded: string;
   try {
