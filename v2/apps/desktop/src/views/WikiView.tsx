@@ -24,7 +24,9 @@ import { Button } from '../components/ui/button';
 import { Markdown } from '../components/Markdown';
 import { DocIcon, relativeTime } from '../components/helpers';
 import { Dialog } from '../components/ui/dialog';
-import { documentHref, documentMarkdownLink, type WikiLinks } from '../wiki/links';
+import { documentHref, documentMarkdownLink, resolveDocument, type WikiLinks } from '../wiki/links';
+import { documentSections } from '../wiki/structure';
+import { OfficialReferences } from '../components/OfficialReferences';
 import { DocumentContextMenu, DocumentMenuButton } from '../components/DocumentMenu';
 
 const Editor = lazy(() => import('../components/Editor'));
@@ -174,6 +176,16 @@ export function WikiDocumentView({
   const editor = useRef<EditorHandle>(null);
   const [linkPicker, setLinkPicker] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
+  const articleContent = useRef<HTMLDivElement>(null);
+  const path = doc.title.split('/');
+  const ancestors = path
+    .slice(0, -1)
+    .map((_part, index) => resolveDocument(path.slice(0, index + 1).join('/'), snapshot.documents))
+    .filter((d): d is WikiDocument => !!d);
+  const children = snapshot.documents.filter(
+    (d) => d.title.startsWith(`${doc.title}/`) && d.title.split('/').length === path.length + 1,
+  );
+  const sections = documentSections(doc.body);
   const [linkQuery, setLinkQuery] = useState('');
   const sources = snapshot.sources.filter((s) => doc.sourceIds.includes(s.id));
   const related = snapshot.documents.filter((d) => doc.relatedIds.includes(d.id));
@@ -274,6 +286,19 @@ export function WikiDocumentView({
           <div className="article-icon">
             <DocIcon doc={doc} size={27} />
           </div>
+          {!editing && ancestors.length > 0 && (
+            <nav className="wiki-hierarchy" aria-label="Document hierarchy">
+              {ancestors.map((parent) => (
+                <span key={parent.id}>
+                  <button onClick={() => onOpen(parent.id)}>
+                    {parent.title.split('/').at(-1)}
+                  </button>
+                  <ChevronRight size={12} />
+                </span>
+              ))}
+              <span>{path.at(-1)}</span>
+            </nav>
+          )}
           {editing ? (
             <input
               className="title-editor"
@@ -355,9 +380,41 @@ export function WikiDocumentView({
                   </span>
                 )}
               </div>
-              <Markdown onSource={onSource} onOpen={onOpen} documents={snapshot.documents}>
-                {doc.body}
-              </Markdown>
+              {children.length > 0 && (
+                <nav className="wiki-child-pages" aria-label="Subtopic documents">
+                  <strong>Subtopics</strong>
+                  {children.map((child) => (
+                    <button key={child.id} onClick={() => onOpen(child.id)}>
+                      {child.title.split('/').at(-1)}
+                      <ChevronRight size={13} />
+                    </button>
+                  ))}
+                </nav>
+              )}
+              {sections.length > 1 && (
+                <nav className="wiki-outline" aria-label="On this page">
+                  <strong>On this page</strong>
+                  {sections.map((section) => (
+                    <button
+                      key={section.id}
+                      className={section.depth === 3 ? 'outline-detail' : ''}
+                      onClick={() =>
+                        articleContent.current
+                          ?.querySelector(`#${section.id}`)
+                          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }
+                    >
+                      {section.label}
+                    </button>
+                  ))}
+                </nav>
+              )}
+              <div ref={articleContent}>
+                <Markdown onSource={onSource} onOpen={onOpen} documents={snapshot.documents}>
+                  {doc.body}
+                </Markdown>
+              </div>
+              <OfficialReferences key={doc.id} doc={doc} client={client} run={run} />
               <section className="wiki-connections">
                 <div className="section-heading">
                   <h2>Connected knowledge</h2>

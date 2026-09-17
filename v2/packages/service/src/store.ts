@@ -12,6 +12,7 @@ import {
   type Proposal,
   type Citation,
   type WatchInfo,
+  type ReferenceEvidence,
 } from '@knoter/contracts/native';
 import {
   atomicWrite,
@@ -23,7 +24,7 @@ import {
   localDay,
   nextDay,
 } from './common.js';
-import { extract, validateWikiMarkdown } from './markdown.js';
+import { extract, validateWikiMarkdown, resolveWikiLinks } from './markdown.js';
 
 export interface SourceRow {
   id: string;
@@ -54,6 +55,7 @@ export interface JobRow {
   skill_hash: string;
 }
 export interface FrozenManifest {
+  references?: ReferenceEvidence[];
   workspaceId: string;
   jobId: string;
   generation: number;
@@ -144,6 +146,14 @@ export class Store {
   }
   set(key: string, value: unknown) {
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run(key, JSON.stringify(value));
+  }
+  reference(id: string): ReferenceEvidence {
+    const row = this.one<{ value: string }>(
+      'SELECT value FROM settings WHERE key=?',
+      `reference:${id}`,
+    );
+    requireThat(row, 'NOT_FOUND', 'Official reference snapshot not found.');
+    return JSON.parse(row.value);
   }
   event(title: string, detail: string, documentId?: string) {
     this.db.prepare('INSERT INTO events(data) VALUES (?)').run(
@@ -482,6 +492,7 @@ export class Store {
       createdAt: doc.updatedAt,
       author,
       summary,
+      references: doc.references,
     };
     this.db
       .prepare(
@@ -584,6 +595,7 @@ export class Store {
           ...d,
           title: r.title,
           body: r.body,
+          references: r.references,
           sourceIds: [...new Set(citations.map((c) => c.sourceId))],
           protected: true,
           revision: d.revision + 1,
@@ -605,8 +617,36 @@ export class Store {
       'Proposal outcome and operations disagree.',
     );
     const touched = new Set<string>();
+    const targets = [
+      ...this.documents().filter((d) => !proposal.operations.some((o) => o.documentId === d.id)),
+      ...proposal.operations.map((o) => ({ id: o.documentId ?? `new:${o.title}`, title: o.title })),
+    ];
     for (const op of proposal.operations) {
+      if (op.title.includes('/')) {
+        const parent = op.title.slice(0, op.title.lastIndexOf('/'));
+        requireThat(
+          targets.some((d) => d.title === parent && !('deletedAt' in d && d.deletedAt)),
+          'EVIDENCE',
+          `Subtopic ${op.title} needs an active or proposed parent titled ${parent}. Rename an unprotected summary hub when appropriate.`,
+        );
+      }
       validateWikiMarkdown(op.body);
+      resolveWikiLinks(op.body, targets);
+      for (const c of op.referenceCitations ?? []) {
+        const reference = manifest.references?.find(
+          (r) => r.path.toLowerCase() === c.path.toLowerCase(),
+        );
+        requireThat(
+          reference && reference.segments.some((s) => s.id === c.segmentId),
+          'EVIDENCE',
+          'Official citation was not read in this attempt.',
+        );
+        requireThat(
+          op.body.includes(reference.url),
+          'EVIDENCE',
+          'Supplemented knowledge needs a visible official reference link.',
+        );
+      }
       requireThat(op.citations.length > 0, 'EVIDENCE', 'Each change needs source evidence.');
       for (const c of op.citations) {
         const s = manifest.sources.find((s) => s.id === c.versionId && s.sourceId === c.sourceId);
@@ -720,7 +760,7 @@ export class Store {
         this.event('Wiki proposal ready', proposal.summary);
         return proposal;
       }
-      this.commitOperations(proposal, false);
+      this.commitOperations(proposal, false, manifest);
       this.db.prepare('INSERT INTO applications VALUES (?,?)').run(applicationId, j.id);
       this.db
         .prepare(
@@ -732,14 +772,32 @@ export class Store {
       return proposal;
     })();
   }
-  commitOperations(proposal: Proposal, human: boolean) {
-    for (const op of proposal.operations) {
+  commitOperations(proposal: Proposal, human: boolean, manifest: FrozenManifest) {
+    const operations = proposal.operations.map((op) => ({
+      ...op,
+      assignedId: op.documentId ?? uuid(),
+    }));
+    const targets = [
+      ...this.documents().filter((d) => !operations.some((o) => o.documentId === d.id)),
+      ...operations.map((o) => ({ id: o.assignedId, title: o.title })),
+    ];
+    for (const op of operations) {
       const old = op.documentId ? this.document(op.documentId) : undefined;
       const sourceIds = [...new Set(op.citations.map((c) => c.sourceId))];
       const doc: WikiDocument = {
-        id: old?.id ?? uuid(),
+        id: op.assignedId,
         title: op.title,
-        body: op.body,
+        body: resolveWikiLinks(op.body, targets),
+        references: (manifest.references ?? []).flatMap(({ segments: _segments, ...reference }) => {
+          const segmentIds = [
+            ...new Set(
+              (op.referenceCitations ?? [])
+                .filter((c) => c.path.toLowerCase() === reference.path.toLowerCase())
+                .map((c) => c.segmentId),
+            ),
+          ];
+          return segmentIds.length ? [{ ...reference, segmentIds }] : [];
+        }),
         description: op.description,
         category: op.category,
         icon: old?.icon ?? 'book',
@@ -783,7 +841,7 @@ export class Store {
             'Proposal evidence is stale.',
           );
         this.validateProposal(proposal, manifest);
-        this.commitOperations(proposal, true);
+        this.commitOperations(proposal, true, manifest);
         this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
       }
       this.db.prepare('UPDATE proposals SET resolved_at=? WHERE id=?').run(now(), id);

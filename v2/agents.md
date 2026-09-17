@@ -28,7 +28,10 @@ outside this demo.
   change notifications are debounced; retain a separate unload guard.
 - Preserve validated wire messages, cancellation/lease fencing, immutable source
   versions, revision citations, and migration compatibility when changing the
-  service. Do not grant the model shell, web, filesystem, or DB mutation tools.
+  service. Do not grant the model shell, arbitrary web, filesystem, or DB mutation
+  tools. For the user's 2026-09-18 reference-wiki requirement, the service may
+  fetch official MDN documentation through bounded `reference_read`; retain the
+  fetched evidence and keep original-source and supplemental citations distinct.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
 

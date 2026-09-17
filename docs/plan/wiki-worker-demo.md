@@ -47,6 +47,8 @@ V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다
 | D8 | wiki 기본 언어 | 한국어. 원문 인용과 고유명사는 유지 | 사용자 확정 |
 | D9 | 초기 실행 한도 | 실행당 5분, 자동 재시도 최대 2회, 하루 모델 실행 20회 | 사용자 확정 |
 | D10 | 시연 OS 등록 방식 | 이 Mac에 Apple 서명 identity가 없어 SMAppService 실행이 거부됨. 이번 시연은 명시적으로 표시한 사용자 local LaunchAgent를 사용. 출시용 SMAppService 서명은 후속 범위 | 2026-09-17 사용자 확정 |
+| D11 | 참고용 wiki 작성 | source 요약 대신 정보를 찾아볼 수 있는 상위/하위 주제 문서와 Markdown 항목으로 구성. 예: HTML → HTML/attribute, HTML/element; attribute 안에는 href, src 항목 | 2026-09-18 사용자 확정 |
+| D12 | 부족한 정보 보충 | 모델 기억으로 채우지 않고 공식 문서를 확인한 뒤 출처를 표시. 현재 시연의 공식 자료 provider는 MDN Web Docs이며, 미지원 주제/확인 실패는 한계를 명시 | 2026-09-18 공식 문서 검증 방식 사용자 확정; MDN은 현재 시연 구현 범위 |
 
 비밀 값은 계획 문서에 저장하지 않는다.
 문서 분할은 기존 주제 문서를 먼저 찾고, 독립된 새 주제와 충분한 근거가 있을 때만
@@ -135,6 +137,22 @@ source의 `no_change`는 성공 대신 `needs_review`로 남긴다. 기존 버�
 
 ## 5. Worker 실행과 wiki 갱신
 
+D11에 따라 source는 범위와 개인 지식의 출발점이며 압축 요약 대상이 아니다.
+상위 문서는 개념·구분·읽기 경로를 제공하고, 독립적으로 찾아볼 하위 주제는
+`HTML/attribute` 같은 문서로, 세부 개념은 `## href` 같은 본문 항목으로 묶는다.
+항목마다 용도, 적용 대상, 문법/값, 예제와 주의점을 필요한 깊이로 설명한다.
+이미 생성된 얕은 요약은 같은 ID의 상위 문서로 개편한다. 새 문서 간 제목 링크는
+동일 transaction에서 UUID 링크로 고정해 양방향 이동을 유지한다.
+
+D12의 공식 보충은 서비스의 `reference_read`를 통해 MDN 공식 content 저장소만
+읽는다. 임의 URL·query·redirect·credential·source 본문 전송은 허용하지 않는다.
+attempt당 8개 문서, 문서당 256 KiB, fetch당 15초로 제한하고, 처음 읽은 자료를
+그 attempt 안에서 재사용한다. source/wiki 입력은 고정하며, 추가로 읽은 공식
+자료의 URL·조회 시각·hash·구간을 attempt manifest에 기록한다. revision에는
+실제로 읽은 공식 구간의 별도 citation을 붙이고 보충 설명 옆에 링크를 표시한다.
+공식 자료 snapshot은 DB와 함께 backup/restore하며, 사용자 원본 citation으로
+보충 설명을 위장하지 않는다. 원본 source 목록에 공식 자료를 섞어 재처리하지 않는다.
+
 실행 순서는 `snapshot 확인 → 텍스트/구간 추출 → 관련 wiki 탐색 → 변경안 생성 →
 검증 → 원자적 반영 → 검색 projection/변경 이벤트 갱신`이다.
 
@@ -145,7 +163,8 @@ source의 `no_change`는 성공 대신 `needs_review`로 남긴다. 기존 버�
   갱신 대상을 찾는다. 초기 시연에서 임베딩은 필수가 아니며 키워드 검색의 한계를
   표시한다. 한국어·영어 소규모 corpus에서 주제별 문서 선택과 통합을 확인한다.
 - 각 실행은 고정된 source version과 wiki revision을 입력으로 사용한다. worker의
-  도구는 해당 workspace의 근거 읽기와 wiki 검색·읽기로 제한하고 최종 응답으로 변경안을 제출한다.
+  도구는 해당 workspace의 근거·wiki 읽기와 D12의 공식 자료 읽기로 제한하고
+  최종 응답으로 변경안을 제출한다.
 - 변경안은 허용된 생성·본문 교체 연산, 대상 ID, 예상 revision, source version과
   구간 citation, 변경 이유를 담는다. 기존 문서의 stable ID와 wiki 링크를 유지한다.
 - 서비스는 schema, 크기, 허용 연산, 존재하는 근거, workspace 범위, 현재 revision,
@@ -200,9 +219,10 @@ AI SDK adapter는 이번 시연에 추가하지 않는다. Electron main이 CLI�
    셸 명령 문자열에 삽입하지 않는다. 프로세스 ID·CLI 버전·model·skill hash를 남긴다.
 4. `--sandbox read-only`와 worker 전용 실행 설정을 적용한다. `--ignore-user-config`는
    기존 인증을 사용하면서 개인 config가 실행에 섞이지 않게 하는 후보이며 B0에서 검증한다.
-   셸·명령 실행·웹 검색·불필요한 플러그인/도구·hook은 비활성화하고, 사용자 정책을
+   셸·명령 실행·임의 웹 검색·불필요한 플러그인/도구·hook은 비활성화하고, D12의
+   제한된 공식 문서 읽기만 추가한다. 사용자 정책을
    완화하지 않는다. read-only만으로 읽기 범위가 제한된다고 가정하지 않는다.
-5. source 구간 읽기와 wiki 검색·읽기는 앱의 job 한정 capability를 가진 stdio MCP
+5. source 구간·wiki 검색·공식 자료 읽기는 앱의 job 한정 capability를 가진 stdio MCP
    bridge로 제공하는 안을 사용한다. bridge는 Unix socket으로 서비스에 연결하고
    workspace·attempt·허용 source 버전·lease를 매 요청 검증한다. DB 쓰기 도구는
    제공하지 않는다. 최종 변경안만 서비스가 받아 검증·저장한다.

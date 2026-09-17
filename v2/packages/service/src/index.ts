@@ -94,6 +94,8 @@ async function dispatch(command: Command, payload: unknown) {
     }
     case 'sourceVersion':
       return store.version(commands.sourceVersion.parse(input).id);
+    case 'referenceVersion':
+      return store.reference(commands.referenceVersion.parse(input).id);
     case 'events':
       return store.all(
         'SELECT cursor,data FROM events WHERE cursor>? ORDER BY cursor LIMIT 100',
@@ -171,7 +173,7 @@ const server = createServer((client) => {
         requestId = envelope.requestId;
         let result: unknown;
         if (envelope.command === 'workerRead')
-          result = worker.read(envelope.token, envelope.payload);
+          result = await worker.read(envelope.token, envelope.payload);
         else {
           requireThat(sameToken(envelope.token), 'AUTH', 'Service handshake failed.');
           requireThat(Object.hasOwn(commands, envelope.command), 'COMMAND', 'Unknown command.');

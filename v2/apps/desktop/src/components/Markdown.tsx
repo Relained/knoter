@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import type { WikiDocument } from '@knoter/contracts';
 import { documentHref, internalTarget, remarkWikiLinks, resolveDocument } from '../wiki/links';
 import { DocumentContextMenu } from './DocumentMenu';
+import { remarkSectionIds } from '../wiki/structure';
 
 export function Markdown({
   children,
@@ -20,7 +21,7 @@ export function Markdown({
   return (
     <div className={`markdown ${compact ? 'markdown-compact' : ''}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkWikiLinks]}
+        remarkPlugins={[remarkGfm, remarkWikiLinks, remarkSectionIds]}
         skipHtml
         urlTransform={(url) =>
           /^source:[a-f0-9-]{36}$/i.test(url) ? `#source-${url.slice(7)}` : defaultUrlTransform(url)

@@ -2,6 +2,68 @@ import type { Segment } from '@knoter/contracts/native';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { requireThat } from './common.js';
 
+export function resolveWikiLinks(body: string, documents: { id: string; title: string }[]) {
+  const root = fromMarkdown(body),
+    edits: { start: number; end: number; text: string }[] = [];
+  type Node = typeof root | (typeof root.children)[number];
+  const normalize = (text: string) => text.normalize('NFKC').trim().toLowerCase();
+  const visit = (node: Node) => {
+    if (node.type === 'link' && node.position) {
+      let target = node.url;
+      if (target.startsWith('#/wiki/')) {
+        try {
+          target = decodeURIComponent(target.slice(7));
+        } catch {
+          return;
+        }
+      }
+      const matches = documents.filter(
+        (doc) => doc.id === target || normalize(doc.title) === normalize(target),
+      );
+      if (matches.length === 1) {
+        const start = node.position.start.offset!,
+          end = node.position.end.offset!;
+        const raw = body.slice(start, end),
+          closingLabel = raw.lastIndexOf('](');
+        if (closingLabel >= 0)
+          edits.push({
+            start,
+            end,
+            text: `${raw.slice(0, closingLabel + 1)}(#/wiki/${matches[0].id})`,
+          });
+      }
+      return;
+    }
+    if (
+      ['code', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference'].includes(node.type)
+    )
+      return;
+    if (node.type === 'text' && node.position) {
+      const start = node.position.start.offset!,
+        end = node.position.end.offset!;
+      const raw = body.slice(start, end);
+      const text = raw.replace(/(?<!\\)\[\[([^\]\n]+)\]\]/g, (_all, inner: string) => {
+        const [target, ...labels] = inner.split('|');
+        const matches = documents.filter(
+          (doc) => doc.id === target.trim() || normalize(doc.title) === normalize(target),
+        );
+        requireThat(
+          matches.length === 1,
+          'EVIDENCE',
+          `Wiki link must name one active or proposed document: ${target}`,
+        );
+        return `[[${matches[0].id}|${labels.join('|').trim() || matches[0].title}]]`;
+      });
+      if (text !== raw) edits.push({ start, end, text });
+    }
+    if ('children' in node) node.children.forEach(visit);
+  };
+  visit(root);
+  for (const edit of edits.sort((a, b) => b.start - a.start))
+    body = body.slice(0, edit.start) + edit.text + body.slice(edit.end);
+  return body;
+}
+
 export function validateWikiMarkdown(body: string) {
   const root = fromMarkdown(body);
   type Node = typeof root | (typeof root.children)[number];

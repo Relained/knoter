@@ -49,6 +49,22 @@ app completely, replace it, reopen it, and enable the service again.
    made to files while the UI is closed are discovered after reopening. **Pause
    queue** keeps the service available for editing; **Disable service** stops it.
 
+The worker writes reference articles with topic hubs and subtopics, such as `HTML`,
+`HTML/attribute`, and `HTML/element`. Use **Subtopics**, parent breadcrumbs, and
+**On this page** to find entries such as `href` or `src`. Existing IDs and revisions
+are retained when a summary is expanded into a reference article. Hierarchy labels
+come from slash-separated titles; renaming a parent does not rename child titles,
+while the stored UUID links remain stable.
+
+For incomplete web-development notes, the demo can read official **MDN Web Docs**
+from MDN's public content repository. It checks up to eight pages per attempt,
+without sending source text to that repository. This is the current reference
+provider, not a general web-search feature. Unsupported subjects or inaccessible
+references are flagged rather than filled from model memory. **Official references**
+separates supplemental evidence from your original notes; expand a reference and
+choose **Inspect cited passages** to read the exact stored snapshot. Its URL,
+retrieval date, hash, and attribution survive revisions and full backup/restore.
+
 The user approved a **local LaunchAgent for this demo** after SMAppService rejected
 the unsigned helper. Registration creates only
 `~/Library/LaunchAgents/com.knoter.wiki-demo.worker.plist`, pointing to the installed
@@ -94,6 +110,8 @@ but semantic accuracy and useful topic boundaries still require human review.
 | 2026-09-17 — inline model citations lost their target                    | The Markdown reader stripped the worker's `source:` URI. It now maps only UUID source targets to the existing internal citation button while retaining the default URL sanitizer for all other links.                                                                                                                               |
 | 2026-09-18 — HTML learning source produced no wiki                       | Two real proposals were rejected because a regex treated inline HTML tag examples as executable markup. A later unrelated-topic `no_change` was accepted and shown as Connected with zero notes. Markdown syntax validation now permits inert code examples; the skill requires supported new topics, unlinked no-change results require review, and Jobs exposes result reasons and retry. Previously rejected proposals were checked against their frozen evidence in a disposable backup copy; arbitrary model topic quality remains a review concern. |
 | 2026-09-18 — generated citation combined two UUIDs                      | A real retry proposed the HTML topic but mixed a source ID into its final version ID. The read-evidence guard rejected it. Each attempt's output schema now enumerates its frozen source/version IDs; pair, segment, and actual-read validation remain mandatory before applying a result. |
+| 2026-09-18 — generated wiki compressed the source into a summary         | The earlier skill required concise source-only prose, so the HTML wiki lost lookup detail and had no topic hierarchy. The user requested reference articles and verified official supplements. The new contract uses topic/subtopic links, lookup headings, and separately stored official citations. MDN macros are unexpanded in its source repository; the worker must read concrete reference pages and must not infer missing macro output. General web research and non-MDN providers remain outside this demo. |
+| 2026-09-18 — first reference rewrite failed attribution validation       | The worker fetched the attributes page but also cited unread element pages, omitted one visible reference link, and kept a parent title inconsistent with child paths. The result was rejected. Parent existence and per-attempt reference checks remain mandatory; retry prompts include the previous validation error. Title links in both wiki and Markdown syntax are normalized to stable IDs. These structural checks do not establish claim-level semantic correctness. |
 | 2026-09-17 — packaging dependency audit                                  | Patched `tar`, `tmp`, and esbuild are pinned. The Forge build chain still reports the unpatched `extract-zip` advisory; only the pinned Electron distribution is unpacked during packaging. The production-dependency audit reports no advisories. This does not certify the packaged runtime or replace a release security review. |
 | 2026-09-17 — recovery coverage boundary                                  | Disposable storage walkthroughs exercised deduplication, stale revisions/leases, cancellation, protected proposals, Trash fencing, daily-limit accounting, and backup/restore. Physical sleep, logoff/reboot, power loss during disk writes, and large-corpus performance are not established by those checks.                      |
 

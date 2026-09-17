@@ -37,6 +37,7 @@ export const commands = {
   runNow: nil,
   resolveProposal: z.object({ id, accept: z.boolean() }).strict(),
   sourceVersion: z.object({ id }).strict(),
+  referenceVersion: z.object({ id }).strict(),
   events: z.object({ cursor: z.number().int().nonnegative() }).strict(),
   watches: nil,
   addWatch: z.object({ path: z.string().min(1).max(4096) }).strict(),
@@ -78,6 +79,7 @@ export const rendererCommands = new Set<Command>([
   'runNow',
   'resolveProposal',
   'sourceVersion',
+  'referenceVersion',
   'checkCli',
   'removeWatch',
 ]);
@@ -121,6 +123,12 @@ export const responseSchema = z
 export const citationSchema = z
   .object({ sourceId: id, versionId: id, segmentId: z.string().max(100) })
   .strict();
+export const referenceCitationSchema = z
+  .object({
+    path: z.string().min(1).max(240),
+    segmentId: z.string().min(1).max(100),
+  })
+  .strict();
 export const operationSchema = z
   .object({
     op: z.enum(['create', 'replace']),
@@ -131,6 +139,8 @@ export const operationSchema = z
     description: z.string().max(500),
     category: title,
     citations: z.array(citationSchema).max(300),
+    // Optional when reading pre-reference proposals; required for new worker output.
+    referenceCitations: z.array(referenceCitationSchema).max(200).optional(),
     reason: z.string().min(1).max(2000),
   })
   .strict();
@@ -158,6 +168,20 @@ export interface EvidenceVersion {
   hash: string;
   filename: string;
   segments: Segment[];
+}
+export interface ReferenceEvidence {
+  id: string;
+  path: string;
+  title: string;
+  url: string;
+  contentUrl: string;
+  fetchedAt: string;
+  hash: string;
+  license: string;
+  segments: Segment[];
+}
+export interface ReferenceUse extends Omit<ReferenceEvidence, 'segments'> {
+  segmentIds: string[];
 }
 export type JobStatus =
   'queued' | 'running' | 'retry_wait' | 'needs_review' | 'succeeded' | 'failed' | 'cancelled';

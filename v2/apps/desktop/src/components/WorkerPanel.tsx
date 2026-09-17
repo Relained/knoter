@@ -55,6 +55,10 @@ export function WorkerPanel({
         Only this open app discovers source changes; the service can finish queued snapshots after
         you quit.
       </p>
+      <p className="worker-detail">
+        Reference wiki · linked topics and lookup sections. Official supplements currently use MDN
+        Web Docs; checked passages are saved with each revision.
+      </p>
       {!worker.connected && (
         <p role="status" className="worker-error">
           {worker.error} Your open drafts and last visible results are retained.

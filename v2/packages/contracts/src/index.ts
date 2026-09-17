@@ -1,6 +1,7 @@
 export type View = 'wiki' | 'sources' | 'tasks' | 'calendar' | 'graph';
 export type SourceStatus = 'queued' | 'extracting' | 'ready' | 'failed';
 export interface WikiDocument {
+  references?: import('./native').ReferenceUse[];
   citations?: import('./native').Citation[];
   id: string;
   title: string;
@@ -51,6 +52,7 @@ export interface CalendarEvent {
   description: string;
 }
 export interface Revision {
+  references?: import('./native').ReferenceUse[];
   id: string;
   documentId: string;
   revision: number;
@@ -109,6 +111,7 @@ export interface KnoterClient {
   cancelJob?(id: string): Promise<void>;
   resolveProposal?(id: string, accept: boolean): Promise<void>;
   readSourceVersion?(id: string): Promise<import('./native').EvidenceVersion>;
+  readReferenceVersion?(id: string): Promise<import('./native').ReferenceEvidence>;
   getSnapshot(): Promise<WorkspaceSnapshot>;
   subscribe(listener: () => void): () => void;
   saveDocument(input: {

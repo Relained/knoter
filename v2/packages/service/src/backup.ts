@@ -121,7 +121,10 @@ export function exportWiki(store: Store, path: string) {
     if (!doc.deletedAt)
       atomicWrite(
         join(path, `${doc.id}.md`),
-        `---\nid: ${doc.id}\ntitle: ${JSON.stringify(doc.title)}\nkind: llm-wiki\nschema: 1\nrevision: ${doc.revision}\nsourceIds: ${JSON.stringify(doc.sourceIds)}\n---\n\n# ${doc.title}\n\n${doc.body}\n`,
+        `---\nid: ${doc.id}\ntitle: ${JSON.stringify(doc.title)}\nkind: llm-wiki\nschema: 1\nrevision: ${doc.revision}\nsourceIds: ${JSON.stringify(doc.sourceIds)}\n---\n\n# ${doc.title}\n\n${doc.body}\n` +
+          ((doc.references?.length ?? 0) > 0
+            ? `\n## Official references\n\n${doc.references!.map((r) => `- [${r.title.replace(/[\[\]]/g, '')}](${r.url}) · checked ${r.fetchedAt} · ${r.license} · explanations adapted in Korean ([license](https://creativecommons.org/licenses/by-sa/2.5/)).`).join('\n')}\n`
+            : ''),
       );
   atomicWrite(
     join(path, 'citations.json'),
@@ -129,7 +132,12 @@ export function exportWiki(store: Store, path: string) {
       store
         .documents()
         .filter((d) => !d.deletedAt)
-        .map((d) => ({ documentId: d.id, revision: d.revision, citations: store.citations(d.id) })),
+        .map((d) => ({
+          documentId: d.id,
+          revision: d.revision,
+          citations: store.citations(d.id),
+          references: d.references ?? [],
+        })),
       null,
       2,
     ),
