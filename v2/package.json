@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/app/main.cjs",
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -10,10 +14,19 @@
   "scripts": {
     "dev": "npm run dev --workspace @knoter/desktop",
     "build": "npm run build --workspace @knoter/desktop",
-    "check": "npm run check --workspace @knoter/desktop",
+    "check": "npm run check --workspace @knoter/service && npm run check --workspace @knoter/desktop && node scripts/build-backend.mjs",
+    "desktop": "npm run check && electron .",
+    "service": "node dist/backend/service.mjs",
+    "package:demo": "npm run check && node scripts/prepare-native.mjs && electron-forge package --platform=darwin --arch=arm64",
     "preview": "npm run preview --workspace @knoter/desktop"
   },
+  "overrides": {
+    "tar": "7.5.22",
+    "tmp": "0.2.7"
+  },
   "devDependencies": {
+    "@electron-forge/cli": "7.11.1",
+    "electron": "44.4.1",
     "prettier": "3.9.7"
   }
 }

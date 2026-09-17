@@ -1,6 +1,7 @@
 export type View = 'wiki' | 'sources' | 'tasks' | 'calendar' | 'graph';
 export type SourceStatus = 'queued' | 'extracting' | 'ready' | 'failed';
 export interface WikiDocument {
+  citations?: import('./native').Citation[];
   id: string;
   title: string;
   description: string;
@@ -25,6 +26,12 @@ export interface Source {
   addedAt: string;
   excerpt: string;
   documentIds: string[];
+  latestVersionId?: string;
+  latestVersion?: number;
+  processedVersionId?: string | null;
+  availability?: string;
+  watchId?: string | null;
+  detectedAt?: string;
 }
 export interface Task {
   id: string;
@@ -70,6 +77,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 export interface WorkspaceSnapshot {
+  worker?: import('./native').WorkerInfo;
   documents: WikiDocument[];
   trashedDocuments: (WikiDocument & { deletedAt: string })[];
   sources: Source[];
@@ -96,6 +104,11 @@ export interface SourceImport {
 }
 export interface KnoterClient {
   readonly mode: 'demo' | 'connected';
+  desktop?(action: import('./native').DesktopAction): Promise<unknown>;
+  runWorker?(): Promise<void>;
+  cancelJob?(id: string): Promise<void>;
+  resolveProposal?(id: string, accept: boolean): Promise<void>;
+  readSourceVersion?(id: string): Promise<import('./native').EvidenceVersion>;
   getSnapshot(): Promise<WorkspaceSnapshot>;
   subscribe(listener: () => void): () => void;
   saveDocument(input: {
