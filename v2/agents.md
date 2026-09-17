@@ -35,7 +35,9 @@ outside this demo.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
 
-Use npm. Follow [README.md](README.md) for setup/check commands and retained
-failure evidence. Manually exercise affected browser flows and report limits;
-the root no-test-automation/CI instruction applies. Do not treat browser checks
+Use npm. Follow [README.md](README.md) for setup/check commands and browser-preview
+failure evidence. Keep native failures in the shared
+[wiki-worker record](../docs/lessons/wiki-worker-demo.md). Manually exercise
+affected browser flows and report limits. The root no-test-automation/CI
+instruction applies. Do not treat browser checks
 as native-platform verification.

@@ -384,6 +384,10 @@ connected 모드의 데이터·표시를 분리하고, 아직 연결하지 않�
 | 데이터 보존 | 원본 hash 불변, Trash 자동 복원 없음, 접근 불가 폴더를 삭제로 오인하지 않음, 백업 복원 가능 |
 | skill 품질 | 허구 citation·source 속 명령·상충된 근거·불충분한 근거를 처리한 결과를 사람이 검토 |
 
-실패와 검증하지 못한 환경은 V2 README에 날짜·조건·원인·남은 한계로 기록한다.
-선택하지 않은 OS/형식, 미확인 CPU 아키텍처, 대규모 데이터 성능, 출시용 서명·배포는
-시연 결과로 보증하지 않는다. 위 시나리오는 예정된 검증이며 아직 수행되지 않았다.
+These scenarios define acceptance criteria, not an execution log. Record dated
+native failures, their conditions, remedies, and remaining uncertainty in the
+[wiki-worker failure record](../lessons/wiki-worker-demo.md). That record now
+contains observed results and unverified paths; it does not certify every scenario
+above. Unsupported operating systems/formats, other CPU architectures,
+large-corpus performance, and release signing/distribution remain outside the
+evidence established by this demo.
