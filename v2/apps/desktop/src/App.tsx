@@ -59,6 +59,8 @@ import { paths, routePath, type WorkspaceRoute } from './routing/paths';
 import { buildWikiLinks } from './wiki/links';
 import { DocumentActionsProvider, DocumentContextMenu } from './components/DocumentMenu';
 import { copyDocumentLink } from './api/clipboard';
+import { WorkerPanel } from './components/WorkerPanel';
+import { SourceEvidence } from './components/SourceEvidence';
 
 const navigation = [
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
@@ -501,7 +503,8 @@ export function App({ client }: { client: KnoterClient }) {
           </div>
           <div className="demo-footnote">
             <span />
-            Local demo<span className="version-label">v0.1</span>
+            {client.mode === 'connected' ? 'Native wiki demo' : 'Browser preview'}
+            <span className="version-label">v0.1</span>
           </div>
         </div>
       </aside>
@@ -572,7 +575,9 @@ export function App({ client }: { client: KnoterClient }) {
           <div className="topbar-actions">
             <span className="workspace-state">
               <span className="status-dot" />
-              Saved on this device
+              {client.mode === 'connected' && !snapshot.worker?.connected
+                ? 'Service offline · drafts retained'
+                : 'Saved on this device'}
             </span>
             {doc && (
               <Button
@@ -771,81 +776,119 @@ export function App({ client }: { client: KnoterClient }) {
         description="Add a paper, a thought, or the start of something new."
       >
         <div className="dialog-form">
-          <input
-            type="file"
-            accept=".pdf,.md,.txt"
-            multiple
-            ref={fileInput}
-            className="sr-only"
-            tabIndex={-1}
-            onChange={(e) => {
-              chooseFiles(Array.from(e.target.files || []));
-              e.target.value = '';
-            }}
-          />
-          <button
-            className={`import-drop ${dragging ? 'dragging' : ''}`}
-            onClick={() => fileInput.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              chooseFiles(Array.from(e.dataTransfer.files));
-            }}
-          >
-            <UploadCloud size={30} />
-            <strong>Drop your files here</strong>
-            <span>or click to browse · PDF, Markdown, TXT</span>
-            <small>Up to 25 MB per file</small>
-          </button>
-          {files.length > 0 && (
-            <div className="selected-files">
-              {files.map((file, index) => (
-                <div key={`${file.name}-${index}`}>
-                  <FileText size={16} />
-                  <span>
-                    {file.name}
-                    <small>{fileSize(file.size)}</small>
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove ${file.name}`}
-                    onClick={() => setFiles(files.filter((_, i) => i !== index))}
-                  >
-                    <X />
-                  </Button>
+          {client.mode === 'connected' ? (
+            <>
+              <p>
+                Choose a Markdown folder to watch, or import original bytes once. Files stay
+                untouched. Maximum 256 KiB per UTF-8 .md file.
+              </p>
+              <Button
+                onClick={() =>
+                  void run(async () => {
+                    await client.desktop!('chooseFolder');
+                    setModal(null);
+                    openView('sources');
+                  })
+                }
+              >
+                Watch a Markdown folder
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void run(async () => {
+                    await client.desktop!('importMarkdown');
+                    setModal(null);
+                    openView('sources');
+                  })
+                }
+              >
+                Import Markdown snapshots
+              </Button>
+            </>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".pdf,.md,.txt"
+                multiple
+                ref={fileInput}
+                className="sr-only"
+                tabIndex={-1}
+                onChange={(e) => {
+                  chooseFiles(Array.from(e.target.files || []));
+                  e.target.value = '';
+                }}
+              />
+              <button
+                className={`import-drop ${dragging ? 'dragging' : ''}`}
+                onClick={() => fileInput.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  chooseFiles(Array.from(e.dataTransfer.files));
+                }}
+              >
+                <UploadCloud size={30} />
+                <strong>Drop your files here</strong>
+                <span>or click to browse · PDF, Markdown, TXT</span>
+                <small>Up to 25 MB per file</small>
+              </button>
+              {files.length > 0 && (
+                <div className="selected-files">
+                  {files.map((file, index) => (
+                    <div key={`${file.name}-${index}`}>
+                      <FileText size={16} />
+                      <span>
+                        {file.name}
+                        <small>{fileSize(file.size)}</small>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() => setFiles(files.filter((_, i) => i !== index))}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+              <div className="demo-info">
+                <Sparkles size={15} />
+                <p>
+                  In this demo, processing is simulated. Text notes are kept in your browser; PDFs
+                  are represented by their filename.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                disabled={importing}
+                onClick={() => void importFiles([createSampleFile()])}
+              >
+                Try a sample note
+              </Button>
+              <div className="dialog-actions">
+                <Button variant="ghost" onClick={() => setModal(null)} disabled={importing}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!files.length || importing}
+                  onClick={() => void importFiles(files)}
+                >
+                  {importing ? <Loader2 className="spin" /> : <Plus />}Add {files.length || ''}{' '}
+                  source
+                  {files.length !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </>
           )}
-          <div className="demo-info">
-            <Sparkles size={15} />
-            <p>
-              In this demo, processing is simulated. Text notes are kept in your browser; PDFs are
-              represented by their filename.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            disabled={importing}
-            onClick={() => void importFiles([createSampleFile()])}
-          >
-            Try a sample note
-          </Button>
-          <div className="dialog-actions">
-            <Button variant="ghost" onClick={() => setModal(null)} disabled={importing}>
-              Cancel
-            </Button>
-            <Button disabled={!files.length || importing} onClick={() => void importFiles(files)}>
-              {importing ? <Loader2 className="spin" /> : <Plus />}Add {files.length || ''} source
-              {files.length !== 1 ? 's' : ''}
-            </Button>
-          </div>
         </div>
       </Dialog>
 
@@ -874,6 +917,15 @@ export function App({ client }: { client: KnoterClient }) {
               <span>CONTENT PREVIEW</span>
               {source.type === 'pdf' && <span className="demo-tag">Demo excerpt</span>}
             </div>
+            {client.mode === 'connected' && (
+              <SourceEvidence
+                key={source.id}
+                source={source}
+                snapshot={snapshot}
+                client={client}
+                run={run}
+              />
+            )}
             <div className="source-preview">
               <Markdown onOpen={openDocument} onSource={setSourceId} documents={snapshot.documents}>
                 {source.excerpt}
@@ -1005,7 +1057,11 @@ export function App({ client }: { client: KnoterClient }) {
           <div className="settings-section settings-row">
             <div>
               <strong>Background processing</strong>
-              <p>Simulate connecting imported sources to your wiki.</p>
+              <p>
+                {client.mode === 'connected'
+                  ? 'Pause or resume new wiki-worker jobs.'
+                  : 'Simulate connecting imported sources to your wiki.'}
+              </p>
             </div>
             <Button
               variant={snapshot.settings.workerPaused ? 'outline' : 'soft'}
@@ -1019,15 +1075,21 @@ export function App({ client }: { client: KnoterClient }) {
               {snapshot.settings.workerPaused ? 'Paused' : 'Running'}
             </Button>
           </div>
+          {client.mode === 'connected' && (
+            <WorkerPanel snapshot={snapshot} client={client} run={run} />
+          )}
           <div className="about-demo">
             <span className="mini-logo">
               <Network size={17} />
             </span>
             <div>
-              <strong>knoter · Frontend preview</strong>
+              <strong>
+                knoter · {client.mode === 'connected' ? 'Wiki worker demo' : 'Frontend preview'}
+              </strong>
               <p>
-                Your changes stay in this browser. Chat and source processing are simulated; no LLM,
-                vault, or background service is connected.
+                {client.mode === 'connected'
+                  ? 'Markdown sources and wiki history live in the background service. Chat, tasks, and calendar are not connected in this demo.'
+                  : 'Your changes stay in this browser. Chat and source processing are simulated; no LLM, vault, or background service is connected.'}
               </p>
             </div>
           </div>

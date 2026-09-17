@@ -1,5 +1,95 @@
 @import 'tailwindcss';
 
+.native-worker {
+  margin: 20px 0;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.native-worker h2 {
+  font-size: 20px;
+  margin: 5px 0;
+}
+.native-worker p {
+  margin: 10px 0;
+}
+.worker-panel-heading,
+.worker-connection,
+.worker-job {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.worker-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.worker-detail,
+.worker-location small,
+.worker-job small {
+  opacity: 0.72;
+  font-size: 12px;
+}
+.worker-connection,
+.worker-location,
+.worker-job {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.worker-connection small,
+.worker-location strong,
+.worker-location small,
+.worker-job span,
+.worker-job small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.worker-error {
+  color: #a64636;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #a6463610;
+  overflow-wrap: anywhere;
+}
+.native-worker details {
+  margin-top: 14px;
+}
+.native-worker summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.worker-jobs {
+  max-height: 360px;
+  overflow: auto;
+}
+.worker-proposal pre,
+.evidence-segment pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #8888880d;
+}
+.source-evidence {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.source-evidence code {
+  overflow-wrap: anywhere;
+}
+.evidence-segment {
+  margin: 14px 0;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

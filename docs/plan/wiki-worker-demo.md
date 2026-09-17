@@ -1,8 +1,8 @@
 # V2 wiki worker 백엔드 시연 구현 계획
 
-작성: 2026-09-17. 상태: **사용자 선택을 반영한 구현 계획; 구현 전**.
-이 문서는 구현 완료 기록이 아니다. 제품·운영 선택은 아래 결정표를 따르고,
-모델 접근성과 OS 동작은 B0에서 확인한다. 기존 [V2 설계](desktop-rewrite.md)의
+작성: 2026-09-17. 상태: **시연 구현의 범위·결정·검증 기준**.
+이 문서는 구현 완료 기록이 아니다. 실행 방법과 검증 한계는 [V2 README](../../v2/README.md)에 둔다.
+제품·운영 선택은 아래 결정표를 따른다. 기존 [V2 설계](desktop-rewrite.md)의
 저장·보호·복구 원칙을 유지하며, 이번 시연에 필요한 구현 순서와 완료 기준을 정의한다.
 
 ## 1. 목표와 범위
@@ -25,7 +25,7 @@ wiki 생성과 증분 수정으로 증명한다. mock 응답이나 수동 실행
 main이 종료된 동안에는 이미 등록된 source snapshot만 처리한다. 그동안의 새
 추가·수정은 main을 다시 실행한 뒤 감지한다.
 
-현재 V2는 브라우저 mock이다. source 파일명·크기·일부 텍스트만 전달하며 PDF
+시작 시점의 V2는 브라우저 mock이었다. source 파일명·크기·일부 텍스트만 전달하며 PDF
 원본은 보관하지 않는다. Electron main/preload, 영속 DB, 실제 worker와 OS
 서비스를 새로 연결해야 한다. 기존 mock 데이터는 시연용 새 저장소로 자동 이관하지
 않는다. 작업·달력·채팅의 실제 백엔드, PDF·TXT 입력, Windows 검증, 벡터 검색,
@@ -46,6 +46,7 @@ V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다
 | D7 | CLI 배포·인증 연결 | 기존에 설치된 Codex CLI와 ChatGPT 로그인 연결. 시연 사전 조건으로 명시 | 사용자 확정 |
 | D8 | wiki 기본 언어 | 한국어. 원문 인용과 고유명사는 유지 | 사용자 확정 |
 | D9 | 초기 실행 한도 | 실행당 5분, 자동 재시도 최대 2회, 하루 모델 실행 20회 | 사용자 확정 |
+| D10 | 시연 OS 등록 방식 | 이 Mac에 Apple 서명 identity가 없어 SMAppService 실행이 거부됨. 이번 시연은 명시적으로 표시한 사용자 local LaunchAgent를 사용. 출시용 SMAppService 서명은 후속 범위 | 2026-09-17 사용자 확정 |
 
 비밀 값은 계획 문서에 저장하지 않는다.
 문서 분할은 기존 주제 문서를 먼저 찾고, 독립된 새 주제와 충분한 근거가 있을 때만
@@ -99,7 +100,7 @@ main이 재실행되면 저장된 감시 위치를 재확인하고 누락된 추
    원래 위치의 변경을 추적한다. 일회성 가져오기는 보관한 snapshot만 처리하며 자동
    추적 여부를 UI에서 구분한다. 허용한 폴더 밖을 재귀 탐색하지 않는다.
 2. main은 시작 시 전체 목록을 확인하고 파일 이벤트를 모은다. 연속 저장은 debounce하고,
-   일정 시간 안정된 파일을 서비스가 읽어 SHA-256과 원본 snapshot을 만든다. 읽는 동안
+   main이 안정된 파일을 두 번 읽어 SHA-256과 bytes를 전달하고, 서비스가 hash를 재검증해 snapshot을 보관한다. 서비스에 외부 경로 읽기 권한을 줄 필요가 없다. 읽는 동안
    파일이 바뀌거나 잠겨 있으면 안정화 후 재시도한다. 수정 시각·크기만으로 같다고 판단하지 않는다.
 3. 원본 bytes는 관리 영역의 immutable blob으로 보관한다. blob을 먼저 안전하게 저장하고,
    source version·작업·이벤트를 짧은 DB transaction으로 함께 기록한다. 중간 종료로 남은
@@ -225,8 +226,8 @@ skill은 Codex wiki worker의 실행 입력으로 명시적으로 로드하는 �
 Markdown 지침과 구조화된 도구 계약을 함께 제공한다. CLI의 암묵적인 skill 선택이나
 사용자 머신의 전역 skill 설치에 의존하지 않는다.
 
-구현 시 `v2/resources/skills/wiki-worker/SKILL.md`를 기본 지침의 소스로 제안한다.
-이는 예정 경로이며 이번 계획 작성에서 실제 skill을 설치하거나 실행하지 않는다.
+`v2/resources/skills/wiki-worker/SKILL.md`를 번들 기본 지침의 소스로 사용한다.
+개인 전역 skill로 설치하지 않고 매 실행에 명시적으로 공급한다.
 runtime의 제약·검증 코드는 skill 지침과 별개로 강제한다.
 
 `SKILL.md`에는 `name: knoter-wiki-worker`와 범위가 분명한 `description`을 둔다.
@@ -258,9 +259,11 @@ main의 ‘백그라운드 활성화’ 흐름에서 native helper로 서비스 
 등록·OS 승인 대기·실행 중·중지·오류 상태를 구분한다. 등록 성공만으로 worker
 연결 성공을 간주하지 않는다. main의 자식 프로세스를 띄우는 것만으로 완료하지 않는다.
 
-기존 플랫폼 설계에 따라 macOS의 번들 LaunchAgent/SMAppService를 사용한다.
-Windows 어댑터 구현은 이번 시연에서 제외한다. 정확한 실행 방식·지원 버전은
-B0의 설치된 앱 검증에서 확정한다. 등록 API와 주기 실행 메커니즘은 별개다.
+기존 플랫폼 설계의 번들 LaunchAgent/SMAppService는 Apple 서명을 갖춘 후속 배포 경로다.
+D10에 따라 이번 시연은 `~/Library/LaunchAgents`의 사용자 LaunchAgent를
+`launchctl bootstrap/bootout`으로 등록·해제한다. 설치된 앱의 native launcher가
+번들 Node 서비스를 소유한다. UI에 local LaunchAgent demo로 표시한다.
+Windows 어댑터 구현은 이번 시연에서 제외한다. 등록 API와 주기 실행 메커니즘은 별개다.
 [Apple SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice).
 
 서비스는 활성화된 사용자 세션에서 유지되며 60초마다 큐를 확인한다. 비어 있으면

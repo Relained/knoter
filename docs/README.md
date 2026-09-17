@@ -13,8 +13,8 @@ implementation details. Git history owns completed-work inventories.
 
 Use the [project README](../README.md) for package entry points and the
 [root agent guide](../agents.md) for work rules. The
-[prototype README](../v2/README.md#failure-evidence-and-verification-limits)
-retains its failure evidence and unverified paths.
+[V2 README](../v2/README.md) retains separate native-demo and browser-preview
+failure evidence and unverified paths.
 
 [v1/res/templates/workflow.md](../v1/res/templates/workflow.md) is a runtime contract
 seeded into vaults; preserve existing users' customized copies.

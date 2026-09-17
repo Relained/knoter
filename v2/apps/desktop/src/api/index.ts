@@ -1,8 +1,11 @@
 import type { SourceImport } from '@knoter/contracts';
 import { createMockClient } from './mockClient';
+import { createConnectedClient } from './connectedClient';
 
 // Composition root: inject a real IPC-backed KnoterClient here when available.
-export const client = createMockClient();
+export const client = window.knoterNative
+  ? createConnectedClient(window.knoterNative)
+  : createMockClient();
 
 // A disposable browser File lets the preview exercise the same import path.
 export function createSampleFile(): File {

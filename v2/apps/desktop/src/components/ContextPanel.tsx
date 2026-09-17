@@ -105,7 +105,16 @@ export function ContextPanel({
           </button>
         ))}
       </div>
-      {tab === 'chat' ? (
+      {tab === 'chat' && client.mode === 'connected' ? (
+        <div className="empty-state">
+          <MessageSquare />
+          <h3>Chat is not connected</h3>
+          <p>
+            This demo generates the wiki from your Markdown sources. Use Sources and Changes to
+            inspect its evidence.
+          </p>
+        </div>
+      ) : tab === 'chat' ? (
         <>
           <div className="chat-toolbar">
             <span className="demo-caption">

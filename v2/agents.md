@@ -1,16 +1,20 @@
 # knoter V2 agent guide
 
 Apply the [root rules](../agents.md). This is the isolated rewrite; legacy Web
-HTML-first and command-registry rules do not apply here. The user assigned a
-frontend prototype first. Keep real backend/OS/PDF/LLM work outside that delivery
-unless the next milestone is assigned; label simulated operations clearly.
+HTML-first and command-registry rules do not apply here. The assigned native
+milestone is the [wiki-worker demo](../docs/plan/wiki-worker-demo.md). Keep its
+connected service and the browser prototype distinct; label simulated operations
+clearly. PDF, Windows, real chat/tasks/calendar, and production distribution are
+outside this demo.
 
 - Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
   composable primitives. Reuse Radix for accessible interaction/focus behavior
   and the shared icon system rather than adding parallel UI conventions.
 - All service calls go through `KnoterClient` in `packages/contracts`.
   Components do not access localStorage, Electron IPC, files, or providers;
-  the mock adapter owns seed data, async simulation, and persistence.
+  the mock adapter owns browser seed data, simulation, and persistence. Native
+  calls use validated contracts through preload and main; only the service writes
+  SQLite. Main owns source discovery, and workers read immutable job evidence.
 - Treat source and edited document content as untrusted; never execute
   model-produced markup or enable raw HTML rendering.
 - Preserve existing preview data, stable document identities, revisions, and
@@ -22,10 +26,11 @@ unless the next milestone is assigned; label simulated operations clearly.
   history or add a second route parser. Keep the workspace shell mounted across
   routes. Read live editor content when checking unsaved changes, since editor
   change notifications are debounced; retain a separate unload guard.
-- Before real service integration, define source byte/handle transfer, validated
-  wire messages, cancellation IDs, provenance, and storage migrations.
-  The frontend contract is not a finished IPC protocol; `AbortSignal` is not
-  a wire payload. Keep real and mock evidence distinct.
+- Preserve validated wire messages, cancellation/lease fencing, immutable source
+  versions, revision citations, and migration compatibility when changing the
+  service. Do not grant the model shell, web, filesystem, or DB mutation tools.
+  The user approved a local LaunchAgent for this unsigned macOS demo; do not
+  represent it as the deferred SMAppService signing integration.
 
 Use npm. Follow [README.md](README.md) for setup/check commands and retained
 failure evidence. Manually exercise affected browser flows and report limits;

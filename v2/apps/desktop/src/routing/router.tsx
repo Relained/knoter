@@ -9,7 +9,11 @@ export function createWorkspaceRouter(client: KnoterClient) {
     {
       element: <App client={client} />,
       children: [
-        { index: true, element: <Navigate to="/wiki/rag" replace />, handle: { view: 'wiki' } },
+        {
+          index: true,
+          element: <Navigate to={client.mode === 'connected' ? '/sources' : '/wiki/rag'} replace />,
+          handle: { view: 'wiki' },
+        },
         { path: paths.wiki, Component: WikiRoute, handle: { view: 'wiki' } },
         { path: paths.document, Component: WikiRoute, handle: { view: 'wiki' } },
         { path: paths.sources, Component: SourcesRoute, handle: { view: 'sources' } },

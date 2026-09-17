@@ -113,11 +113,25 @@ export function SourcesRoute() {
 
 export function TasksRoute() {
   const { snapshot, client, run, onOpen } = useOutletContext<WorkspaceContext>();
+  if (client.mode === 'connected')
+    return (
+      <div className="empty-state">
+        <h2>Tasks are not connected</h2>
+        <p>The native demo covers Markdown sources and wiki generation.</p>
+      </div>
+    );
   return <TasksView snapshot={snapshot} client={client} run={run} onOpen={onOpen} />;
 }
 
 export function CalendarRoute() {
   const { snapshot, client, run } = useOutletContext<WorkspaceContext>();
+  if (client.mode === 'connected')
+    return (
+      <div className="empty-state">
+        <h2>Calendar is not connected</h2>
+        <p>The native demo covers Markdown sources and wiki generation.</p>
+      </div>
+    );
   return <CalendarView snapshot={snapshot} client={client} run={run} />;
 }
 

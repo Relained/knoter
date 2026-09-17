@@ -1,9 +1,103 @@
-# knoter frontend prototype
+# knoter V2 demo
 
-Browser preview of the [desktop rewrite](../docs/plan/desktop-rewrite.md).
-Use it with disposable demo data; it is separate from the legacy vault.
+Native [wiki-worker demo](../docs/plan/wiki-worker-demo.md), alongside the browser
+preview of the [desktop rewrite](../docs/plan/desktop-rewrite.md). Use disposable
+Markdown sources. Neither mode migrates the legacy vault or browser preview data.
 
-## Run locally
+## Run the native demo
+
+Packaging currently requires macOS Apple Silicon, Xcode Command Line Tools,
+Node **22.14.0**, and npm. The build copies this exact Node runtime and its license
+into the app; the installed service does not depend on shell PATH or global Node.
+Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
+(`codex login`, then `codex login status`). The selected account must have access
+to `gpt-5.6-luna`. The app never copies login tokens into its workspace.
+
+From `v2`:
+
+```sh
+npm ci
+npm run package:demo
+```
+
+This runs the required `npm run check`, compiles the Swift helpers, bundles the
+service and renderer, and packages an ad-hoc signed app at
+`out/Knoter Wiki Demo-darwin-arm64/Knoter Wiki Demo.app`. Install it at a stable
+location such as `~/Applications/Knoter Wiki Demo.app` before enabling background
+work. Before replacing or moving an installed build, **Disable service**, quit the
+app completely, replace it, reopen it, and enable the service again.
+
+1. Open **Sources → Enable background**. The status should show
+   `local_agent_running` and a connected service PID.
+2. Choose **Connect Codex CLI** and select the installed executable. In the macOS
+   chooser, ⌘⇧G can navigate to the absolute path reported by `command -v codex`.
+   The service checks its version and existing ChatGPT login. Reconnect here after
+   fixing authentication or an unavailable model; the worker does not switch models.
+3. Choose **Watch Markdown folder** and select a small disposable folder. **Import
+   snapshot** instead registers selected files once. Source discovery runs only
+   while the app is open; the service works from stored immutable versions.
+4. Wait for the next 60-second queue check. **Run now** uses the same queue. Open
+   the resulting wiki, its source links, and the stored version/segment evidence.
+   Edit the source and observe a new version and an update to the same wiki topic.
+5. Editing a wiki yourself protects it. Subsequent worker changes appear for review
+   in Sources/Settings; **Accept changes** and **Reject** resolve those proposals.
+   Trash is recoverable and is protected against automatic recreation.
+6. Quit the UI after a source is registered: its queued work continues. Changes
+   made to files while the UI is closed are discovered after reopening. **Pause
+   queue** keeps the service available for editing; **Disable service** stops it.
+
+The user approved a **local LaunchAgent for this demo** after SMAppService rejected
+the unsigned helper. Registration creates only
+`~/Library/LaunchAgents/com.knoter.wiki-demo.worker.plist`, pointing to the installed
+app. Disable removes that registration while preserving data. Service logs are in
+`~/Library/Logs/Knoter Wiki Demo/`. Do not move the installed app while registered.
+Apple-issued signing, notarization, and the SMAppService distribution path remain
+outside this local demo.
+
+Workspace data lives in `~/Library/Application Support/Knoter Wiki Demo/`: SQLite
+with revisions, citations, durable jobs and attempt records, plus immutable source
+blobs. The UI exposes backup/export under **Backup and export**. A full backup
+contains a consistent database snapshot and checksummed originals; Markdown export
+is a reading/interchange format, not a full backup. Restore requires an empty
+workspace and reconnecting folders/CLI. Preserve any existing workspace by moving
+it aside **after disabling the service and quitting the app**, then start a fresh
+workspace and choose **Restore backup**. Never replace a live SQLite database.
+
+For development, run `npm run check`, then `npm run service` in one terminal and
+`npm run desktop` in another. Both accept the same `KNOTER_DATA_DIR` environment
+variable for a disposable workspace. Development mode does not register an OS
+service and stops when its service terminal exits.
+
+## Native demo limits and failure evidence
+
+Markdown must be UTF-8, at most 256 KiB per file. Hidden entries and symlinks are
+skipped during folder discovery. Retrieval is bounded to 100 sources, 100 wiki
+documents, 4 MB of source evidence, and 40 evidence-tool reads per attempt. Jobs
+stop visibly when these limits are exceeded. Each attempt has a five-minute
+watchdog, at most two automatic retries for temporary failures, and 20 starts per
+local calendar day per workspace. A reserved start counts even if a crash occurs
+immediately before spawning; these limits are not token or subscription quotas.
+
+Only Markdown/wiki generation is connected. Chat, tasks/calendar, PDF/TXT,
+embeddings, multi-user access, and Windows are outside this demo. The browser
+preview below still simulates its backend. Generation is evidence-constrained,
+but semantic accuracy and useful topic boundaries still require human review.
+
+| Date / issue                                                             | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-17 — SMAppService could register but not launch                  | macOS 27 launch logs rejected the bundled helper's code signature; this Mac had no Apple signing identity. The user selected the local LaunchAgent route. Ad-hoc bundle verification does not establish SMAppService compatibility or distributable signing.                                                                        |
+| 2026-09-17 — Codex evidence tools disappeared                            | Disabling `code_mode_host` also hid the explicit MCP tools in CLI 0.154.0. Keep that host available with code mode disabled and only the wiki namespace exposed. The first missing-evidence result was rejected; subsequent real runs used the read-only evidence bridge. Revalidate the tool surface before changing CLI versions. |
+| 2026-09-17 — native chooser Open button disabled during bundle iteration | A complete UI quit and clean relaunch restored both folder and executable selection. Do not replace a running app bundle; verify the app has exited before reinstalling.                                                                                                                                                            |
+| 2026-09-17 — inline model citations lost their target                    | The Markdown reader stripped the worker's `source:` URI. It now maps only UUID source targets to the existing internal citation button while retaining the default URL sanitizer for all other links.                                                                                                                               |
+| 2026-09-17 — packaging dependency audit                                  | Patched `tar`, `tmp`, and esbuild are pinned. The Forge build chain still reports the unpatched `extract-zip` advisory; only the pinned Electron distribution is unpacked during packaging. The production-dependency audit reports no advisories. This does not certify the packaged runtime or replace a release security review. |
+| 2026-09-17 — recovery coverage boundary                                  | Disposable storage walkthroughs exercised deduplication, stale revisions/leases, cancellation, protected proposals, Trash fencing, daily-limit accounting, and backup/restore. Physical sleep, logoff/reboot, power loss during disk writes, and large-corpus performance are not established by those checks.                      |
+
+Test automation and CI remain deferred. Use `npm run check`, `git diff --check`,
+and narrow manual walkthroughs with disposable data. Broaden manual checks for
+changes to persistence, retrieval, or UI interactions. Keep failure evidence here;
+routine completed-work inventories belong in Git history.
+
+## Run the browser preview
 
 Use Node.js 22.14 or newer and npm. From the repository root:
 
@@ -63,13 +157,13 @@ Observations from the macOS in-app browser on 2026-09-16/17. The build
 environment was Node 22.14.0 with Vite 7.3.6. Manual evidence covered demo flows
 on desktop and a 390px viewport, not an installed application.
 
-| Date / issue | Evidence, remedy, or remaining limit |
-| --- | --- |
-| 2026-09-16 — OS file chooser blocked by tooling | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks. |
-| 2026-09-17 — graph wheel events scrolled the page | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case. |
-| 2026-09-16/17 — bundle-size warning persisted | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work. |
-| 2026-09-17 — limits of deletion checks | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery. |
-| 2026-09-17 — Router history key collision | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them. |
+| Date / issue                                      | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-16 — OS file chooser blocked by tooling   | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks.                |
+| 2026-09-17 — graph wheel events scrolled the page | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case.                |
+| 2026-09-16/17 — bundle-size warning persisted     | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                          |
+| 2026-09-17 — limits of deletion checks            | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                |
+| 2026-09-17 — Router history key collision         | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them. |
 
 The `Document actions walkthrough` and `Router migration walkthrough` samples
 were left in Trash after the 2026-09-17 checks; user documents' saved contents
