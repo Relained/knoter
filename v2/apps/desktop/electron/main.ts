@@ -1,9 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, powerMonitor, shell, Menu } from 'electron';
 import { readFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { join } from 'node:path';
 import {
   commands,
   rendererCommands,
@@ -14,7 +12,18 @@ import {
 import { defaultDataDir, socketFor } from '../../../packages/service/src/common.js';
 import { request } from '../../../packages/service/src/transport.js';
 import { SourceWatcher } from './watcher.js';
-const exec = promisify(execFile);
+import {
+  createServiceRegistration,
+  controlRegistration,
+  type RegistrationAction,
+} from './service-registration/index.js';
+const service = createServiceRegistration({
+  platform: process.platform,
+  isPackaged: app.isPackaged,
+  executablePath: process.execPath,
+  resourcesPath: process.resourcesPath,
+  systemRoot: process.env.SystemRoot,
+});
 const dataDir = process.env.KNOTER_DATA_DIR ?? defaultDataDir();
 const send = (command: string, payload: unknown) =>
   request(
@@ -26,19 +35,10 @@ const send = (command: string, payload: unknown) =>
 const watcher = new SourceWatcher(send);
 let window: BrowserWindow | null = null;
 let registration = 'not_registered';
-async function serviceControl(action: string) {
-  if (!app.isPackaged) {
-    registration = 'development';
-    if (action === 'status') return { status: registration };
-    throw new Error(
-      'Install the packaged demo app to register its background service. Development mode uses a separately started service.',
-    );
-  }
-  const helper = join(dirname(process.execPath), 'KnoterServiceControl');
-  const { stdout } = await exec(helper, [action], { timeout: 15_000, maxBuffer: 32_000 });
-  const result = JSON.parse(stdout);
-  registration = result.status;
-  return result;
+async function serviceControl(action: RegistrationAction) {
+  return controlRegistration(service, action, (result) => {
+    registration = result.status;
+  });
 }
 function trusted(event: Electron.IpcMainInvokeEvent) {
   if (
@@ -56,17 +56,15 @@ async function chooseDirectory(title: string) {
   return r.canceled ? null : realpath(r.filePaths[0]);
 }
 async function desktop(action: DesktopAction) {
-  if (['enable', 'disable', 'status', 'approvalSettings'].includes(action)) {
-    const result = await serviceControl(
-      action === 'enable' ? 'register' : action === 'disable' ? 'unregister' : action,
-    );
-    if (action === 'enable') setTimeout(() => void watcher.scan(), 1000);
-    return result;
-  }
-  if (action === 'restart') {
-    await serviceControl('unregister');
-    const result = await serviceControl('register');
-    setTimeout(() => void watcher.scan(), 1000);
+  if (
+    action === 'enable' ||
+    action === 'disable' ||
+    action === 'restart' ||
+    action === 'status' ||
+    action === 'approvalSettings'
+  ) {
+    const result = await serviceControl(action);
+    if (action === 'enable' || action === 'restart') setTimeout(() => void watcher.scan(), 1000);
     return result;
   }
   if (action === 'chooseCli') {

@@ -10,7 +10,13 @@ module.exports = {
     asar: true,
     ignore: (path) =>
       path !== '' && path !== '/package.json' && path !== '/dist' && !path.startsWith('/dist/app'),
-    extraResource: ['dist/backend', 'dist/runtime', 'dist/node_modules', 'resources'],
+    extraResource: [
+      'dist/backend',
+      'dist/runtime',
+      'dist/node_modules',
+      'resources',
+      'platform/windows',
+    ],
     extendInfo: { LSMinimumSystemVersion: '13.0', NSHighResolutionCapable: true },
   },
   rebuildConfig: { onlyModules: [] },

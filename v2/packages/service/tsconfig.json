@@ -11,5 +11,9 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["src", "../../apps/desktop/electron/**/*.ts"]
+  "include": [
+    "src",
+    "../../apps/desktop/electron/**/*.ts",
+    "../../tests/service-registration.test.ts"
+  ]
 }

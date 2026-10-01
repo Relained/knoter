@@ -96,6 +96,62 @@ For development, run `npm run check`, then `npm run service` in one terminal and
 variable for a disposable workspace. Development mode does not register an OS
 service and stops when its service terminal exits.
 
+## Service registration boundary
+
+Electron main selects a `ServiceRegistration` adapter once, then uses the same
+register/unregister/status/settings contract for both operating systems. Restart
+awaits unregister before registering again; a failed stop prevents a new start.
+Development mode still reports `development` and requires a separately started
+service. Other packaged platforms report `unsupported` and reject mutations.
+
+The macOS adapter preserves the installed `KnoterServiceControl` Swift helper,
+its local LaunchAgent label, paths, status strings, and signing limitations.
+The Windows adapter calls the bundled `windows/ServiceControl.ps1` through
+Windows PowerShell using argument arrays. The process-local execution policy
+argument does not change the machine's policy; organizational policy may still
+reject the helper.
+
+Windows registration creates `Knoter Wiki Demo Worker-<current-user SID>` in Task
+Scheduler. It uses the signed-in user's interactive token, no stored password,
+and limited privileges. The logon trigger is scoped to that same user. Enabling
+starts the task immediately; repeated enable keeps a running/queued task intact.
+It allows battery operation, ignores duplicate instances, has no execution time
+limit, and retries failures up to three times at one-minute intervals. It runs
+bundled `runtime/node.exe` with `backend/service.mjs` directly so the scheduler
+tracks the worker process. Disable first disables triggers, stops/waits for the
+task, then deletes only its registration. Files and workspace data are retained.
+Missing tasks are idempotent; access errors are surfaced. Disable before moving
+an installation; enable refuses to silently replace another installation's task.
+These choices follow Microsoft's [registration API](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskfolder-registertaskdefinition)
+and [task settings](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings).
+
+**Windows registration is an adapter implementation, not a working Windows demo
+package.** The current packaging command and Swift/signing hooks still target
+macOS arm64. A Windows package must supply native Windows Node/SQLite binaries;
+service data paths, protected IPC (currently Unix sockets), filesystem durability,
+and worker process termination also need a Windows port and installed-app checks.
+The adapter checks for its bundled executable/entrypoint before registering.
+A `task_running` result describes the scheduler, not a healthy service connection;
+the authenticated connection and PID remain separate. Windows logon, reboot,
+permissions, cancellation, and registration with the real Task Scheduler remain
+unverified until exercised on Windows. Do not register the current macOS bundle
+as a Windows service.
+
+The requested registration regression suite is narrowly reintroduced:
+
+```sh
+npm run test:service-registration
+# On Windows, mocked COM lifecycle/policy tests (no real OS registration):
+npm run test:service-registration:windows
+# With PowerShell 7 installed on another OS, run the same mocked tests:
+pwsh -NoProfile -NonInteractive -File tests/windows-service-registration.test.ps1
+```
+
+Run these alongside `npm run check` and `git diff --check`. Format changed JS/TS,
+JSON, and Markdown with the repository's Prettier configuration. No ESLint task
+or CI workflow is configured. Native register/disable/restart checks must use a
+disposable installation/user; do not replace an existing user's registration.
+
 ## Native demo limits and failure evidence
 
 Markdown must be UTF-8, at most 256 KiB per file. Hidden entries and symlinks are
@@ -121,7 +177,8 @@ other sources from its frozen evidence. A protected-document proposal is pending
 review, not an applied update. Changing the default skill does not automatically
 rewrite every existing wiki.
 
-Test automation and CI remain deferred. Use `npm run check`, `git diff --check`,
+Outside the registration tests above, test automation and CI remain deferred.
+Use `npm run check`, `git diff --check`,
 and narrow manual walkthroughs with disposable data. Broaden manual checks for
 changes to persistence, retrieval, or UI interactions. Routine completed-work
 inventories belong in Git history.
@@ -142,8 +199,8 @@ must be free. Use `npm ci` for a clean installation from the lockfile.
 
 For code changes, run `npm run check` (TypeScript + production build).
 `npm run build` and `npm run preview` build/serve the preview separately; stop
-the dev server before previewing on the same port. Test automation and CI remain
-deferred by user instruction; use manual walkthroughs with disposable data.
+the dev server before previewing on the same port. Browser test automation and CI
+remain deferred by user instruction; use manual walkthroughs with disposable data.
 
 ## Trying the preview
 

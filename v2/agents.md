@@ -4,8 +4,10 @@ Apply the [root rules](../agents.md). This is the isolated rewrite; legacy Web
 HTML-first and command-registry rules do not apply here. The assigned native
 milestone is the [wiki-worker demo](../docs/plan/wiki-worker-demo.md). Keep its
 connected service and the browser prototype distinct; label simulated operations
-clearly. PDF, Windows, real chat/tasks/calendar, and production distribution are
-outside this demo.
+clearly. PDF, real chat/tasks/calendar, and production distribution are outside
+this demo. The 2026-10-01 request adds Windows service registration behind the
+shared platform interface; full Windows packaging/runtime support remains a
+separate milestone (see README).
 
 - Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
   composable primitives. Reuse Radix for accessible interaction/focus behavior
@@ -39,5 +41,7 @@ Use npm. Follow [README.md](README.md) for setup/check commands and browser-prev
 failure evidence. Keep native failures in the shared
 [wiki-worker record](../docs/lessons/wiki-worker-demo.md). Manually exercise
 affected browser flows and report limits. The root no-test-automation/CI
-instruction applies. Do not treat browser checks
-as native-platform verification.
+instruction still applies except for the explicitly requested service-registration
+regression tests. Run the README's registration tests for this boundary; mocked
+Task Scheduler tests do not establish native Windows behavior. Do not treat
+browser checks as native-platform verification.

@@ -41,7 +41,7 @@ export function WorkerPanel({
     <section className="native-worker" aria-label="Wiki worker">
       <div className="worker-panel-heading">
         <div>
-          <span className="eyebrow">WIKI WORKER · MACOS DEMO</span>
+          <span className="eyebrow">WIKI WORKER · NATIVE DEMO</span>
           <h2>
             {worker.connected ? 'Your background workspace' : 'Connect the background service'}
           </h2>
@@ -51,7 +51,7 @@ export function WorkerPanel({
         </span>
       </div>
       <p>
-        Local LaunchAgent demo · Markdown → Korean topic wiki · checks the queue every 60 seconds.
+        Background service demo · Markdown → Korean topic wiki · checks the queue every 60 seconds.
         Only this open app discovers source changes; the service can finish queued snapshots after
         you quit.
       </p>
@@ -82,7 +82,7 @@ export function WorkerPanel({
         </Button>
         <Button disabled={busy} variant="ghost" onClick={() => desktop('approvalSettings')}>
           <Settings2 />
-          OS approval settings
+          OS service settings
         </Button>
       </div>
       <p className="worker-detail">

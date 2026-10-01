@@ -18,7 +18,9 @@
     "desktop": "npm run check && electron .",
     "service": "node dist/backend/service.mjs",
     "package:demo": "npm run check && node scripts/prepare-native.mjs && electron-forge package --platform=darwin --arch=arm64",
-    "preview": "npm run preview --workspace @knoter/desktop"
+    "preview": "npm run preview --workspace @knoter/desktop",
+    "test:service-registration": "node scripts/test-service-registration.mjs",
+    "test:service-registration:windows": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/windows-service-registration.test.ps1"
   },
   "overrides": {
     "tar": "7.5.22",
