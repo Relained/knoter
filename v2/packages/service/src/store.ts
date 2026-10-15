@@ -675,7 +675,7 @@ export class Store {
       if (!j) return null;
       const usage =
         this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ?? 0;
-      if (usage >= 20) {
+      if (usage >= DAILY_RUN_LIMIT) {
         this.db
           .prepare("UPDATE jobs SET stage='daily limit',next_run=? WHERE id=?")
           .run(Date.parse(nextDay()), j.id);
