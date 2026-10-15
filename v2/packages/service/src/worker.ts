@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   CLI_VERSION,
+  EVIDENCE_TOOLS,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -39,7 +40,7 @@ export interface CliSession {
   /** Classify the exit and return the unvalidated proposal JSON. */
   finish(code: number | null): unknown;
 }
-const evidenceToolNames = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'];
+const evidenceToolNames: readonly string[] = EVIDENCE_TOOLS;
 const disabledFeatures = [
   'shell_tool',
   'unified_exec',
@@ -185,7 +186,7 @@ export function workerArgs(input: {
       KNOTER_WORKER_SOCKET: input.socket,
       KNOTER_WORKER_CAPABILITY: input.capability,
     },
-    'mcp_servers.wiki.enabled_tools': ['source_read', 'wiki_search', 'wiki_read', 'reference_read'],
+    'mcp_servers.wiki.enabled_tools': [...EVIDENCE_TOOLS],
     'mcp_servers.wiki.required': true,
     'features.code_mode.enabled': false,
     'features.code_mode_host': true,
@@ -295,7 +296,7 @@ export class Worker {
     requireThat(++a.reads <= 40, 'LIMIT', 'Attempt exceeded 40 evidence reads.');
     const input = z
       .object({
-        tool: z.enum(['source_read', 'wiki_search', 'wiki_read', 'reference_read']),
+        tool: z.enum(EVIDENCE_TOOLS),
         args: z.unknown(),
       })
       .strict()

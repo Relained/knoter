@@ -4,6 +4,11 @@ export const PROTOCOL = 1;
 export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_WIRE_BYTES = 8 * 1024 * 1024;
 export const PIPELINE = 'markdown-wiki-1';
+/** Model runs per local day across automatic, manual, and retried attempts (D9). */
+export const DAILY_RUN_LIMIT = 200;
+/** The wiki MCP tools; every CLI adapter must expose exactly these and nothing else. */
+export const EVIDENCE_TOOLS = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'] as const;
+export type EvidenceTool = (typeof EVIDENCE_TOOLS)[number];
 export const MODEL = 'gpt-5.6-luna';
 export const CLI_VERSION = '0.154.0';
 // Claude Code updates itself frequently; versions at or above the verified one are

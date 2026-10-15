@@ -1,7 +1,7 @@
 // This process owns no database or credentials. Its expiring capability grants
 // bounded evidence reads against one attempt, validated by the service each time.
 import { request } from './transport.js';
-import { MAX_WIRE_BYTES } from '@knoter/contracts/native';
+import { EVIDENCE_TOOLS, MAX_WIRE_BYTES } from '@knoter/contracts/native';
 const socket = process.env.KNOTER_WORKER_SOCKET!,
   capability = process.env.KNOTER_WORKER_CAPABILITY!;
 const tools = [
@@ -56,6 +56,8 @@ const tools = [
     openWorldHint: tool.name === 'reference_read',
   },
 }));
+if (tools.map((t) => t.name).sort().join() !== [...EVIDENCE_TOOLS].sort().join())
+  throw new Error('Bridge tools differ from EVIDENCE_TOOLS.');
 let pending = Buffer.alloc(0);
 const reply = (id: unknown, result: unknown, error?: { code: number; message: string }) =>
   process.stdout.write(

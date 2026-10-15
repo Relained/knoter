@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
-import { readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { WikiDocument, WorkspaceSnapshot, Revision, Source } from '@knoter/contracts';
 import {
+  DAILY_RUN_LIMIT,
   MAX_SOURCE_BYTES,
   PIPELINE,
   providerProfiles,
@@ -181,15 +182,36 @@ export class Store {
       'SELECT data,deleted_at FROM documents',
     ).map((r) => ({ ...JSON.parse(r.data), ...(r.deleted_at ? { deletedAt: r.deleted_at } : {}) }));
   }
-  document(id: string) {
-    const d = this.documents().find((d) => d.id === id);
-    requireThat(d, 'NOT_FOUND', 'Document does not exist.');
-    return d;
+  document(id: string): WikiDocument & { deletedAt?: string } {
+    const r = this.one<{ data: string; deleted_at: string | null }>(
+      'SELECT data,deleted_at FROM documents WHERE id=?',
+      id,
+    );
+    requireThat(r, 'NOT_FOUND', 'Document does not exist.');
+    return { ...JSON.parse(r.data), ...(r.deleted_at ? { deletedAt: r.deleted_at } : {}) };
   }
   version(id: string): EvidenceVersion {
     const r = this.one<{ data: string }>('SELECT data FROM versions WHERE id=?', id);
     requireThat(r, 'NOT_FOUND', 'Source version does not exist.');
     return JSON.parse(r.data);
+  }
+  // Versions are immutable, so their snapshot preview can be cached for the process.
+  private previews = new Map<string, { version: number; size: number; excerpt: string }>();
+  versionPreview(id: string) {
+    let preview = this.previews.get(id);
+    if (!preview) {
+      const v = this.version(id);
+      preview = {
+        version: v.version,
+        size: statSync(join(this.dir, 'blobs', v.hash)).size,
+        excerpt: v.segments
+          .map((s) => s.text)
+          .join('\n\n')
+          .slice(0, 2000),
+      };
+      this.previews.set(id, preview);
+    }
+    return preview;
   }
   source(id: string) {
     const s = this.one<SourceRow>('SELECT * FROM sources WHERE id=?', id);
@@ -264,11 +286,13 @@ export class Store {
       );
     const old = this.one<SourceRow>('SELECT * FROM sources WHERE path=?', input.path);
     if (old && this.version(old.latest).hash === input.hash) {
-      this.db
-        .prepare(
-          "UPDATE sources SET availability='available',detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
-        )
-        .run(now(), input.watchId, old.id);
+      // Every scan re-registers unchanged files; write only when something changed.
+      if (old.availability !== 'available' || (input.watchId && input.watchId !== old.watch_id))
+        this.db
+          .prepare(
+            "UPDATE sources SET availability='available',detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
+          )
+          .run(now(), input.watchId, old.id);
       return { sourceId: old.id, versionId: old.latest, duplicate: true };
     }
     const sourceId = old?.id ?? uuid(),
@@ -406,7 +430,7 @@ export class Store {
       this.lease(j);
       const calls =
         this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ?? 0;
-      if (calls >= 20) {
+      if (calls >= DAILY_RUN_LIMIT) {
         this.db
           .prepare(
             "UPDATE jobs SET status='queued',stage='daily limit',attempts=attempts-1,owner=NULL,lease_until=0,next_run=? WHERE id=?",
@@ -878,18 +902,18 @@ export class Store {
   snapshot(lastTick: number | null, nextTick: number): WorkspaceSnapshot {
     const docs: (WikiDocument & { deletedAt?: string })[] = this.documents().map((d) => ({
         ...d,
-        citations: this.citations(d.id),
+        citations: this.citations(d.id, d.revision),
       })),
       jobs = this.all<JobRow>('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200');
     const sources: Source[] = this.all<SourceRow>('SELECT * FROM sources').map((s) => {
-      const v = this.version(s.latest),
+      const v = this.versionPreview(s.latest),
         job = jobs.find((j) => j.version_id === s.latest);
       return {
         id: s.id,
         title: s.filename,
         filename: s.filename,
         type: 'md',
-        size: readFileSync(join(this.dir, 'blobs', v.hash)).length,
+        size: v.size,
         status:
           job?.status === 'running'
             ? 'extracting'
@@ -901,10 +925,7 @@ export class Store {
                   ? 'ready'
                   : 'queued',
         addedAt: s.added_at,
-        excerpt: v.segments
-          .map((s) => s.text)
-          .join('\n\n')
-          .slice(0, 20000),
+        excerpt: v.excerpt,
         documentIds: docs
           .filter((d) => !d.deletedAt && d.sourceIds.includes(s.id))
           .map((d) => d.id),
@@ -926,9 +947,11 @@ export class Store {
       events: [],
       messages: [],
       settings: this.get('settings'),
-      revisions: this.all<{ data: string }>('SELECT data FROM revisions').map((r) =>
-        JSON.parse(r.data),
-      ),
+      // The 2 s snapshot omits revision bodies; the history list needs only metadata.
+      revisions: this.all<{ data: string }>('SELECT data FROM revisions').map((r) => ({
+        ...(JSON.parse(r.data) as Revision),
+        body: '',
+      })),
       activities: this.all<{ data: string }>(
         'SELECT data FROM events ORDER BY cursor DESC LIMIT 100',
       ).map((r) => JSON.parse(r.data)),
@@ -947,7 +970,7 @@ export class Store {
         callsToday:
           this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ??
           0,
-        dailyLimit: 20,
+        dailyLimit: DAILY_RUN_LIMIT,
         resetsAt: nextDay(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         watches: this.watches(),

@@ -32,7 +32,7 @@ export function SourceEvidence({
         {source.watchId ? 'Folder watched while app is open' : 'Snapshot only'}
       </p>
       <p>
-        Last discovery: {source.detectedAt ? new Date(source.detectedAt).toLocaleString() : '—'} ·{' '}
+        Version detected: {source.detectedAt ? new Date(source.detectedAt).toLocaleString() : '—'} ·{' '}
         {source.processedVersionId === source.latestVersionId
           ? 'Latest version processed'
           : 'Latest version not yet processed'}

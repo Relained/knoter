@@ -6,13 +6,16 @@ import { promisify } from 'node:util';
 import { accessSync, constants } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import { CLAUDE_MIN_VERSION, CLAUDE_MODEL, providerProfiles } from '@knoter/contracts/native';
+import {
+  CLAUDE_MIN_VERSION,
+  CLAUDE_MODEL,
+  EVIDENCE_TOOLS,
+  providerProfiles,
+} from '@knoter/contracts/native';
 import { AppError, requireThat } from './common.js';
 import type { CliInfo, CliSession } from './worker.js';
 const exec = promisify(execFile);
-const evidenceTools = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'].map(
-  (name) => `mcp__wiki__${name}`,
-);
+const evidenceTools = EVIDENCE_TOOLS.map((name) => `mcp__wiki__${name}`);
 // --json-schema is delivered through this built-in tool.
 const allowedTools = new Set([...evidenceTools, 'StructuredOutput']);
 export function versionAtLeast(version: string, minimum: string) {
@@ -35,6 +38,8 @@ export function claudeEnvironment() {
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     MCP_TIMEOUT: '15000',
     MCP_TOOL_TIMEOUT: '15000',
+    // A large note can exceed the default MCP result cap, which would truncate evidence.
+    MAX_MCP_OUTPUT_TOKENS: '80000',
   };
   if (process.env.CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
   return env;

@@ -11,6 +11,11 @@ export class SourceWatcher {
   busy = false;
   timer: NodeJS.Timeout | null = null;
   pendingImports = new Set<string>();
+  /**
+   * Stat of each file's last successful registration, so unchanged files are not re-read on
+   * every scan. Entries expire after ten minutes and are dropped when the service changes.
+   */
+  registered = new Map<string, { stamp: string; at: number }>();
   constructor(private send: Send) {}
   start() {
     this.timer = setInterval(() => void this.scan(), 10_000);
@@ -57,6 +62,10 @@ export class SourceWatcher {
   }
   async register(path: string, watchId: string | null) {
     try {
+      const before = await lstat(path);
+      const stamp = `${before.ino}:${before.size}:${before.mtimeMs}:${before.ctimeMs}:${watchId}`;
+      const known = this.registered.get(path);
+      if (known?.stamp === stamp && Date.now() - known.at < 600_000) return null;
       const bytes = await this.stableBytes(path);
       const result = await this.send('sourceSnapshot', {
         path,
@@ -65,10 +74,12 @@ export class SourceWatcher {
         bytes: bytes.toString('base64'),
         hash: sha(bytes),
       });
+      this.registered.set(path, { stamp, at: Date.now() });
       this.pending.delete(path);
       this.pendingImports.delete(path);
       return result;
     } catch (e) {
+      this.registered.delete(path);
       this.pending.set(path, (e as Error).message);
       if (!watchId) this.pendingImports.add(path);
       throw e;
@@ -111,11 +122,6 @@ export class SourceWatcher {
                     'Folder exceeds 2,000 Markdown files. Choose a smaller demo folder.',
                   );
                 paths.push(path);
-                try {
-                  await this.register(path, location.id);
-                } catch (e) {
-                  error = (e as Error).message;
-                }
               }
             }
           };
@@ -136,8 +142,20 @@ export class SourceWatcher {
           error = (e as Error).message;
           this.pending.set(location.path, error);
         }
+        // Report the complete listing before registering bytes: one unreadable file stays a
+        // per-file pending entry and never marks the whole folder unavailable.
         await this.send('scanComplete', { watchId: location.id, paths, error });
         if (!error) this.pending.delete(location.path);
+        let next = 0;
+        if (!error)
+          await Promise.all(
+            Array.from({ length: 6 }, async () => {
+              while (next < paths.length) {
+                const path = paths[next++];
+                await this.register(path, location.id).catch(() => undefined);
+              }
+            }),
+          );
       }
     } catch {
       /* Reconnect scan owns recovery; registered snapshots remain in the service. */

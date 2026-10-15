@@ -60,12 +60,16 @@ async function desktop(action: DesktopAction) {
     const result = await serviceControl(
       action === 'enable' ? 'register' : action === 'disable' ? 'unregister' : action,
     );
-    if (action === 'enable') setTimeout(() => void watcher.scan(), 1000);
+    if (action === 'enable') {
+      watcher.registered.clear();
+      setTimeout(() => void watcher.scan(), 1000);
+    }
     return result;
   }
   if (action === 'restart') {
     await serviceControl('unregister');
     const result = await serviceControl('register');
+    watcher.registered.clear();
     setTimeout(() => void watcher.scan(), 1000);
     return result;
   }
@@ -119,7 +123,10 @@ async function desktop(action: DesktopAction) {
     return path;
   }
   const path = await chooseDirectory('Choose a knoter backup to restore into this empty workspace');
-  if (path) await send('restoreBackup', { path });
+  if (path) {
+    await send('restoreBackup', { path });
+    watcher.registered.clear();
+  }
   return path;
 }
 app.setName('Knoter Wiki Demo');

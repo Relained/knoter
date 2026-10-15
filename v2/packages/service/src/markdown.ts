@@ -141,9 +141,9 @@ export function extract(bytes: Buffer): Segment[] {
   }
   flush(lines.length);
   requireThat(
-    result.length <= 500,
+    result.length <= 2000,
     'LIMIT',
-    'Markdown exceeds 500 evidence segments. Split the file.',
+    'Markdown exceeds 2,000 evidence segments. Split the file.',
   );
   return result;
 }
