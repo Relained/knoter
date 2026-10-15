@@ -60,9 +60,9 @@ export function restoreEmpty(store: Store, path: string) {
   requireThat(sha(dbBytes) === manifest.databaseHash, 'HASH', 'Backup database checksum mismatch.');
   const snapshot = new Database(join(path, 'wiki.sqlite'), { readonly: true });
   try {
-    // Version 1 backups predate side chat and are migrated when opened.
+    // Store migrates a v1 backup forward when the restored database is reopened.
     requireThat(
-      [1, 2].includes(snapshot.pragma('user_version', { simple: true }) as number),
+      [1, 2, 3].includes(snapshot.pragma('user_version', { simple: true }) as number),
       'SCHEMA',
       'Unsupported backup schema.',
     );
@@ -126,9 +126,9 @@ export function exportWiki(store: Store, path: string) {
     if (!doc.deletedAt)
       atomicWrite(
         join(path, `${doc.id}.md`),
-        `---\nid: ${doc.id}\ntitle: ${JSON.stringify(doc.title)}\nkind: llm-wiki\nschema: 1\nrevision: ${doc.revision}\nsourceIds: ${JSON.stringify(doc.sourceIds)}\n---\n\n# ${doc.title}\n\n${doc.body}\n` +
+        `---\nid: ${doc.id}\ntitle: ${JSON.stringify(doc.title)}\nkind: llm-wiki\nschema: 1\nrevision: ${doc.revision}\nsourceIds: ${JSON.stringify(doc.sourceIds)}\ntags: ${JSON.stringify(doc.tags ?? [])}\n---\n\n# ${doc.title}\n\n${doc.body}\n` +
           ((doc.references?.length ?? 0) > 0
-            ? `\n## Official references\n\n${doc.references!.map((r) => `- [${r.title.replace(/[\[\]]/g, '')}](${r.url}) · checked ${r.fetchedAt} · ${r.license} · explanations adapted in Korean ([license](https://creativecommons.org/licenses/by-sa/2.5/)).`).join('\n')}\n`
+            ? `\n## Supplement references\n\n${doc.references!.map((r) => `- [${r.title.replace(/[\[\]]/g, '')}](${r.url}) · ${r.provider ?? 'mdn'} · checked ${r.fetchedAt} · ${r.license} · explanations adapted in Korean${r.licenseUrl || !r.provider ? ` ([license](${r.licenseUrl ?? 'https://creativecommons.org/licenses/by-sa/2.5/'}))` : ''}.`).join('\n')}\n`
             : ''),
       );
   atomicWrite(

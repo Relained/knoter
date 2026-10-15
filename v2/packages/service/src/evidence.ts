@@ -1,103 +1,109 @@
-// Bounded evidence reads shared by the wiki worker and the side chat. Each run
-// reads only its frozen manifest; official references are fetched and frozen once.
+// Bounded evidence reads shared by the wiki worker and the side chat. Reads go to the
+// live store; versions are immutable and replacements are fenced by the revision read.
 import { z } from 'zod';
-import type { EvidenceVersion, ReferenceEvidence, Citation } from '@knoter/contracts/native';
-import type { WikiDocument } from '@knoter/contracts';
+import {
+  EVIDENCE_TOOLS,
+  type EvidenceVersion,
+  type ReferenceEvidence,
+} from '@knoter/contracts/native';
+import type { AttemptContext, Store } from './store.js';
 import { requireThat } from './common.js';
-import { fetchMdnReference, mdnLocation } from './references.js';
+import { fetchReference, referenceTarget } from './references.js';
 
-export const evidenceToolNames = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'];
-export interface EvidenceManifest {
-  sources: EvidenceVersion[];
-  documents: (WikiDocument & { deletedAt?: string; citations?: Citation[] })[];
-  references?: ReferenceEvidence[];
-}
-export interface EvidenceState {
-  manifest: EvidenceManifest;
+export interface EvidenceRun {
+  context: Pick<AttemptContext, 'readVersions' | 'readDocuments' | 'references'>;
   reads: number;
-  readVersions: Set<string>;
-  readDocuments: Set<string>;
   referenceReads: Map<string, Promise<ReferenceEvidence>>;
 }
 export async function readEvidence(
-  state: EvidenceState,
+  store: Store,
+  run: EvidenceRun,
   payload: unknown,
   hooks: {
-    /** Fence a newly fetched reference, persist it, and add it to the manifest. */
+    /** Fence a newly fetched reference, persist it, and add it to the context. */
     onReference(reference: ReferenceEvidence): void;
+    /** Evidence of this run that is not stored yet, such as a chat attachment. */
+    pendingVersion?(id: string): EvidenceVersion | undefined;
     /** Describe each read for progress display. */
     onRead?(description: string): void;
   },
-  maxReads = 40,
 ) {
-  requireThat(++state.reads <= maxReads, 'LIMIT', `Attempt exceeded ${maxReads} evidence reads.`);
+  requireThat(++run.reads <= 60, 'LIMIT', 'Attempt exceeded 60 evidence reads.');
   const input = z
     .object({
-      tool: z.enum(['source_read', 'wiki_search', 'wiki_read', 'reference_read']),
+      tool: z.enum(EVIDENCE_TOOLS),
       args: z.unknown(),
     })
     .strict()
     .parse(payload);
+  const context = run.context;
   if (input.tool === 'reference_read') {
-    const { path } = z
-      .object({ path: z.string().max(240) })
+    const { target } = z
+      .object({ target: z.string().min(1).max(2000) })
       .strict()
       .parse(input.args);
-    mdnLocation(path);
-    const key = path.toLowerCase();
-    if (!state.referenceReads.has(key)) {
+    referenceTarget(target);
+    const key = target.trim().toLowerCase();
+    if (!run.referenceReads.has(key)) {
       requireThat(
-        state.referenceReads.size < 8,
+        run.referenceReads.size < 10,
         'LIMIT',
-        'An attempt may fetch at most eight official references.',
+        'An attempt may read at most ten references.',
       );
-      hooks.onRead?.(`Checked MDN · ${path}`);
-      state.referenceReads.set(
+      hooks.onRead?.(`Read reference · ${target.trim().slice(0, 80)}`);
+      run.referenceReads.set(
         key,
-        fetchMdnReference(path).then((reference) => {
+        fetchReference(target).then((reference) => {
           hooks.onReference(reference);
           return reference;
         }),
       );
     }
-    return state.referenceReads.get(key)!;
+    return run.referenceReads.get(key)!;
   }
   if (input.tool === 'source_read') {
     const { versionId } = z.object({ versionId: z.string().uuid() }).strict().parse(input.args);
-    const source = state.manifest.sources.find((s) => s.id === versionId);
-    requireThat(source, 'AUTH', 'Source is outside this job.');
-    state.readVersions.add(versionId);
-    hooks.onRead?.(`Read source · ${source.filename}`);
-    return source;
+    const pending = hooks.pendingVersion?.(versionId);
+    if (pending) {
+      if (!context.readVersions.includes(versionId)) context.readVersions.push(versionId);
+      hooks.onRead?.(`Read attachment · ${pending.filename}`);
+      return { ...pending, relPath: pending.filename, latest: true };
+    }
+    const version = store.verifiedVersion(versionId);
+    const source = store.source(version.sourceId);
+    if (!context.readVersions.includes(versionId)) context.readVersions.push(versionId);
+    hooks.onRead?.(`Read note · ${store.relPath(source)}`);
+    return {
+      ...version,
+      relPath: store.relPath(source),
+      latest: source.latest === versionId,
+    };
   }
   if (input.tool === 'wiki_read') {
     const { documentId } = z.object({ documentId: z.string().uuid() }).strict().parse(input.args);
-    const doc = state.manifest.documents.find((d) => d.id === documentId);
-    requireThat(doc, 'AUTH', 'Document is outside this job.');
-    state.readDocuments.add(documentId);
-    hooks.onRead?.(`Read note · ${doc.title}`);
-    return doc;
+    const doc = store.document(documentId);
+    context.readDocuments[documentId] = doc.revision;
+    hooks.onRead?.(`Read page · ${doc.title}`);
+    return {
+      ...doc,
+      citations: store.citations(doc.id, doc.revision),
+      sources: doc.sourceIds.map((sourceId) => {
+        const s = store.source(sourceId);
+        return {
+          sourceId,
+          relPath: store.relPath(s),
+          latestVersionId: s.latest,
+          removed: !!store.version(s.latest).removed,
+        };
+      }),
+    };
   }
   const { query } = z
     .object({ query: z.string().max(200) })
     .strict()
     .parse(input.args);
-  hooks.onRead?.(query ? `Searched notes · ${query}` : 'Listed notes');
-  const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return state.manifest.documents
-    .map((d) => ({
-      id: d.id,
-      title: d.title,
-      description: d.description,
-      revision: d.revision,
-      sourceIds: d.sourceIds,
-      protected: d.protected,
-      deletedAt: d.deletedAt ?? null,
-      score: words.reduce(
-        (n, w) => n + (`${d.title} ${d.body}`.toLocaleLowerCase().includes(w) ? 1 : 0),
-        0,
-      ),
-    }))
-    .filter((d) => !words.length || d.score)
-    .sort((a, b) => b.score - a.score);
+  hooks.onRead?.(
+    `${input.tool === 'source_search' ? 'Searched notes' : 'Searched pages'}${query ? ` · ${query}` : ''}`,
+  );
+  return input.tool === 'source_search' ? store.searchSources(query) : store.searchDocuments(query);
 }

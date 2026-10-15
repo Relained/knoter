@@ -385,6 +385,32 @@ select:focus {
 .dot-2 {
   background: #bdac89;
 }
+.tag-hash {
+  width: 6px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--subtle);
+  flex-shrink: 0;
+}
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.tag-chip {
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--secondary);
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.tag-chip:hover {
+  color: var(--foreground);
+}
 .collection-link small {
   font-size: 10px;
   color: var(--subtle);

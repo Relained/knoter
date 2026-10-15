@@ -14,6 +14,7 @@ export interface WorkspaceRoute {
   view: View;
   documentId?: string;
   category?: string;
+  tag?: string;
   focusId?: string;
 }
 
@@ -22,6 +23,7 @@ export function routePath(route: WorkspaceRoute): string {
     return generatePath(paths.document, { documentId: encodeURIComponent(route.documentId) });
   const params = new URLSearchParams();
   if (route.view === 'wiki' && route.category) params.set('collection', route.category);
+  if (route.view === 'wiki' && route.tag) params.set('tag', route.tag);
   if (route.view === 'graph' && route.focusId) params.set('focus', route.focusId);
   return paths[route.view] + (params.size ? `?${params}` : '');
 }

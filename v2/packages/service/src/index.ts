@@ -1,5 +1,14 @@
 import { createServer } from 'node:net';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, chmodSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  chmodSync,
+  statSync,
+  rmSync,
+} from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -15,13 +24,13 @@ import { Store } from './store.js';
 import { Worker, checkCli, codexModels } from './worker.js';
 import { claudeModels } from './claude.js';
 import { ChatService } from './chat.js';
+import { loadSkill } from './skill.js';
 import {
   AppError,
   defaultDataDir,
   socketFor,
   secureDir,
   atomicWrite,
-  sha,
   requireThat,
 } from './common.js';
 import { backup, restoreEmpty, exportWiki } from './backup.js';
@@ -30,18 +39,27 @@ process.umask(0o077);
 const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(process.env.KNOTER_DATA_DIR ?? defaultDataDir());
 const resources = resolve(process.env.KNOTER_RESOURCES ?? join(here, '..', 'resources'));
-const skillPath = join(resources, 'skills', 'wiki-worker', 'SKILL.md');
+const skill = loadSkill(join(resources, 'skills', 'wiki-worker'));
 const chatSkillPath = join(resources, 'skills', 'wiki-chat', 'SKILL.md');
 secureDir(dataDir);
 // A PID lock is acquired before opening SQLite. A live owner's lock is never removed.
+// The owner runs as this user and writes the lock after it starts, so a PID that cannot
+// be signalled (EPERM) or whose process started after the lock was written was reused.
+// ps truncates the start to the second, so a tie or an unreadable answer keeps the lock.
 const lockPath = join(dataDir, 'service.lock');
 if (existsSync(lockPath)) {
   const owner = Number(readFileSync(lockPath, 'utf8'));
   let alive = true;
   try {
     process.kill(owner, 0);
+    const started = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(owner)], {
+      encoding: 'utf8',
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' },
+    });
+    if (Date.parse(`${started.trim()} UTC`) > statSync(lockPath).mtimeMs) alive = false;
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ESRCH') alive = false;
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH' || code === 'EPERM') alive = false;
   }
   if (alive) throw new Error('Another service owns this workspace.');
   unlinkSync(lockPath);
@@ -53,9 +71,9 @@ const token = readFileSync(tokenPath, 'utf8');
 const socket = socketFor(dataDir);
 secureDir(dirname(socket));
 if (existsSync(socket)) unlinkSync(socket);
-let store = new Store(dataDir, sha(readFileSync(skillPath)));
-const worker = new Worker(store, socket, skillPath, join(here, 'bridge.mjs'));
-const chat = new ChatService(store, socket, chatSkillPath, skillPath, join(here, 'bridge.mjs'));
+let store = new Store(dataDir, skill.hash);
+const worker = new Worker(store, socket, skill, join(here, 'bridge.mjs'));
+const chat = new ChatService(store, socket, chatSkillPath, skill, join(here, 'bridge.mjs'));
 let maintenance = false;
 const sameToken = (candidate: string) =>
   candidate.length === token.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(token));
@@ -245,9 +263,10 @@ async function shutdown() {
   while ((worker.busy || chat.active) && Date.now() < until)
     await new Promise((r) => setTimeout(r, 50));
   store.db.close();
+  // server.close() already removed the socket; force keeps that from skipping the lock.
   try {
-    unlinkSync(socket);
-    unlinkSync(lockPath);
+    rmSync(socket, { force: true });
+    rmSync(lockPath, { force: true });
   } catch {}
   process.exit(0);
 }

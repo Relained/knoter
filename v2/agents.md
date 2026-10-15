@@ -5,7 +5,7 @@ HTML-first and command-registry rules do not apply here. The assigned native
 milestone is the [wiki-worker demo](../docs/plan/wiki-worker-demo.md). Keep its
 connected service and the browser prototype distinct; label simulated operations
 clearly. PDF, Windows, real tasks/calendar, and production distribution are
-outside this demo. The connected side chat follows D15 in that plan.
+outside this demo. The connected side chat follows D22 in that plan.
 
 - Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
   composable primitives. Reuse Radix for accessible interaction/focus behavior
@@ -28,11 +28,14 @@ outside this demo. The connected side chat follows D15 in that plan.
   change notifications are debounced; retain a separate unload guard.
 - Preserve validated wire messages, cancellation/lease fencing, immutable source
   versions, revision citations, and migration compatibility when changing the
-  service. Do not grant the model shell, arbitrary web, filesystem, or DB mutation
-  tools. Each worker CLI adapter (Codex, Claude Code) exposes only the wiki
-  evidence tools and stops an attempt whose reported tools differ. For the user's 2026-09-18 reference-wiki requirement, the service may
-  fetch official MDN documentation through bounded `reference_read`; retain the
-  fetched evidence and keep original-source and supplemental citations distinct.
+  service. Do not grant the model shell, filesystem, or DB mutation tools. Each
+  worker CLI adapter (Codex, Claude Code) exposes only the wiki evidence tools plus
+  web search, and stops an attempt whose reported tools differ. Per the user's
+  2026-10-16 decision (D12), supplements may come from the model's knowledge and
+  the web: the service, not the model, reads pages through bounded `reference_read`
+  (https only, with private-network addresses refused at connect time), stores the
+  evidence, and keeps the user's material and marked supplements distinct. Never
+  send note text in an outbound request.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
 - Side-chat turns get the same evidence tools plus the read-only `wiki_check`.
