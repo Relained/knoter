@@ -13,7 +13,7 @@ Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
 (`codex login`, then `codex login status`). The selected account must have access
 to `gpt-5.6-luna`. Alternatively, Claude Code **2.1.294 or newer** logged in with
 `claude auth login` (check with `claude auth status`) runs the same worker on
-`claude-sonnet-5-5`; it receives no built-in tools, only the wiki MCP bridge.
+`claude-sonnet-5-5`; it receives only WebSearch and the wiki MCP bridge.
 The app never copies login tokens into its workspace.
 
 From `v2`:
@@ -51,17 +51,24 @@ app completely, replace it, reopen it, and enable the service again.
    New no-change results without a linked wiki require review instead of reporting success.
 5. Editing a wiki yourself protects it. Subsequent worker changes appear for review
    in Sources/Settings; **Accept changes** and **Reject** resolve those proposals.
-   Trash is recoverable and is protected against automatic recreation.
+   Trash is recoverable, and pages you delete are not recreated automatically.
+   Deleting a note removes its wiki content two minutes after a scan last saw it:
+   pages left with no source move to Trash as **Moved by knoter** (protected pages
+   are proposed instead), and others are rewritten without it. Restoring the file
+   brings those pages back. A moved or renamed file with unchanged bytes keeps its
+   identity; an unreadable folder never counts as deletion, and many notes vanishing
+   at once wait for **Retry**.
 6. Quit the UI after a source is registered: its queued work continues. Changes
    made to files while the UI is closed are discovered after reopening. **Pause
    queue** keeps the service available for editing; **Disable service** stops it.
 
-The worker organizes factual knowledge, original ideas, experiences, questions,
-and study/exam notes according to their content. Personal reasoning, uncertainty,
-and problem context should survive alongside reusable concepts; external proof
-is not required to preserve an attributed personal idea. A mixed note can contain
-several kinds of material without being forced into one template. The writing
-contract is recorded in [D13](../docs/plan/wiki-worker-demo.md#2-사용자-결정표).
+Your notes are the core of the wiki, on any subject. The worker organizes factual
+knowledge, original ideas, experiences, questions, and study/exam notes according
+to their content, attributes clipped material to its author, and then fills gaps
+from its own knowledge and the web, marking every addition as **보충**. Personal
+reasoning, uncertainty, and problem context should survive alongside reusable
+concepts. The writing contract is recorded in
+[D13 and D19](../docs/plan/wiki-worker-demo.md#2-사용자-결정표).
 
 Reference topics can use hubs and subtopics, such as `HTML`, `HTML/attribute`, and
 `HTML/element`; this is an example, not a required shape for every note. Use
@@ -70,16 +77,20 @@ Existing IDs and revisions are retained when a document is reorganized. Hierarch
 labels come from slash-separated titles; renaming a parent does not rename child
 titles, while stored UUID links remain stable.
 
-For incomplete web-development notes, the demo can read official **MDN Web Docs**
-from MDN's public content repository. It checks up to eight pages per attempt,
-without sending source text to that repository. This is the current reference
-provider, not a general web-search feature or a restriction on wiki subjects.
-Research is used when factual supplementation is needed. Unsupported factual gaps
-are identified rather than filled from model memory; source-supported personal
-content can still be recorded without official citations. **Official references**
-separates supplemental evidence from your original notes; expand a reference and
-choose **Inspect cited passages** to read the exact stored snapshot. Its URL,
-retrieval date, hash, and attribution survive revisions and full backup/restore.
+Substantive factual supplements are checked against pages the service reads for
+the worker: Wikipedia (Korean or English) through its API, MDN, or any public https
+page the worker found with web search. At most ten pages are read per attempt.
+Only the chosen page address or title leaves the machine, never note text. Web
+reads refuse local and private network addresses. **Supplement references** lists
+each page with its provider and licence; choose **Inspect cited passages** to read
+the stored snapshot. Its URL, retrieval date, hash, and attribution survive
+revisions and full backup/restore.
+
+The worker tags pages (shown on pages and cards, in the sidebar **TAGS** group, and
+as a library filter) and links the first mention of key terms to their pages. It
+asks the service to add such links to existing pages instead of rewriting them;
+protected pages are skipped. **Backlinks** on each page show where it is linked
+from.
 
 The user approved a **local LaunchAgent for this demo** after SMAppService rejected
 the unsigned helper. Registration creates only
@@ -97,6 +108,8 @@ is a reading/interchange format, not a full backup. Restore requires an empty
 workspace and reconnecting folders/CLI. Preserve any existing workspace by moving
 it aside **after disabling the service and quitting the app**, then start a fresh
 workspace and choose **Restore backup**. Never replace a live SQLite database.
+A new build migrates the database to schema 2 on first start, after which older
+builds refuse to open it; back up the workspace before installing a newer build.
 
 For development, run `npm run check`, then `npm run service` in one terminal and
 `npm run desktop` in another. Both accept the same `KNOTER_DATA_DIR` environment
@@ -106,10 +119,11 @@ service and stops when its service terminal exits.
 ## Native demo limits and failure evidence
 
 Markdown must be UTF-8, at most 256 KiB per file. Hidden entries and symlinks are
-skipped during folder discovery. Retrieval is bounded to 100 sources, 100 wiki
-documents, 4 MB of source evidence, and 40 evidence-tool reads per attempt. Jobs
+skipped during folder discovery, and a folder may hold at most 2,000 notes. The
+worker searches notes and pages instead of receiving the whole corpus; an attempt
+may make 60 evidence reads, ten reference reads, and eight web searches. Jobs
 stop visibly when these limits are exceeded. Each attempt has a five-minute
-watchdog, at most two automatic retries for temporary failures, and 20 starts per
+watchdog, at most two automatic retries for temporary failures, and 200 starts per
 local calendar day per workspace. A reserved start counts even if a crash occurs
 immediately before spawning; these limits are not token or subscription quotas.
 
@@ -124,7 +138,7 @@ observations remain separate below.
 
 Retry reprocesses the current source snapshot; it does not force a new revision.
 Check the job's result and affected documents: it can return `no_change` or use
-other sources from its frozen evidence. A protected-document proposal is pending
+other notes it finds by search. A protected-document proposal is pending
 review, not an applied update. Changing the default skill does not automatically
 rewrite every existing wiki.
 
