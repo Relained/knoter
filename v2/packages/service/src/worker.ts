@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   CLI_VERSION,
+  codexFallbackModels,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -16,11 +17,12 @@ import {
   type EvidenceVersion,
   type WorkerInfo,
   type WorkerProvider,
+  type ChatModelOption,
 } from '@knoter/contracts/native';
 import { Store, type JobRow, type FrozenManifest } from './store.js';
 import { AppError, now, uuid, secureDir, requireThat } from './common.js';
-import { fetchMdnReference, mdnLocation } from './references.js';
 import { checkClaude, claudeSession } from './claude.js';
+import { evidenceToolNames, readEvidence } from './evidence.js';
 const exec = promisify(execFile);
 export type CliInfo = WorkerInfo['cli'];
 /** One CLI process: its invocation, per-event capability checks, and final proposal. */
@@ -39,7 +41,6 @@ export interface CliSession {
   /** Classify the exit and return the unvalidated proposal JSON. */
   finish(code: number | null): unknown;
 }
-const evidenceToolNames = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'];
 const disabledFeatures = [
   'shell_tool',
   'unified_exec',
@@ -141,6 +142,44 @@ async function checkCodex(path: string): Promise<CliInfo> {
     };
   }
 }
+/** The models and reasoning levels the selected Codex CLI lists for its login. */
+export async function codexModels(path: string): Promise<ChatModelOption[]> {
+  try {
+    const { stdout } = await exec(path, ['debug', 'models'], {
+      timeout: 15_000,
+      env: cliEnvironment(),
+      maxBuffer: 2_000_000,
+    });
+    const value = JSON.parse(stdout);
+    const models = (Array.isArray(value) ? value : value?.models) as {
+      slug?: unknown;
+      display_name?: unknown;
+      visibility?: unknown;
+      default_reasoning_level?: unknown;
+      supported_reasoning_levels?: { effort?: unknown }[];
+    }[];
+    const options = models
+      .filter((m) => m.visibility === 'list' && typeof m.slug === 'string')
+      .map((m) => {
+        // `ultra` delegates to sub-agents, which the restricted tool surface disables.
+        const efforts = (m.supported_reasoning_levels ?? [])
+          .map((level) => String(level.effort ?? ''))
+          .filter((effort) => /^[a-z]{1,20}$/.test(effort) && effort !== 'ultra');
+        const preferred = String(m.default_reasoning_level ?? '');
+        return {
+          provider: 'codex' as const,
+          model: String(m.slug).slice(0, 100),
+          label: String(m.display_name ?? m.slug).slice(0, 100),
+          efforts,
+          defaultEffort: efforts.includes(preferred) ? preferred : efforts[0],
+        };
+      })
+      .filter((m) => /^[\w.-]+$/.test(m.model) && m.efforts.length);
+    return options.length ? options.slice(0, 20) : codexFallbackModels;
+  } catch {
+    return codexFallbackModels;
+  }
+}
 export function proposalSchemaForSources(sources: EvidenceVersion[]) {
   requireThat(sources.length > 0, 'EVIDENCE', 'A worker attempt needs source evidence.');
   // Constrain identifier spelling at generation time; pair, segment, and read
@@ -161,7 +200,7 @@ export function proposalSchemaForSources(sources: EvidenceVersion[]) {
   });
 }
 
-export function workerArgs(input: {
+export interface CodexInput {
   cwd: string;
   schema: string;
   output: string;
@@ -169,11 +208,18 @@ export function workerArgs(input: {
   bridgePath: string;
   socket: string;
   capability: string;
-}) {
+  /** Defaults are the wiki worker's; the side chat passes the user's choice. */
+  model?: string;
+  effort?: string;
+  tools?: string[];
+  toolset?: 'worker' | 'chat';
+}
+export function workerArgs(input: CodexInput) {
+  const tools = input.tools ?? evidenceToolNames;
   const config: Record<string, unknown> = {
     approval_policy: 'never',
     web_search: 'disabled',
-    model_reasoning_effort: 'low',
+    model_reasoning_effort: input.effort ?? providerProfiles.codex.effort,
     project_doc_max_bytes: 0,
     model_instructions_file: input.skillPath,
     'features.skip_host_skill_discovery': true,
@@ -185,7 +231,7 @@ export function workerArgs(input: {
       KNOTER_WORKER_SOCKET: input.socket,
       KNOTER_WORKER_CAPABILITY: input.capability,
     },
-    'mcp_servers.wiki.enabled_tools': ['source_read', 'wiki_search', 'wiki_read', 'reference_read'],
+    'mcp_servers.wiki.enabled_tools': tools,
     'mcp_servers.wiki.required': true,
     'features.code_mode.enabled': false,
     'features.code_mode_host': true,
@@ -197,6 +243,7 @@ export function workerArgs(input: {
   delete config['mcp_servers.wiki.env'];
   config['mcp_servers.wiki.env.KNOTER_WORKER_SOCKET'] = input.socket;
   config['mcp_servers.wiki.env.KNOTER_WORKER_CAPABILITY'] = input.capability;
+  config['mcp_servers.wiki.env.KNOTER_TOOLSET'] = input.toolset ?? 'worker';
   for (const name of disabledFeatures) config[`features.${name}`] = false;
   return [
     'exec',
@@ -209,7 +256,7 @@ export function workerArgs(input: {
     '-C',
     input.cwd,
     '-m',
-    providerProfiles.codex.model,
+    input.model ?? providerProfiles.codex.model,
     '--json',
     '--color',
     'never',
@@ -221,7 +268,8 @@ export function workerArgs(input: {
     '-',
   ];
 }
-function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
+export function codexSession(input: CodexInput): CliSession {
+  const tools = input.tools ?? evidenceToolNames;
   const session: CliSession = {
     label: 'Codex',
     args: workerArgs(input),
@@ -237,7 +285,7 @@ function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
         session.tail = JSON.stringify(event).slice(-4000);
       if (item?.type === 'mcp_tool_call') {
         session.tools.push(`${item.server}.${item.tool}`);
-        if (item.server !== 'wiki' || !evidenceToolNames.includes(item.tool))
+        if (item.server !== 'wiki' || !tools.includes(item.tool))
           return new AppError('TOOLS', 'Unexpected worker tool.');
       } else if (
         item &&
@@ -267,6 +315,78 @@ function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
   };
   return session;
 }
+/** Run one CLI process with its output limit, event checks, and watchdog. */
+export function launch(
+  path: string,
+  session: CliSession,
+  input: { cwd: string; prompt: string; timeoutMs: number; timeoutMessage: string },
+  onSpawn: (pid: number) => void,
+) {
+  const child = spawn(path, session.args, {
+    cwd: input.cwd,
+    env: session.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true,
+  });
+  let failure: AppError | null = null,
+    bytes = 0,
+    lineBuffer = '';
+  const kill = () => {
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, 'SIGTERM');
+      } catch {}
+      setTimeout(() => {
+        try {
+          process.kill(-child.pid!, 'SIGKILL');
+        } catch {}
+      }, 1500).unref();
+    }
+  };
+  const stop = (error: AppError) => {
+    failure ??= error;
+    kill();
+  };
+  const watchdog = setTimeout(
+    () => stop(new AppError('TIMEOUT', input.timeoutMessage)),
+    input.timeoutMs,
+  );
+  child.on('spawn', () => onSpawn(child.pid!));
+  const consume = (chunk: Buffer, events: boolean) => {
+    bytes += chunk.length;
+    if (bytes > 2_000_000) {
+      stop(new AppError('LIMIT', 'CLI output exceeded 2 MB.'));
+      return;
+    }
+    if (!events) {
+      session.tail = (session.tail + chunk.toString()).slice(-4000);
+      return;
+    }
+    lineBuffer += chunk.toString();
+    let end: number;
+    while ((end = lineBuffer.indexOf('\n')) >= 0) {
+      const line = lineBuffer.slice(0, end);
+      lineBuffer = lineBuffer.slice(end + 1);
+      if (!line.trim()) continue;
+      // A malformed event (including JSON null) stops this attempt, not the service.
+      try {
+        const error = session.event(JSON.parse(line));
+        if (error) stop(error);
+      } catch {
+        stop(new AppError('FORMAT', 'CLI emitted an invalid event.'));
+      }
+    }
+  };
+  child.stdout.on('data', (c: Buffer) => consume(c, true));
+  child.stderr.on('data', (c: Buffer) => consume(c, false));
+  child.stdin.on('error', () => {});
+  child.stdin.end(input.prompt);
+  const done = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  }).finally(() => clearTimeout(watchdog));
+  return { done, stop, kill, failure: () => failure };
+}
 export class Worker {
   active: {
     job: JobRow;
@@ -292,79 +412,18 @@ export class Worker {
     const a = this.active;
     requireThat(a && a.capability === token, 'AUTH', 'Invalid or expired worker capability.');
     this.store.lease(a.job);
-    requireThat(++a.reads <= 40, 'LIMIT', 'Attempt exceeded 40 evidence reads.');
-    const input = z
-      .object({
-        tool: z.enum(['source_read', 'wiki_search', 'wiki_read', 'reference_read']),
-        args: z.unknown(),
-      })
-      .strict()
-      .parse(payload);
-    if (input.tool === 'reference_read') {
-      const { path } = z
-        .object({ path: z.string().max(240) })
-        .strict()
-        .parse(input.args);
-      mdnLocation(path);
-      const key = path.toLowerCase();
-      if (!a.referenceReads.has(key)) {
-        requireThat(
-          a.referenceReads.size < 8,
-          'LIMIT',
-          'An attempt may fetch at most eight official references.',
-        );
-        a.referenceReads.set(
-          key,
-          fetchMdnReference(path).then((reference) => {
-            this.store.lease(a.job);
-            requireThat(this.active === a, 'LEASE', 'Reference arrived after the attempt ended.');
-            this.store.set(`reference:${reference.id}`, reference);
-            a.manifest.references ??= [];
-            a.manifest.references.push(reference);
-            this.store.db
-              .prepare('UPDATE attempts SET manifest=? WHERE id=?')
-              .run(JSON.stringify(a.manifest), a.attemptId);
-            return reference;
-          }),
-        );
-      }
-      return a.referenceReads.get(key)!;
-    }
-    if (input.tool === 'source_read') {
-      const { versionId } = z.object({ versionId: z.string().uuid() }).strict().parse(input.args);
-      const source = a.manifest.sources.find((s) => s.id === versionId);
-      requireThat(source, 'AUTH', 'Source is outside this job.');
-      a.readVersions.add(versionId);
-      return source;
-    }
-    if (input.tool === 'wiki_read') {
-      const { documentId } = z.object({ documentId: z.string().uuid() }).strict().parse(input.args);
-      const doc = a.manifest.documents.find((d) => d.id === documentId);
-      requireThat(doc, 'AUTH', 'Document is outside this job.');
-      a.readDocuments.add(documentId);
-      return doc;
-    }
-    const { query } = z
-      .object({ query: z.string().max(200) })
-      .strict()
-      .parse(input.args);
-    const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    return a.manifest.documents
-      .map((d) => ({
-        id: d.id,
-        title: d.title,
-        description: d.description,
-        revision: d.revision,
-        sourceIds: d.sourceIds,
-        protected: d.protected,
-        deletedAt: d.deletedAt ?? null,
-        score: words.reduce(
-          (n, w) => n + (`${d.title} ${d.body}`.toLocaleLowerCase().includes(w) ? 1 : 0),
-          0,
-        ),
-      }))
-      .filter((d) => !words.length || d.score)
-      .sort((a, b) => b.score - a.score);
+    return readEvidence(a, payload, {
+      onReference: (reference) => {
+        this.store.lease(a.job);
+        requireThat(this.active === a, 'LEASE', 'Reference arrived after the attempt ended.');
+        this.store.set(`reference:${reference.id}`, reference);
+        a.manifest.references ??= [];
+        a.manifest.references.push(reference);
+        this.store.db
+          .prepare('UPDATE attempts SET manifest=? WHERE id=?')
+          .run(JSON.stringify(a.manifest), a.attemptId);
+      },
+    });
   }
   async tick() {
     this.lastTick = Date.now();
@@ -485,31 +544,20 @@ ${JSON.stringify(catalog)}`;
         socket: this.socket,
         capability,
       });
-    const child = spawn(cli.path, session.args, {
-      cwd,
-      env: session.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: true,
-    });
-    let failure: AppError | null = null,
-      bytes = 0,
-      lineBuffer = '';
-    const kill = () => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, 'SIGTERM');
-        } catch {}
-        setTimeout(() => {
-          try {
-            process.kill(-child.pid!, 'SIGKILL');
-          } catch {}
-        }, 1500).unref();
-      }
-    };
-    const stop = (error: AppError) => {
-      failure ??= error;
-      kill();
-    };
+    const child = launch(
+      cli.path,
+      session,
+      {
+        cwd,
+        prompt,
+        timeoutMs: 300_000,
+        timeoutMessage: `${session.label} exceeded the five-minute execution limit.`,
+      },
+      (pid) => {
+        this.store.db.prepare('UPDATE attempts SET pid=? WHERE id=?').run(pid, attemptId);
+        this.store.stage(job, 'generating');
+      },
+    );
     this.active = {
       job,
       manifest,
@@ -519,58 +567,18 @@ ${JSON.stringify(catalog)}`;
       readDocuments: new Set(),
       referenceReads: new Map(),
       attemptId,
-      stop: () => stop(new AppError('CANCELLED', 'Worker cancelled.')),
+      stop: () => child.stop(new AppError('CANCELLED', 'Worker cancelled.')),
     };
     const heartbeat = setInterval(() => {
       try {
         this.store.heartbeat(job);
       } catch (e) {
-        stop(new AppError('LEASE', (e as Error).message));
+        child.stop(new AppError('LEASE', (e as Error).message));
       }
     }, 10_000);
-    const watchdog = setTimeout(
-      () =>
-        stop(new AppError('TIMEOUT', `${session.label} exceeded the five-minute execution limit.`)),
-      300_000,
-    );
-    child.on('spawn', () => {
-      this.store.db.prepare('UPDATE attempts SET pid=? WHERE id=?').run(child.pid, attemptId);
-      this.store.stage(job, 'generating');
-    });
-    const consume = (chunk: Buffer, events: boolean) => {
-      bytes += chunk.length;
-      if (bytes > 2_000_000) {
-        stop(new AppError('LIMIT', 'CLI output exceeded 2 MB.'));
-        return;
-      }
-      if (!events) {
-        session.tail = (session.tail + chunk.toString()).slice(-4000);
-        return;
-      }
-      lineBuffer += chunk.toString();
-      let end: number;
-      while ((end = lineBuffer.indexOf('\n')) >= 0) {
-        const line = lineBuffer.slice(0, end);
-        lineBuffer = lineBuffer.slice(end + 1);
-        if (!line.trim()) continue;
-        // A malformed event (including JSON null) stops this attempt, not the service.
-        try {
-          const error = session.event(JSON.parse(line));
-          if (error) stop(error);
-        } catch {
-          stop(new AppError('FORMAT', 'CLI emitted an invalid event.'));
-        }
-      }
-    };
-    child.stdout.on('data', (c: Buffer) => consume(c, true));
-    child.stderr.on('data', (c: Buffer) => consume(c, false));
-    child.stdin.on('error', () => {});
-    child.stdin.end(prompt);
     try {
-      const code = await new Promise<number | null>((resolve, reject) => {
-        child.once('error', reject);
-        child.once('close', resolve);
-      });
+      const code = await child.done;
+      const failure = child.failure();
       if (failure) throw failure;
       const proposal = proposalSchema.parse(session.finish(code)) as Proposal;
       const a = this.active!;
@@ -604,9 +612,8 @@ ${JSON.stringify(catalog)}`;
       throw e;
     } finally {
       clearInterval(heartbeat);
-      clearTimeout(watchdog);
       this.active = null;
-      kill();
+      child.kill();
       rmSync(mcpConfig, { force: true });
       this.store.db
         .prepare(

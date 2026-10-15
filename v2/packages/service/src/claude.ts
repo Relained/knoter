@@ -6,15 +6,19 @@ import { promisify } from 'node:util';
 import { accessSync, constants } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import { CLAUDE_MIN_VERSION, CLAUDE_MODEL, providerProfiles } from '@knoter/contracts/native';
+import {
+  CLAUDE_EFFORTS,
+  CLAUDE_MIN_VERSION,
+  CLAUDE_MODEL,
+  claudeChatModels,
+  providerProfiles,
+  type ChatModelOption,
+} from '@knoter/contracts/native';
 import { AppError, requireThat } from './common.js';
 import type { CliInfo, CliSession } from './worker.js';
+import { evidenceToolNames } from './evidence.js';
 const exec = promisify(execFile);
-const evidenceTools = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'].map(
-  (name) => `mcp__wiki__${name}`,
-);
-// --json-schema is delivered through this built-in tool.
-const allowedTools = new Set([...evidenceTools, 'StructuredOutput']);
+const mcpTools = (names: string[]) => names.map((name) => `mcp__wiki__${name}`);
 export function versionAtLeast(version: string, minimum: string) {
   const a = version.split('.').map(Number),
     b = minimum.split('.').map(Number);
@@ -100,23 +104,56 @@ export async function checkClaude(path: string): Promise<CliInfo> {
     message: 'Claude login available. Model access is verified by a real job.',
   };
 }
-export function claudeArgs(input: { mcpConfig: string; schema: string; skill: string }) {
+/** The chat models with the reasoning levels this Claude Code accepts for --effort. */
+export async function claudeModels(path: string): Promise<ChatModelOption[]> {
+  let efforts = CLAUDE_EFFORTS;
+  try {
+    const { stdout } = await exec(path, ['--help'], {
+      timeout: 10_000,
+      env: claudeEnvironment(),
+      maxBuffer: 200_000,
+    });
+    const listed = stdout
+      .match(/--effort <level>[^(]*\(([^)]+)\)/)?.[1]
+      ?.split(',')
+      .map((level) => level.trim())
+      .filter((level) => /^[a-z]{1,20}$/.test(level));
+    if (listed?.length) efforts = listed;
+  } catch {
+    /* The verified levels remain available. */
+  }
+  return claudeChatModels.map((m) => ({
+    ...m,
+    efforts,
+    defaultEffort: efforts.includes(m.defaultEffort) ? m.defaultEffort : efforts[0],
+  }));
+}
+export interface ClaudeInput {
+  mcpConfig: string;
+  schema: string;
+  skill: string;
+  /** Defaults are the wiki worker's; the side chat passes the user's choice. */
+  model?: string;
+  effort?: string;
+  tools?: string[];
+}
+export function claudeArgs(input: ClaudeInput) {
   return [
     '-p',
     '--output-format',
     'stream-json',
     '--verbose',
     '--model',
-    CLAUDE_MODEL,
+    input.model ?? CLAUDE_MODEL,
     '--effort',
-    providerProfiles.claude.effort,
+    input.effort ?? providerProfiles.claude.effort,
     '--tools',
     '',
     '--strict-mcp-config',
     '--mcp-config',
     input.mcpConfig,
     '--allowedTools',
-    evidenceTools.join(','),
+    mcpTools(input.tools ?? evidenceToolNames).join(','),
     '--permission-mode',
     'dontAsk',
     '--setting-sources',
@@ -139,11 +176,10 @@ interface ClaudeResult {
   structured_output?: unknown;
   usage?: unknown;
 }
-export function claudeSession(input: {
-  mcpConfig: string;
-  schema: string;
-  skill: string;
-}): CliSession {
+export function claudeSession(input: ClaudeInput): CliSession {
+  const evidenceTools = mcpTools(input.tools ?? evidenceToolNames);
+  // --json-schema is delivered through this built-in tool.
+  const allowedTools = new Set([...evidenceTools, 'StructuredOutput']);
   let result: ClaudeResult | null = null,
     apiError = '',
     version = '';

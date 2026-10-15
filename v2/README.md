@@ -103,6 +103,30 @@ For development, run `npm run check`, then `npm run service` in one terminal and
 variable for a disposable workspace. Development mode does not register an OS
 service and stops when its service terminal exits.
 
+### Side chat
+
+Open the right panel's **Chat**. It answers from your wiki and applies the changes
+you ask for, following the same writing and evidence rules as the worker.
+
+- Type `@` to mention a note. The open note is included unless you remove its chip.
+  Mentioned notes are the scope of the request.
+- Attach up to five UTF-8 `.md`, `.markdown`, or `.txt` files (256 KiB each) with
+  the paperclip or by dropping them on the composer.
+- Choose the model and reasoning effort below the message. The lists show every
+  connected and ready CLI: Codex models come from the selected Codex's own catalog;
+  Claude Code lists Opus, Sonnet, Haiku, and Fable with the effort levels its
+  `--help` reports. Connecting a CLI also makes it the background worker's CLI.
+- Requested changes are applied immediately as revisions you can restore, and the
+  reply lists the notes it created or updated. A note you edited manually changes
+  only when you mention it. Stopping a reply, a failure, or a service restart applies
+  nothing.
+- Your message and attachments are stored as `chat` sources only when a change
+  cites them; they do not enter the background queue. **New conversation** keeps
+  earlier conversations in the workspace.
+
+Each reply may run for ten minutes and the chat allows 100 replies per local day,
+separately from the worker's 20 runs. Both count started runs, not tokens or cost.
+
 ## Native demo limits and failure evidence
 
 Markdown must be UTF-8, at most 256 KiB per file. Hidden entries and symlinks are
@@ -113,8 +137,8 @@ watchdog, at most two automatic retries for temporary failures, and 20 starts pe
 local calendar day per workspace. A reserved start counts even if a crash occurs
 immediately before spawning; these limits are not token or subscription quotas.
 
-Only Markdown/wiki generation is connected. Chat, tasks/calendar, PDF/TXT,
-embeddings, multi-user access, and Windows are outside this demo. The browser
+Markdown/wiki generation and the side chat are connected. Tasks/calendar, PDF/TXT
+sources, embeddings, multi-user access, and Windows are outside this demo. The browser
 preview below still simulates its backend. Generation is evidence-constrained,
 but semantic accuracy and useful topic boundaries still require human review.
 
@@ -178,7 +202,8 @@ originals expecting the preview to preserve them.
 
 PDF bytes are neither extracted nor retained; PDF previews and seeded excerpts
 are illustrative. Chat uses demo text matching, not a real LLM or semantic
-retrieval. The graph has only been exercised with a small preview corpus.
+retrieval; its model pickers and attachments are simulated and change no notes.
+The graph has only been exercised with a small preview corpus.
 The Protected label is a demo manual-edit flag, not proof of backend conflict
 protection. Native services, storage, extraction, and portable exports follow
 the rewrite milestones; frontend state does not demonstrate those capabilities.
@@ -200,6 +225,7 @@ on desktop and a 390px viewport, not an installed application.
 | 2026-09-16/17 — bundle-size warning persisted     | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                          |
 | 2026-09-17 — limits of deletion checks            | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                |
 | 2026-09-17 — Router history key collision         | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them. |
+| 2026-10-16 — mention insertion moved the caret    | Text typed right after choosing an `@` mention landed before it: the caret was restored in an animation frame that the hidden browser pane delayed. A layout effect now restores it after the value renders; the retest kept the typed text in order.                           |
 
 The `Document actions walkthrough` and `Router migration walkthrough` samples
 were left in Trash after the 2026-09-17 checks; user documents' saved contents

@@ -3,7 +3,8 @@
 import { request } from './transport.js';
 import { MAX_WIRE_BYTES } from '@knoter/contracts/native';
 const socket = process.env.KNOTER_WORKER_SOCKET!,
-  capability = process.env.KNOTER_WORKER_CAPABILITY!;
+  capability = process.env.KNOTER_WORKER_CAPABILITY!,
+  chat = process.env.KNOTER_TOOLSET === 'chat';
 const tools = [
   {
     name: 'reference_read',
@@ -48,6 +49,22 @@ const tools = [
       additionalProperties: false,
     },
   },
+  // The side chat may dry-run its proposal; the service still validates the final reply.
+  ...(chat
+    ? [
+        {
+          name: 'wiki_check',
+          description:
+            'Dry-run the wiki operations you plan to return (the same objects as the final operations array). Returns ok or the first validation error to fix. It never changes the wiki. At most five checks per reply.',
+          inputSchema: {
+            type: 'object',
+            properties: { operations: { type: 'array', items: { type: 'object' } } },
+            required: ['operations'],
+            additionalProperties: false,
+          },
+        },
+      ]
+    : []),
 ].map((tool) => ({
   ...tool,
   annotations: {

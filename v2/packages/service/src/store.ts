@@ -6,6 +6,7 @@ import {
   MAX_SOURCE_BYTES,
   PIPELINE,
   providerProfiles,
+  type ChatModelOption,
   type WorkerInfo,
   proposalSchema,
   type EvidenceVersion,
@@ -37,7 +38,11 @@ export interface SourceRow {
   availability: string;
   detected_at: string;
   added_at: string;
+  origin: 'file' | 'chat';
 }
+/** A saved CLI connection; the side chat can use any ready one. */
+export type CliConnection = WorkerInfo['cli'] & { models?: ChatModelOption[] };
+export type CorpusDocument = WikiDocument & { deletedAt?: string };
 export interface JobRow {
   id: string;
   source_id: string;
@@ -80,7 +85,7 @@ export class Store {
     this.db.pragma('foreign_keys = ON');
     this.db.pragma('synchronous = FULL');
     const version = this.db.pragma('user_version', { simple: true }) as number;
-    requireThat(version <= 1, 'SCHEMA', 'This database requires a newer knoter version.');
+    requireThat(version <= 2, 'SCHEMA', 'This database requires a newer knoter version.');
     if (!version)
       this.db.transaction(() => {
         this.db.exec(`
@@ -111,6 +116,18 @@ export class Store {
           message: 'Select an installed Codex CLI or Claude Code in Worker settings.',
         });
       })();
+    // v2: side-chat history. Chat-origin sources exist only once a revision cites them.
+    if (version < 2)
+      this.db.transaction(() => {
+        this.db.exec(`
+        ALTER TABLE sources ADD COLUMN origin TEXT NOT NULL DEFAULT 'file';
+        CREATE TABLE chat_threads (id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+        CREATE TABLE chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES chat_threads(id), role TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE chat_turns (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES chat_threads(id), request_id TEXT NOT NULL REFERENCES chat_messages(id), reply_id TEXT NOT NULL REFERENCES chat_messages(id), provider TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL, status TEXT NOT NULL, cancel INTEGER NOT NULL DEFAULT 0, started_at TEXT NOT NULL, finished_at TEXT, cli_version TEXT, skill_hash TEXT NOT NULL, evidence TEXT NOT NULL, manifest TEXT, result TEXT, error TEXT, usage TEXT, tools TEXT);
+        CREATE TABLE chat_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
+        PRAGMA user_version = 2;
+      `);
+      })();
     this.workspaceId = this.get<string>('workspaceId');
     // Only abandoned staging files are disposable. Referenced immutable blobs remain untouched.
     for (const file of readdirSync(join(dir, 'blobs')))
@@ -126,6 +143,28 @@ export class Store {
           "UPDATE attempts SET finished_at=?, error='Service restarted during execution' WHERE finished_at IS NULL",
         )
         .run(now());
+      // A reply interrupted by a restart is shown as incomplete; nothing was applied.
+      for (const turn of this.all<{ id: string; reply_id: string }>(
+        "SELECT id,reply_id FROM chat_turns WHERE status='running'",
+      )) {
+        const reply = this.one<{ data: string }>(
+          'SELECT data FROM chat_messages WHERE id=?',
+          turn.reply_id,
+        )!;
+        this.db.prepare('UPDATE chat_messages SET data=? WHERE id=?').run(
+          JSON.stringify({
+            ...JSON.parse(reply.data),
+            status: 'failed',
+            error: 'Service restarted during the reply. No wiki changes were applied.',
+          }),
+          turn.reply_id,
+        );
+        this.db
+          .prepare(
+            "UPDATE chat_turns SET status='failed',finished_at=?,error='Service restarted during execution' WHERE id=?",
+          )
+          .run(now(), turn.id);
+      }
       // A queued job must identify the skill actually supplied to its next attempt.
       for (const row of this.all<{ source_id: string }>(
         "SELECT DISTINCT source_id FROM jobs WHERE status IN ('queued','retry_wait') AND skill_hash<>?",
@@ -152,6 +191,20 @@ export class Store {
       provider: 'codex',
       ...this.get<Partial<WorkerInfo['cli']>>('cli'),
     } as WorkerInfo['cli'];
+  }
+  /** Saved CLI connections by provider; older workspaces stored only the worker's. */
+  connections(): Partial<Record<WorkerInfo['cli']['provider'], CliConnection>> {
+    const saved = this.one<{ value: string }>(
+      "SELECT value FROM settings WHERE key='cliConnections'",
+    );
+    const cli = this.cli();
+    return {
+      ...(cli.path ? { [cli.provider]: cli } : {}),
+      ...(saved ? JSON.parse(saved.value) : {}),
+    };
+  }
+  setConnection(info: CliConnection) {
+    this.set('cliConnections', { ...this.connections(), [info.provider]: info });
   }
   set(key: string, value: unknown) {
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run(key, JSON.stringify(value));
@@ -293,7 +346,9 @@ export class Store {
           .run(versionId, input.filename, now(), input.watchId, sourceId);
       else
         this.db
-          .prepare('INSERT INTO sources VALUES (?,?,?,?,?,NULL,?,?,?)')
+          .prepare(
+            'INSERT INTO sources(id,path,watch_id,filename,latest,processed,availability,detected_at,added_at) VALUES (?,?,?,?,?,NULL,?,?,?)',
+          )
           .run(
             sourceId,
             input.path,
@@ -325,6 +380,11 @@ export class Store {
   }
   retry(sourceId: string) {
     this.db.transaction(() => {
+      requireThat(
+        this.source(sourceId).origin !== 'chat',
+        'CHAT',
+        'Chat evidence is applied by its chat reply, not the background worker.',
+      );
       const source = this.source(sourceId),
         jobId = this.enqueue(sourceId, source.latest),
         j = this.job(jobId);
@@ -440,15 +500,16 @@ export class Store {
       .prepare('UPDATE jobs SET lease_until=? WHERE id=? AND generation=?')
       .run(Date.now() + 45_000, j.id, j.generation);
   }
-  manifest(j: JobRow): FrozenManifest {
+  /** Frozen workspace evidence within the demo retrieval limits. */
+  corpus(versionFor: (s: SourceRow) => string = (s) => s.latest, extra = 0) {
     const rows = this.all<SourceRow>('SELECT * FROM sources');
     const documents = this.documents();
     requireThat(
-      rows.length <= 100 && documents.length <= 100,
+      rows.length + extra <= 100 && documents.length <= 100,
       'CORPUS_LIMIT',
       'Demo retrieval supports at most 100 sources and 100 wiki documents.',
     );
-    const sources = rows.map((s) => this.version(s.id === j.source_id ? j.version_id : s.latest));
+    const sources = rows.map((s) => this.version(versionFor(s)));
     for (const source of sources)
       requireThat(
         sha(readFileSync(join(this.dir, 'blobs', source.hash))) === source.hash,
@@ -459,6 +520,12 @@ export class Store {
       JSON.stringify(sources).length <= 4_000_000,
       'CORPUS_LIMIT',
       'Demo evidence exceeds the 4 MB retrieval limit.',
+    );
+    return { sources, documents };
+  }
+  manifest(j: JobRow): FrozenManifest {
+    const { sources, documents } = this.corpus((s) =>
+      s.id === j.source_id ? j.version_id : s.latest,
     );
     return {
       workspaceId: this.workspaceId,
@@ -625,7 +692,10 @@ export class Store {
       );
     })();
   }
-  validateProposal(proposal: Proposal, manifest: FrozenManifest) {
+  validateProposal(
+    proposal: Proposal,
+    manifest: Pick<FrozenManifest, 'sources' | 'documents' | 'references'>,
+  ) {
     proposalSchema.parse(proposal);
     requireThat(
       proposal.outcome === 'changes'
@@ -790,7 +860,12 @@ export class Store {
       return proposal;
     })();
   }
-  commitOperations(proposal: Proposal, human: boolean, manifest: FrozenManifest) {
+  commitOperations(
+    proposal: Proposal,
+    human: boolean,
+    manifest: Pick<FrozenManifest, 'references'>,
+    summaryPrefix = '',
+  ) {
     const operations = proposal.operations.map((op) => ({
       ...op,
       assignedId: op.documentId ?? uuid(),
@@ -826,8 +901,9 @@ export class Store {
         updatedAt: now(),
         protected: old?.protected ?? human,
       };
-      this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, op.citations);
+      this.recordRevision(doc, human ? 'You' : 'knoter', summaryPrefix + op.reason, op.citations);
     }
+    return operations;
   }
   resolveProposal(id: string, accept: boolean) {
     this.db.transaction(() => {
@@ -911,6 +987,7 @@ export class Store {
         latestVersionId: s.latest,
         latestVersion: v.version,
         processedVersionId: s.processed,
+        origin: s.origin,
         availability: s.availability,
         watchId: s.watch_id,
         detectedAt: s.detected_at,

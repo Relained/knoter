@@ -27,6 +27,8 @@ export interface Source {
   addedAt: string;
   excerpt: string;
   documentIds: string[];
+  /** `chat` sources hold side-chat requests or attachments that a wiki revision cites. */
+  origin?: 'file' | 'chat';
   latestVersionId?: string;
   latestVersion?: number;
   processedVersionId?: string | null;
@@ -70,13 +72,50 @@ export interface Activity {
   kind: 'source' | 'document' | 'task' | 'event';
   documentId?: string;
 }
+export interface ChatAttachment {
+  name: string;
+  size: number;
+  /** Present once a wiki revision cites the attachment as evidence. */
+  sourceId?: string;
+}
+export interface ChatChange {
+  documentId: string;
+  title: string;
+  op: 'create' | 'replace';
+  revision: number;
+}
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Mentioned notes for a request; created, changed, or cited notes for a reply. */
   documentIds: string[];
-  status: 'complete' | 'streaming' | 'stopped';
+  status: 'complete' | 'streaming' | 'stopped' | 'failed';
   createdAt: string;
+  attachments?: ChatAttachment[];
+  changes?: ChatChange[];
+  /** Evidence tools used while the reply was generated. */
+  activity?: string[];
+  /** Provider, model, and reasoning effort that generated a reply. */
+  model?: string;
+  /** Limits the reply reported, such as facts it could not verify. */
+  warnings?: string[];
+  error?: string;
+}
+export interface ChatInfo {
+  models: import('./native').ChatModelOption[];
+  selected: import('./native').ChatChoice | null;
+  callsToday: number;
+  dailyLimit: number;
+  /** The browser preview simulates answers and changes nothing. */
+  simulated?: boolean;
+}
+export interface ChatSendInput {
+  text: string;
+  documentIds: string[];
+  attachments: { filename: string; text: string }[];
+  choice?: import('./native').ChatChoice;
+  signal: AbortSignal;
 }
 export interface WorkspaceSnapshot {
   worker?: import('./native').WorkerInfo;
@@ -88,6 +127,7 @@ export interface WorkspaceSnapshot {
   revisions: Revision[];
   activities: Activity[];
   messages: ChatMessage[];
+  chat?: ChatInfo;
   settings: {
     theme: 'light' | 'dark';
     workerPaused: boolean;
@@ -97,6 +137,7 @@ export interface WorkspaceSnapshot {
     /** Legacy preference, read as compact mode until the next navigation toggle. */
     leftSidebarCollapsed?: boolean;
     rightSidebarCollapsed?: boolean;
+    chat?: import('./native').ChatChoice;
   };
 }
 export interface SourceImport {
@@ -135,7 +176,11 @@ export interface KnoterClient {
   ): Promise<void>;
   saveEvent(input: Omit<CalendarEvent, 'id'> & { id?: string }): Promise<void>;
   deleteEvent(id: string): Promise<void>;
-  sendMessage(input: { question: string; documentId?: string; signal: AbortSignal }): Promise<void>;
+  /** Resolves once the request is recorded; connected replies continue in the service. */
+  sendMessage(input: ChatSendInput): Promise<void>;
+  /** Stop the reply running in the service; the preview aborts its signal instead. */
+  stopMessage?(): Promise<void>;
+  /** Start a new conversation. Connected mode keeps earlier conversations. */
   clearMessages(): Promise<void>;
   updateSettings(patch: Partial<WorkspaceSnapshot['settings']>): Promise<void>;
 }

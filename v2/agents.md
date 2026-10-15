@@ -4,8 +4,8 @@ Apply the [root rules](../agents.md). This is the isolated rewrite; legacy Web
 HTML-first and command-registry rules do not apply here. The assigned native
 milestone is the [wiki-worker demo](../docs/plan/wiki-worker-demo.md). Keep its
 connected service and the browser prototype distinct; label simulated operations
-clearly. PDF, Windows, real chat/tasks/calendar, and production distribution are
-outside this demo.
+clearly. PDF, Windows, real tasks/calendar, and production distribution are
+outside this demo. The connected side chat follows D15 in that plan.
 
 - Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
   composable primitives. Reuse Radix for accessible interaction/focus behavior
@@ -35,6 +35,11 @@ outside this demo.
   fetched evidence and keep original-source and supplemental citations distinct.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
+- Side-chat turns get the same evidence tools plus the read-only `wiki_check`.
+  Their changes go through the service's proposal validation and commit path;
+  a chat request or attachment becomes a source only when a revision cites it,
+  and never enqueues background work. Keep stopped, failed, and restarted
+  replies visibly incomplete and unapplied.
 
 Use npm. Follow [README.md](README.md) for setup/check commands and browser-preview
 failure evidence. Keep native failures in the shared

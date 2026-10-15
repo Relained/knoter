@@ -221,6 +221,38 @@ With the Korean input source active, ⌘⇧G did not open Go to Folder in the
 chooser, but typing `/` did. A folder registered by mistake could be removed only
 through the service's `removeWatch` command, because the UI has no control for it.
 
+## Side chat (D15)
+
+### 2026-10-16 — Scope of the side-chat verification
+
+A disposable workspace created by the pre-chat service (schema 1) opened under the
+new service and migrated to schema 2 with its source, queued job, and manually
+edited note intact. With the development service, development Electron, and Claude
+Code 2.1.300, real replies covered: a Haiku 5.5/low question with no changes; a
+Sonnet 5.5/medium edit of a mentioned note that cited the request and carried the
+note's existing source citations; an attachment that became a new note and a cited
+`chat` source; a protected note left unchanged until mentioned; a second send
+rejected while a reply ran; a stopped reply and a service killed mid-reply, both
+applying nothing. A background job on the same build still succeeded after the
+worker's process launch and evidence reads moved into shared modules. One Electron
+turn combined a typed mention, the open-note chip, and a dropped attachment
+through IPC.
+
+The model followed the protection rule itself, so the service's rejection of an
+unmentioned protected target and of an unread replacement were not triggered by a
+live reply. Codex chat replies were not run: the installed Codex was 0.162.1,
+while the demo requires 0.154.0. Its catalog parser was checked only against
+0.162.1's `debug models`; whether 0.154.0 provides that command is unknown, and
+the verified model is used if it does not. The packaged app and LaunchAgent, the
+OS file chooser (the drop was synthetic), Opus/Fable, `xhigh`/`max` effort, and
+answer quality beyond this small corpus were not exercised. As with the worker,
+a CLI orphaned by a killed service keeps running until it exits, but its expired
+capability can no longer read evidence or apply changes.
+
+A Sonnet reply wrote `**"매주 수요일"**로`; the reader showed the asterisks
+because CommonMark does not close emphasis between a quote and a following Hangul
+particle. This affects any Korean Markdown in the reader and remains unresolved.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch
