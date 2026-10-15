@@ -4,5 +4,6 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     request: (command, payload) => ipcRenderer.invoke('knoter:request', command, payload),
     desktop: (action) => ipcRenderer.invoke('knoter:desktop', action),
+    window: (command) => ipcRenderer.invoke('knoter:window', command),
   }),
 );

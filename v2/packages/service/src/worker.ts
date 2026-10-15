@@ -8,6 +8,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import {
   CLI_VERSION,
+  DEFAULT_SUPPLEMENT_RATIO,
   EVIDENCE_TOOLS,
   MAX_TAGS,
   MAX_TERMS,
@@ -596,6 +597,12 @@ export class Worker {
       // Existing tags with use counts, so the vocabulary is reused rather than split.
       tags: this.store.tagVocabulary().slice(0, 80),
       pageCount: active.length,
+      // The user's preferred balance between their material and marked supplements (D23).
+      writing: {
+        supplementRatio:
+          this.store.get<{ supplementRatio?: number }>('settings').supplementRatio ??
+          DEFAULT_SUPPLEMENT_RATIO,
+      },
     };
     const priorFailure = this.store.one<{ error: string }>(
       'SELECT a.error FROM attempts a JOIN jobs j ON j.id=a.job_id WHERE j.source_id=? AND j.version_id=? AND a.error IS NOT NULL ORDER BY a.rowid DESC LIMIT 1',

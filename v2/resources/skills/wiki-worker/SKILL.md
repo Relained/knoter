@@ -65,6 +65,19 @@ comparisons, examples.
 - If the user's note is wrong, keep it attributed and add the correction as a supplement.
 - Never put the user's note text into a search or reference request; use concise topics.
 
+# Balance the user's material and supplements
+
+`writing.supplementRatio` in the job data is the share of marked supplements the user
+wants in the text you write, in percent (30 when unset). Aim for about that share in each
+page or section you write, measured by length of text:
+- At 30, the user's material carries the page and supplements explain what it needs.
+- Higher values ask for fuller supplements: precise definitions, background, how it works,
+  worked examples, comparisons, and common mistakes, each still backed as above.
+- At 0, add only corrections and what is needed to understand the user's text.
+
+The ratio never removes, shortens, or invents the user's material, and never justifies
+filler: when a subject has nothing more worth adding, stop short of the target.
+
 # Output contract
 
 - Korean prose; keep names, original-language terms, and code as written. Markdown only:

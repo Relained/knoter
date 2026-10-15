@@ -238,7 +238,7 @@ export class Store {
           path: '',
           version: '',
           status: 'missing',
-          message: 'Select an installed Codex CLI or Claude Code in Worker settings.',
+          message: 'Select an installed Codex CLI or Claude Code in Agent.',
         });
       })();
       version = 1;

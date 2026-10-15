@@ -107,6 +107,7 @@ export function createConnectedClient(bridge: NativeBridge): KnoterClient {
       notify();
       return result;
     },
+    window: (command) => bridge.window(command),
     saveDocument: (input) => mutation('saveDocument', input),
     createDocument: async () => (await invoke('createDocument')) as string,
     deleteDocument: (id) => mutation('deleteDocument', { id }),
@@ -135,9 +136,15 @@ export function createConnectedClient(bridge: NativeBridge): KnoterClient {
     saveEvent: unavailable,
     deleteEvent: unavailable,
     // The service records the request and keeps generating after this resolves.
-    sendMessage: async ({ text, documentIds, attachments, choice }) => {
-      if (!choice) throw new Error('Connect Codex CLI or Claude Code in Sources to use chat.');
-      await mutation('chatSend', { text, documentIds, attachments, choice });
+    sendMessage: async ({ text, documentIds, attachments, choice, supplementRatio }) => {
+      if (!choice) throw new Error('Connect Codex CLI or Claude Code in Agent to use chat.');
+      await mutation('chatSend', {
+        text,
+        documentIds,
+        attachments,
+        choice,
+        ...(supplementRatio === undefined ? {} : { supplementRatio }),
+      });
     },
     stopMessage: () => mutation('chatCancel'),
     clearMessages: () => mutation('chatNewThread'),
