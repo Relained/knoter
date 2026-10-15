@@ -346,11 +346,20 @@ LaunchAgents directory.
 
 The new LaunchAgent then exited with code 1 on every spawn, logging "Another
 service owns this workspace." The `service.lock` from 2026-09-21 named a PID
-that macOS had since reused for a root daemon. `kill(pid, 0)` returns EPERM for
-another user's process, and the lock check treats any error other than ESRCH as
-a live owner. Moving the stale lock aside let the service start. Until the check
-verifies the owner, inspect the lock's PID when the service log shows that
-message.
+that macOS had since reused for a root daemon. `kill(pid, 0)` returned EPERM for
+that other user's process, and the lock check treated any error other than ESRCH
+as a live owner. Moving the stale lock aside let the service start. Stale locks
+were routine: on a clean stop, `server.close()` had already removed the socket,
+so the failing socket unlink skipped the lock's removal.
+
+The check now treats EPERM as a reused PID, as well as a same-user process whose
+`ps` start time is later than the lock's mtime, and shutdown removes the lock
+even when the socket is gone. Disposable-workspace checks covered a root PID, a
+live same-user process started after the lock's mtime, and a second service
+against a live one. A start in the same second as the lock, unreadable `ps`
+output, a process that predates a later-copied or touched lock, and an empty or
+non-numeric lock still count as a live owner. If the message persists, inspect
+the lock's PID before moving the lock aside.
 
 ### 2026-09-17 — Native chooser stopped enabling Open
 
