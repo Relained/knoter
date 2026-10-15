@@ -1,5 +1,6 @@
 import { createServer } from 'node:net';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, chmodSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, chmodSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -31,14 +32,23 @@ const resources = resolve(process.env.KNOTER_RESOURCES ?? join(here, '..', 'reso
 const skillPath = join(resources, 'skills', 'wiki-worker', 'SKILL.md');
 secureDir(dataDir);
 // A PID lock is acquired before opening SQLite. A live owner's lock is never removed.
+// The owner runs as this user and writes the lock after it starts, so a PID that cannot
+// be signalled (EPERM) or whose process started after the lock was written was reused.
+// ps truncates the start to the second, so a tie or an unreadable answer keeps the lock.
 const lockPath = join(dataDir, 'service.lock');
 if (existsSync(lockPath)) {
   const owner = Number(readFileSync(lockPath, 'utf8'));
   let alive = true;
   try {
     process.kill(owner, 0);
+    const started = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(owner)], {
+      encoding: 'utf8',
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' },
+    });
+    if (Date.parse(`${started.trim()} UTC`) > statSync(lockPath).mtimeMs) alive = false;
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ESRCH') alive = false;
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH' || code === 'EPERM') alive = false;
   }
   if (alive) throw new Error('Another service owns this workspace.');
   unlinkSync(lockPath);
