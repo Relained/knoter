@@ -1,6 +1,14 @@
 import { createServer } from 'node:net';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, chmodSync, statSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  unlinkSync,
+  chmodSync,
+  statSync,
+  rmSync,
+} from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -229,9 +237,10 @@ async function shutdown() {
   const until = Date.now() + 4000;
   while (worker.busy && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
   store.db.close();
+  // server.close() already removed the socket; force keeps that from skipping the lock.
   try {
-    unlinkSync(socket);
-    unlinkSync(lockPath);
+    rmSync(socket, { force: true });
+    rmSync(lockPath, { force: true });
   } catch {}
   process.exit(0);
 }
