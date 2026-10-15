@@ -8,6 +8,7 @@ import { z } from 'zod';
 import {
   CLI_VERSION,
   EVIDENCE_TOOLS,
+  PIPELINE,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -404,9 +405,9 @@ export class Worker {
   }
   async run(job: JobRow, cli: CliInfo) {
     requireThat(
-      job.skill_hash === this.store.skillHash,
+      job.skill_hash === this.store.skillHash && job.pipeline === PIPELINE,
       'CONFIG',
-      'Queued skill version does not match the bundled worker skill.',
+      'Queued skill or pipeline version does not match this worker.',
     );
     const manifest = this.store.manifest(job),
       attemptId = uuid(),

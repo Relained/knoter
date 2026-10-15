@@ -1,7 +1,13 @@
 import Database from 'better-sqlite3';
 import { readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import type { WikiDocument, WorkspaceSnapshot, Revision, Source } from '@knoter/contracts';
+import type {
+  WikiDocument,
+  WorkspaceSnapshot,
+  Revision,
+  Source,
+  TrashedDocument,
+} from '@knoter/contracts';
 import {
   DAILY_RUN_LIMIT,
   MAX_SOURCE_BYTES,
@@ -55,6 +61,27 @@ export interface JobRow {
   owner: string | null;
   cancel: number;
   skill_hash: string;
+  pipeline: string;
+}
+interface DocumentRow {
+  data: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  trash_reason: string | null;
+}
+/** A document row; trashed ones carry who moved them (NULL from v1 meant the user). */
+export type StoredDocument = WikiDocument & Partial<Omit<TrashedDocument, keyof WikiDocument>>;
+function storedDocument(r: DocumentRow): StoredDocument {
+  return {
+    ...JSON.parse(r.data),
+    ...(r.deleted_at
+      ? {
+          deletedAt: r.deleted_at,
+          deletedBy: r.deleted_by === 'knoter' ? 'knoter' : 'you',
+          ...(r.trash_reason ? { trashReason: r.trash_reason } : {}),
+        }
+      : {}),
+  };
 }
 export interface FrozenManifest {
   references?: ReferenceEvidence[];
@@ -63,7 +90,7 @@ export interface FrozenManifest {
   generation: number;
   changedVersionId: string;
   sources: EvidenceVersion[];
-  documents: (WikiDocument & { deletedAt?: string })[];
+  documents: StoredDocument[];
   requiredDocumentIds: string[];
 }
 export class Store {
@@ -80,9 +107,9 @@ export class Store {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.pragma('synchronous = FULL');
-    const version = this.db.pragma('user_version', { simple: true }) as number;
-    requireThat(version <= 1, 'SCHEMA', 'This database requires a newer knoter version.');
-    if (!version)
+    let version = this.db.pragma('user_version', { simple: true }) as number;
+    requireThat(version <= 2, 'SCHEMA', 'This database requires a newer knoter version.');
+    if (!version) {
       this.db.transaction(() => {
         this.db.exec(`
         CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -99,7 +126,6 @@ export class Store {
         CREATE TABLE applications (id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id));
         CREATE TABLE events (cursor INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
         CREATE TABLE usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
-        CREATE VIRTUAL TABLE wiki_search USING fts5(id UNINDEXED, title, body);
         PRAGMA user_version = 1;
       `);
         this.set('workspaceId', uuid());
@@ -111,6 +137,20 @@ export class Store {
           status: 'missing',
           message: 'Select an installed Codex CLI or Claude Code in Worker settings.',
         });
+      })();
+      version = 1;
+    }
+    if (version === 1)
+      // v2: deletion provenance and removal grace. The unused v1 full-text index is dropped;
+      // worker retrieval searches in memory so two-character Korean terms still match.
+      this.db.transaction(() => {
+        this.db.exec(`
+        ALTER TABLE documents ADD COLUMN deleted_by TEXT;
+        ALTER TABLE documents ADD COLUMN trash_reason TEXT;
+        ALTER TABLE sources ADD COLUMN missing_since TEXT;
+        DROP TABLE IF EXISTS wiki_search;
+        PRAGMA user_version = 2;
+      `);
       })();
     this.workspaceId = this.get<string>('workspaceId');
     // Only abandoned staging files are disposable. Referenced immutable blobs remain untouched.
@@ -127,13 +167,13 @@ export class Store {
           "UPDATE attempts SET finished_at=?, error='Service restarted during execution' WHERE finished_at IS NULL",
         )
         .run(now());
-      // A queued job must identify the skill actually supplied to its next attempt.
+      // A queued job must identify the skill and pipeline actually used by its next attempt.
       for (const row of this.all<{ source_id: string }>(
-        "SELECT DISTINCT source_id FROM jobs WHERE status IN ('queued','retry_wait') AND skill_hash<>?",
+        "SELECT DISTINCT source_id FROM jobs WHERE status IN ('queued','retry_wait') AND (skill_hash<>? OR pipeline<>?)",
         this.skillHash,
+        PIPELINE,
       ))
         this.enqueue(row.source_id, this.source(row.source_id).latest);
-      this.reindex();
     })();
   }
   all<T>(sql: string, ...params: unknown[]): T[] {
@@ -177,18 +217,18 @@ export class Store {
       }),
     );
   }
-  documents(): (WikiDocument & { deletedAt?: string })[] {
-    return this.all<{ data: string; deleted_at: string | null }>(
-      'SELECT data,deleted_at FROM documents',
-    ).map((r) => ({ ...JSON.parse(r.data), ...(r.deleted_at ? { deletedAt: r.deleted_at } : {}) }));
+  documents(): StoredDocument[] {
+    return this.all<DocumentRow>(
+      'SELECT data,deleted_at,deleted_by,trash_reason FROM documents',
+    ).map(storedDocument);
   }
-  document(id: string): WikiDocument & { deletedAt?: string } {
-    const r = this.one<{ data: string; deleted_at: string | null }>(
-      'SELECT data,deleted_at FROM documents WHERE id=?',
+  document(id: string): StoredDocument {
+    const r = this.one<DocumentRow>(
+      'SELECT data,deleted_at,deleted_by,trash_reason FROM documents WHERE id=?',
       id,
     );
     requireThat(r, 'NOT_FOUND', 'Document does not exist.');
-    return { ...JSON.parse(r.data), ...(r.deleted_at ? { deletedAt: r.deleted_at } : {}) };
+    return storedDocument(r);
   }
   version(id: string): EvidenceVersion {
     const r = this.one<{ data: string }>('SELECT data FROM versions WHERE id=?', id);
@@ -552,7 +592,6 @@ export class Store {
     for (const sourceId of doc.sourceIds)
       this.db.prepare('INSERT OR IGNORE INTO dependencies VALUES (?,?)').run(doc.id, sourceId);
     this.event(summary, doc.title, doc.id);
-    this.reindex();
   }
   citations(id: string, revision?: number): Citation[] {
     return this.all<Citation>(
@@ -616,11 +655,14 @@ export class Store {
         this.db
           .prepare('UPDATE documents SET data=? WHERE id=?')
           .run(JSON.stringify({ ...doc, favorite: !doc.favorite }), id);
+      else if (action === 'deleteDocument')
+        this.db
+          .prepare("UPDATE documents SET deleted_at=?,deleted_by='you',trash_reason=NULL WHERE id=?")
+          .run(now(), id);
       else
         this.db
-          .prepare('UPDATE documents SET deleted_at=? WHERE id=?')
-          .run(action === 'deleteDocument' ? now() : null, id);
-      this.reindex();
+          .prepare('UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?')
+          .run(id);
       this.event(action, doc.title, id);
     })();
   }
@@ -893,14 +935,8 @@ export class Store {
       this.event(accept ? 'Proposal accepted' : 'Proposal rejected', proposal.summary);
     })();
   }
-  reindex() {
-    this.db.prepare('DELETE FROM wiki_search').run();
-    for (const d of this.documents())
-      if (!d.deletedAt)
-        this.db.prepare('INSERT INTO wiki_search VALUES (?,?,?)').run(d.id, d.title, d.body);
-  }
   snapshot(lastTick: number | null, nextTick: number): WorkspaceSnapshot {
-    const docs: (WikiDocument & { deletedAt?: string })[] = this.documents().map((d) => ({
+    const docs: StoredDocument[] = this.documents().map((d) => ({
         ...d,
         citations: this.citations(d.id, d.revision),
       })),
@@ -940,7 +976,7 @@ export class Store {
     return {
       documents: docs.filter((d) => !d.deletedAt),
       trashedDocuments: docs.filter(
-        (d): d is WikiDocument & { deletedAt: string } => !!d.deletedAt,
+        (d): d is TrashedDocument => !!d.deletedAt,
       ),
       sources,
       tasks: [],

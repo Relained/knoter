@@ -58,8 +58,9 @@ export function restoreEmpty(store: Store, path: string) {
   requireThat(sha(dbBytes) === manifest.databaseHash, 'HASH', 'Backup database checksum mismatch.');
   const snapshot = new Database(join(path, 'wiki.sqlite'), { readonly: true });
   try {
+    // Store migrates a v1 backup forward when the restored database is reopened.
     requireThat(
-      snapshot.pragma('user_version', { simple: true }) === 1,
+      [1, 2].includes(snapshot.pragma('user_version', { simple: true }) as number),
       'SCHEMA',
       'Unsupported backup schema.',
     );
