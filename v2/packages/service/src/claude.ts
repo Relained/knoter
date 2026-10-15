@@ -1,20 +1,27 @@
-// Claude Code adapter for the wiki worker. The CLI receives no built-in tools; the
-// bundled MCP bridge is its only capability, and each attempt re-checks the tool
+// Claude Code adapter for the wiki worker. Besides WebSearch the CLI receives no built-in
+// tools; the bundled MCP bridge supplies evidence, and each attempt re-checks the tool
 // surface the CLI reports because its auto-updates can change defaults.
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { accessSync, constants } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import { CLAUDE_MIN_VERSION, CLAUDE_MODEL, providerProfiles } from '@knoter/contracts/native';
+import {
+  CLAUDE_MIN_VERSION,
+  CLAUDE_MODEL,
+  EVIDENCE_TOOLS,
+  providerProfiles,
+} from '@knoter/contracts/native';
 import { AppError, requireThat } from './common.js';
 import type { CliInfo, CliSession } from './worker.js';
 const exec = promisify(execFile);
-const evidenceTools = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'].map(
-  (name) => `mcp__wiki__${name}`,
-);
-// --json-schema is delivered through this built-in tool.
-const allowedTools = new Set([...evidenceTools, 'StructuredOutput']);
+const evidenceTools = EVIDENCE_TOOLS.map((name) => `mcp__wiki__${name}`);
+// WebSearch finds pages to supplement notes (D12); --json-schema is delivered through
+// StructuredOutput. No shell, file, or other built-in tool is allowed.
+const builtinTools = ['WebSearch'];
+const allowedTools = new Set([...evidenceTools, ...builtinTools, 'StructuredOutput']);
+/** Searches per attempt; more stops the attempt rather than running up usage. */
+const MAX_WEB_SEARCHES = 8;
 export function versionAtLeast(version: string, minimum: string) {
   const a = version.split('.').map(Number),
     b = minimum.split('.').map(Number);
@@ -35,6 +42,8 @@ export function claudeEnvironment() {
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     MCP_TIMEOUT: '15000',
     MCP_TOOL_TIMEOUT: '15000',
+    // A large note can exceed the default MCP result cap, which would truncate evidence.
+    MAX_MCP_OUTPUT_TOKENS: '80000',
   };
   if (process.env.CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
   return env;
@@ -111,12 +120,12 @@ export function claudeArgs(input: { mcpConfig: string; schema: string; skill: st
     '--effort',
     providerProfiles.claude.effort,
     '--tools',
-    '',
+    builtinTools.join(','),
     '--strict-mcp-config',
     '--mcp-config',
     input.mcpConfig,
     '--allowedTools',
-    evidenceTools.join(','),
+    [...evidenceTools, ...builtinTools].join(','),
     '--permission-mode',
     'dontAsk',
     '--setting-sources',
@@ -178,6 +187,13 @@ export function claudeSession(input: {
               return new AppError('TOOLS', 'Unexpected worker tool.');
             if (block.name !== 'StructuredOutput')
               session.tools.push(block.name.replace('mcp__wiki__', 'wiki.'));
+            if (
+              block.name === 'WebSearch' &&
+              session.tools.filter((t) => t === 'WebSearch').length > MAX_WEB_SEARCHES
+            )
+              return new AppError('LIMIT', `More than ${MAX_WEB_SEARCHES} web searches.`);
+          } else if (block.type === 'server_tool_use' && block.name === 'web_search') {
+            // WebSearch may surface its server-side search; it is the same capability.
           } else if (['server_tool_use', 'mcp_tool_use'].includes(block.type))
             return new AppError('TOOLS', `Unexpected worker capability: ${block.type}`);
         }

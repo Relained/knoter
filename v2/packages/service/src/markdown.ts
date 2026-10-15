@@ -2,7 +2,15 @@ import type { Segment } from '@knoter/contracts/native';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { requireThat } from './common.js';
 
-export function resolveWikiLinks(body: string, documents: { id: string; title: string }[]) {
+/**
+ * Pin wiki links to document IDs. With `unresolved`, a link naming no single page becomes its
+ * label text and is reported there, instead of rejecting the whole proposal.
+ */
+export function resolveWikiLinks(
+  body: string,
+  documents: { id: string; title: string }[],
+  unresolved?: string[],
+) {
   const root = fromMarkdown(body),
     edits: { start: number; end: number; text: string }[] = [];
   type Node = typeof root | (typeof root.children)[number];
@@ -47,6 +55,10 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
         const matches = documents.filter(
           (doc) => doc.id === target.trim() || normalize(doc.title) === normalize(target),
         );
+        if (matches.length !== 1 && unresolved) {
+          unresolved.push(target.trim());
+          return labels.join('|').trim() || target.trim();
+        }
         requireThat(
           matches.length === 1,
           'EVIDENCE',
@@ -62,6 +74,119 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
   for (const edit of edits.sort((a, b) => b.start - a.start))
     body = body.slice(0, edit.start) + edit.text + body.slice(edit.end);
   return body;
+}
+
+// Korean particles that may follow a linked term: "스택은", "스택에서" still link "스택".
+const PARTICLES =
+  '(?:으로서|으로써|이라는|에서는|에게서|이라고|으로는|에서|에게|한테|까지|부터|보다|처럼|이나|이란|라는|라고|으로|이다|은|는|이|가|을|를|의|에|로|와|과|도|만|나|란|다|께)';
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Link the first unlinked mention of a term to a page. Headings, code, links, images, and
+ * raw [[...]] links are skipped; a mention must stand as a word, optionally followed by a
+ * Korean particle. Returns the body unchanged when the page already links the target or no
+ * mention is found.
+ */
+export function insertWikiLink(body: string, mentions: string[], targetId: string) {
+  if (body.includes(`#/wiki/${targetId}`) || body.includes(`[[${targetId}`)) return body;
+  const patterns = mentions.map(
+    (m) =>
+      new RegExp(`(?<![\\p{L}\\p{N}_])(${escape(m)})(?=${PARTICLES}?(?![\\p{L}\\p{N}_]))`, 'iu'),
+  );
+  const root = fromMarkdown(body);
+  type Node = typeof root | (typeof root.children)[number];
+  let hit: { start: number; end: number; text: string } | undefined;
+  const visit = (node: Node) => {
+    if (hit) return;
+    if (
+      [
+        'heading',
+        'code',
+        'inlineCode',
+        'link',
+        'linkReference',
+        'image',
+        'imageReference',
+        'definition',
+        'html',
+      ].includes(node.type)
+    )
+      return;
+    if (node.type === 'text' && node.position) {
+      const start = node.position.start.offset!,
+        raw = body.slice(start, node.position.end.offset!);
+      // Mask raw [[...]] wiki links so a term inside one is not linked twice.
+      const masked = raw.replace(/\[\[[^\]\n]*\]\]/g, (m) => ' '.repeat(m.length));
+      for (const pattern of patterns) {
+        const m = pattern.exec(masked);
+        if (m) {
+          hit = {
+            start: start + m.index,
+            end: start + m.index + m[1].length,
+            text: raw.slice(m.index, m.index + m[1].length),
+          };
+          return;
+        }
+      }
+    }
+    if ('children' in node) node.children.forEach(visit);
+  };
+  visit(root);
+  if (!hit) return body;
+  return `${body.slice(0, hit.start)}[${hit.text}](#/wiki/${targetId})${body.slice(hit.end)}`;
+}
+
+/**
+ * Merge one section into a page body. The section is found by heading text (outside code
+ * fences). `replace` rewrites the section's own text before any subheading, keeping its
+ * subsections; `append` adds after the whole section, subsections included. A missing
+ * section is added at the end as `##`.
+ */
+export function mergeSection(
+  body: string,
+  heading: string,
+  content: string,
+  mode: 'append' | 'replace',
+) {
+  const key = (text: string) => text.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const lines = body.split('\n');
+  const headings: { index: number; level: number; text: string }[] = [];
+  let fence: string | null = null;
+  lines.forEach((line, index) => {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker && (!fence || marker[0] === fence[0])) fence = fence ? null : marker;
+    const h = !fence && /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) headings.push({ index, level: h[1].length, text: h[2] });
+  });
+  // The model sometimes repeats the heading as the content's first line.
+  const text = content
+    .replace(/^\s*#{1,6}\s+(.*)\n/, (all, first: string) =>
+      key(first) === key(heading) ? '' : all,
+    )
+    .trim();
+  const at = headings.findIndex((h) => key(h.text) === key(heading));
+  if (at < 0) return `${body.trimEnd()}\n\n## ${heading.trim()}\n\n${text}\n`;
+  const start = headings[at].index,
+    next = headings.slice(at + 1),
+    end =
+      (mode === 'replace' ? next[0] : next.find((h) => h.level <= headings[at].level))?.index ??
+      lines.length;
+  const before = lines.slice(0, start + 1),
+    after = lines.slice(end);
+  const kept =
+    mode === 'append'
+      ? lines
+          .slice(start + 1, end)
+          .join('\n')
+          .trimEnd()
+      : '';
+  const merged = [kept, text].filter(Boolean).join('\n\n');
+  return (
+    [...before, '', merged, '', ...after]
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd() + '\n'
+  );
 }
 
 export function validateWikiMarkdown(body: string) {
@@ -141,9 +266,9 @@ export function extract(bytes: Buffer): Segment[] {
   }
   flush(lines.length);
   requireThat(
-    result.length <= 500,
+    result.length <= 2000,
     'LIMIT',
-    'Markdown exceeds 500 evidence segments. Split the file.',
+    'Markdown exceeds 2,000 evidence segments. Split the file.',
   );
   return result;
 }

@@ -221,6 +221,105 @@ With the Korean input source active, ⌘⇧G did not open Go to Folder in the
 chooser, but typing `/` did. A folder registered by mistake could be removed only
 through the service's `removeWatch` command, because the UI has no control for it.
 
+## Personal-wiki redesign (D12–D20)
+
+### 2026-10-16 — Migrated tables broke positional inserts
+
+The schema 2 migration added columns to `sources` and `documents`. Inserts that
+relied on column order then failed. The service reported only a generic
+`INVALID_REQUEST`, so a disposable run showed every snapshot failing with no cause;
+a minimal snapshot narrowed it down. Inserts into migrated tables now name their
+columns. A migration check that only opens a copied database does not exercise
+writes.
+
+### 2026-10-16 — Korean output was corrupted at stdout chunk boundaries
+
+Claude Code's stream-json output was decoded one stdout chunk at a time, so a
+multi-byte character split between chunks became U+FFFD in a proposal. One
+disposable revision was affected; none of the 22 revisions in the installed
+workspace were. The worker now uses a streaming UTF-8 decoder, and the 51-note run
+below had no U+FFFD.
+
+### 2026-10-16 — The raised daily limit was missed in reserve()
+
+Phase 0 raised the limit to 200 in `startAttempt` but not in `reserve()`, which
+still compared with 20. From the 21st run, jobs were deferred to the next day
+while the UI showed 20 of 200. Both paths now use `DAILY_RUN_LIMIT`. Grep for
+literals when a constant replaces them.
+
+### 2026-10-16 — Every job wrote exactly one page per note
+
+Across the disposable runs, each job returned one operation: a new page for the
+note itself. No job updated an existing page or split a note. Coverage was partial.
+`2026-03-18.md` cited 4 of 12 segments in one combined page, `Arch Linux 초기
+설치.md` cited 14 of 29, and `fzf&rg&bat.md` became one page for three tools. Under
+the earlier skill and Codex, the installed workspace split `2026-03-11.md` into an
+update and two new pages, but most jobs there were also single-operation. Causes:
+note-centred jobs and hints, whole-body rewrites as the only way to update a page,
+no check that every part of a note was placed, and whole-proposal rejection on
+any title or parent conflict. The user prioritised fixing this (topic plan,
+section edits, splitting workflow, per-part hints).
+
+### 2026-10-16 — Multi-topic notes after the topic plan, section edits, and glossary
+
+With the topic plan (D21), every segment of nine multi-topic notes was placed.
+Notes became two to four pages instead of one. Routing into other existing pages
+stayed at zero until the hints changed. The first per-part hints scored raw
+substrings, so long pages such as `Arch Linux 초기 설치` and `zsh & oh-my-posh` were
+offered for C++, capstone, and machine-learning parts alike. Hints now come from
+glossary terms (page titles, their parenthesised parts, and declared aliases),
+then from rare words in page titles only, with Korean particles stripped and
+English matched as whole words. With these hints:
+- `2026-03-19.md` added a section to the existing capstone page.
+- `기계학습/4강.md` added a section to the existing `Support Vector Machines` page,
+  leaving the rest of the page and its citations intact.
+- Glossary linking added links in four other pages without a model run.
+
+Remaining limits:
+- Daily and exam notes still often create a page per subject even when related
+  concept pages exist.
+- A note-context page such as `자료구조 중간고사 메모 (2026-04-09)` can appear.
+- The glossary links by surface form: `매개변수` in an SVM page linked to the C++
+  parameter page.
+- The staged loop (session cards, flow, separate routing call) is deferred by the
+  user in favour of refining this single call.
+
+### 2026-10-16 — Scope of the redesign verification
+
+Disposable workspaces with Claude Code 2.1.300 (`claude-sonnet-5-5`), driven
+headlessly over the service socket and through the development desktop app:
+- **Search-based attempts:** attempt context was about 0.4 KB; it had been the
+  whole corpus.
+- **Supplements:** a hub with subpages was built from Obsidian links via search
+  hints. Wikipedia-backed supplements were marked 보충, stored their segments, and
+  showed provider and licence in the UI. General web reads and refusals of local
+  and private addresses were exercised directly as well as by the worker.
+- **Removal:**
+  - a single-source page moved to Trash without a model run;
+  - a protected page became a proposal, which was accepted;
+  - 11 of 12 notes vanishing at once were held for Retry;
+  - a moved file kept its identity;
+  - a restored file brought its page back.
+- **Tags and links:** tags were applied on create and update. Link insertion handled
+  Korean particles, and backlinks and the tag filter rendered in the app.
+- **51-note subset** (copies of `NOTES/Linux` and `NOTES/지식`):
+  - 48 pages, 22 inserted links, 16 references (8 Wikipedia, 8 web), one empty note
+    closed without a run;
+  - attempts took 15 s on average and 30 s at most;
+  - copied originals were unchanged.
+  - Two jobs went to review. One proposal copied a note's `[[Dependency Injection]]`
+    link to a page that does not exist and was rejected whole. A note holding only
+    one link was declined.
+
+Not established:
+- WebSearch was never invoked; the worker passed URLs and Wikipedia titles straight
+  to `reference_read`, so its availability for this account is unconfirmed.
+- `source_search` was unused.
+- Codex web search (installed 0.162.1, pinned 0.154.0).
+- The full 348-note run.
+- The packaged app under the LaunchAgent with these changes.
+- Content quality beyond spot checks.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch

@@ -15,6 +15,16 @@ export interface WikiDocument {
   revision: number;
   updatedAt: string;
   protected: boolean;
+  /** Assigned by the wiki worker; absent on documents saved before tags existed. */
+  tags?: string[];
+  /** Glossary terms besides the title that name this page (aliases, other languages). */
+  terms?: string[];
+}
+export interface TrashedDocument extends WikiDocument {
+  deletedAt: string;
+  /** Who moved it: the user, or knoter after every supporting source was removed. */
+  deletedBy?: 'you' | 'knoter';
+  trashReason?: string;
 }
 export interface Source {
   id: string;
@@ -33,6 +43,8 @@ export interface Source {
   availability?: string;
   watchId?: string | null;
   detectedAt?: string;
+  /** Path relative to its watched folder, when watched. */
+  relPath?: string;
 }
 export interface Task {
   id: string;
@@ -81,7 +93,7 @@ export interface ChatMessage {
 export interface WorkspaceSnapshot {
   worker?: import('./native').WorkerInfo;
   documents: WikiDocument[];
-  trashedDocuments: (WikiDocument & { deletedAt: string })[];
+  trashedDocuments: TrashedDocument[];
   sources: Source[];
   tasks: Task[];
   events: CalendarEvent[];

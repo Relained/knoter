@@ -38,6 +38,7 @@ export function useWorkspaceRoute(): WorkspaceRoute {
     view,
     documentId: view === 'wiki' ? match.params.documentId : undefined,
     category: view === 'wiki' ? params.get('collection') || undefined : undefined,
+    tag: view === 'wiki' ? params.get('tag') || undefined : undefined,
     focusId: view === 'graph' ? params.get('focus') || undefined : undefined,
   };
 }
@@ -52,6 +53,7 @@ export function WikiRoute() {
       <WikiLibrary
         snapshot={snapshot}
         category={params.get('collection')}
+        tag={params.get('tag')}
         onOpen={onOpen}
         onNew={context.onNew}
         onTrash={context.onTrash}

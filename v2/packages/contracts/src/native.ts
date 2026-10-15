@@ -3,7 +3,18 @@ import { z } from 'zod';
 export const PROTOCOL = 1;
 export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_WIRE_BYTES = 8 * 1024 * 1024;
-export const PIPELINE = 'markdown-wiki-1';
+export const PIPELINE = 'markdown-wiki-2';
+/** Notes started per local day; retries of a started note do not count (D9, 2026-10-16). */
+export const DAILY_RUN_LIMIT = 200;
+/** The wiki MCP tools; every CLI adapter must expose exactly these and nothing else. */
+export const EVIDENCE_TOOLS = [
+  'source_search',
+  'source_read',
+  'wiki_search',
+  'wiki_read',
+  'reference_read',
+] as const;
+export type EvidenceTool = (typeof EVIDENCE_TOOLS)[number];
 export const MODEL = 'gpt-5.6-luna';
 export const CLI_VERSION = '0.154.0';
 // Claude Code updates itself frequently; versions at or above the verified one are
@@ -139,10 +150,16 @@ export const citationSchema = z
   .strict();
 export const referenceCitationSchema = z
   .object({
-    path: z.string().min(1).max(240),
+    // The identifier passed to reference_read: an https URL, mdn:<path>, or ko:/en:<title>.
+    path: z.string().min(1).max(2000),
     segmentId: z.string().min(1).max(100),
   })
   .strict();
+export const MAX_TAGS = 8;
+export const tagSchema = z.string().trim().min(1).max(32);
+/** Glossary terms: words that name a page; their first mentions elsewhere link to it. */
+export const MAX_TERMS = 8;
+export const termSchema = z.string().trim().min(2).max(40);
 export const operationSchema = z
   .object({
     op: z.enum(['create', 'replace']),
@@ -155,18 +172,72 @@ export const operationSchema = z
     citations: z.array(citationSchema).max(300),
     // Optional when reading pre-reference proposals; required for new worker output.
     referenceCitations: z.array(referenceCitationSchema).max(200).optional(),
+    // Optional when reading proposals saved before tags; required for new worker output.
+    tags: z.array(tagSchema).max(MAX_TAGS).optional(),
+    terms: z.array(termSchema).max(MAX_TERMS).optional(),
     reason: z.string().min(1).max(2000),
+  })
+  .strict();
+/** Wrap the first unlinked mention of a term in existing documents with a link to target. */
+export const linkSchema = z
+  .object({
+    // An existing document ID, or the exact title of a page created in the same proposal.
+    target: z.string().trim().min(1).max(200),
+    mentions: z.array(z.string().trim().min(1).max(80)).min(1).max(3),
+    documents: z
+      .array(z.object({ documentId: id, expectedRevision: z.number().int().positive() }).strict())
+      .min(1)
+      .max(30),
+    reason: z.string().min(1).max(500),
+  })
+  .strict();
+/** Add to or revise one section of an existing page without rewriting the rest. */
+export const sectionSchema = z
+  .object({
+    documentId: id,
+    expectedRevision: z.number().int().positive(),
+    heading: z.string().trim().min(1).max(120),
+    // append: add to the section (or create it); replace: rewrite that section's body.
+    mode: z.enum(['append', 'replace']),
+    body: text,
+    citations: z.array(citationSchema).max(300),
+    referenceCitations: z.array(referenceCitationSchema).max(200).optional(),
+    reason: z.string().min(1).max(2000),
+  })
+  .strict();
+/** Where each part of the changed note went: a page, or nowhere with a reason. */
+export const topicSchema = z
+  .object({
+    segmentIds: z.array(z.string().min(1).max(100)).min(1).max(500),
+    // An existing page ID, the exact title of a page created in this proposal, or null.
+    target: z.string().trim().min(1).max(200).nullable(),
+    reason: z.string().min(1).max(300),
+  })
+  .strict();
+/** Service-generated only: a protected document whose every source was removed. */
+export const trashSchema = z
+  .object({
+    documentId: id,
+    expectedRevision: z.number().int().positive(),
+    reason: z.string().min(1).max(500),
   })
   .strict();
 export const proposalSchema = z
   .object({
     outcome: z.enum(['changes', 'no_change', 'needs_review']),
     summary: z.string().min(1).max(3000),
-    operations: z.array(operationSchema).max(12),
+    // Worker output allows 12; section edits expand into replacements, hence 24 stored.
+    operations: z.array(operationSchema).max(24),
+    sections: z.array(sectionSchema).max(12).optional(),
+    topics: z.array(topicSchema).max(60).optional(),
+    links: z.array(linkSchema).max(10).optional(),
+    trash: z.array(trashSchema).max(50).optional(),
     warnings: z.array(z.string().max(1000)).max(20),
   })
   .strict();
 export type Proposal = z.infer<typeof proposalSchema>;
+export type LinkRequest = z.infer<typeof linkSchema>;
+export type SectionEdit = z.infer<typeof sectionSchema>;
 export type Citation = z.infer<typeof citationSchema>;
 export interface Segment {
   id: string;
@@ -182,9 +253,15 @@ export interface EvidenceVersion {
   hash: string;
   filename: string;
   segments: Segment[];
+  /** Tombstone: the file disappeared; hash repeats the last content for blob integrity. */
+  removed?: boolean;
 }
+export type ReferenceProvider = 'mdn' | 'wikipedia' | 'web';
 export interface ReferenceEvidence {
   id: string;
+  /** Absent on snapshots saved before providers existed, which were all MDN. */
+  provider?: ReferenceProvider;
+  licenseUrl?: string;
   path: string;
   title: string;
   url: string;

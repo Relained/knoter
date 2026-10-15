@@ -1,5 +1,10 @@
 import type { KnoterClient, WorkspaceSnapshot } from '@knoter/contracts';
-import type { Command, NativeBridge, WorkerInfo } from '@knoter/contracts/native';
+import {
+  DAILY_RUN_LIMIT,
+  type Command,
+  type NativeBridge,
+  type WorkerInfo,
+} from '@knoter/contracts/native';
 declare global {
   interface Window {
     knoterNative?: NativeBridge;
@@ -33,7 +38,7 @@ const offlineWorker: WorkerInfo = {
   effort: 'low',
   skillHash: '',
   callsToday: 0,
-  dailyLimit: 20,
+  dailyLimit: DAILY_RUN_LIMIT,
   resetsAt: '',
   timezone: '',
   jobs: [],
