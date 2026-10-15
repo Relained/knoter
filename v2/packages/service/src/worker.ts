@@ -415,8 +415,8 @@ export class Worker {
       schema = join(cwd, 'proposal.schema.json'),
       output = join(cwd, 'proposal.json'),
       mcpConfig = join(cwd, 'mcp.json'),
-      schemaJson = JSON.stringify(z.toJSONSchema(proposalSchemaForSources(manifest.sources)));
-    writeFileSync(schema, schemaJson, { mode: 0o600 });
+      attemptSchema = proposalSchemaForSources(manifest.sources);
+    writeFileSync(schema, JSON.stringify(z.toJSONSchema(attemptSchema)), { mode: 0o600 });
     const capability = randomBytes(32).toString('hex');
     if (!this.store.startAttempt(job)) return;
     this.store.db
@@ -471,7 +471,8 @@ ${JSON.stringify(catalog)}`;
       );
       session = claudeSession({
         mcpConfig,
-        schema: schemaJson,
+        // Claude Code 2.1.300 rejects --json-schema that references the 2020-12 meta-schema.
+        schema: JSON.stringify(z.toJSONSchema(attemptSchema, { target: 'draft-7' })),
         skill: readFileSync(this.skillPath, 'utf8'),
       });
     } else
@@ -552,15 +553,13 @@ ${JSON.stringify(catalog)}`;
         const line = lineBuffer.slice(0, end);
         lineBuffer = lineBuffer.slice(end + 1);
         if (!line.trim()) continue;
-        let event: unknown;
+        // A malformed event (including JSON null) stops this attempt, not the service.
         try {
-          event = JSON.parse(line);
+          const error = session.event(JSON.parse(line));
+          if (error) stop(error);
         } catch {
           stop(new AppError('FORMAT', 'CLI emitted an invalid event.'));
-          continue;
         }
-        const error = session.event(event);
-        if (error) stop(error);
       }
     };
     child.stdout.on('data', (c: Buffer) => consume(c, true));

@@ -82,7 +82,8 @@ async function desktop(action: DesktopAction) {
   if (action === 'chooseClaudeCode') {
     const r = await dialog.showOpenDialog(window!, {
       title: 'Choose your installed Claude Code executable',
-      properties: ['openFile', 'treatPackageAsDirectory'],
+      // macOS otherwise resolves the symlink to a versioned target that updates remove.
+      properties: ['openFile', 'treatPackageAsDirectory', 'noResolveAliases'],
       defaultPath: join(app.getPath('home'), '.local', 'bin'),
     });
     // Keep the launcher path: the native installer repoints it on each self-update.
