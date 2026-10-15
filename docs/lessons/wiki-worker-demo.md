@@ -197,11 +197,29 @@ and server tools stop an attempt, and that 401/404/529 map to AUTH/MODEL/TRANSIE
 Claude Code updated itself from 2.1.294 to 2.1.300 during the session; the kept
 launcher path remained connected.
 
-Not established: keychain login access from the LaunchAgent; the native chooser
-returning the unresolved launcher path; whether a CLAUDE.md in the attempt
-directory's parents would be loaded (none existed on the test machine); and a
-Codex run after the shared runner refactor. The installed Codex 0.162.1 does not
-match the pinned 0.154.0, so its connection reports `incompatible`.
+Not established in that run: keychain login access from the LaunchAgent and the
+native chooser returning the unresolved launcher path (both checked below);
+whether a CLAUDE.md in the attempt directory's parents would be loaded (none
+existed on the test machine); and a Codex run after the shared runner refactor.
+The installed Codex 0.162.1 does not match the pinned 0.154.0, so its connection
+reports `incompatible`.
+
+### 2026-10-16 — Installed-app check through the LaunchAgent
+
+The packaged build was installed in `~/Applications` and driven through its UI
+against the real workspace, using a disposable one-note folder. Enable background
+reported `local_agent_running` with a service PID. The chooser's Go to Folder
+suggested the Caskroom target, but the app kept and displayed
+`/opt/homebrew/bin/claude` and reported `Claude Code · ready`. The LaunchAgent
+service then completed a `claude-sonnet-5-5` attempt in about 20 seconds using
+only `source_read`, `wiki_search`, and `reference_read`. Jobs showed `Wiki updated`,
+and the new document carried source citations. Keychain login therefore works from
+the LaunchAgent on this Mac with Claude Code 2.1.300 and a claude.ai login. This
+does not cover other login methods or the state after logout or reboot.
+
+With the Korean input source active, ⌘⇧G did not open Go to Folder in the
+chooser, but typing `/` did. A folder registered by mistake could be removed only
+through the service's `removeWatch` command, because the UI has no control for it.
 
 ## Native lifecycle and remaining verification limits
 
@@ -213,6 +231,27 @@ LaunchAgent route for this demo. Ad-hoc bundle verification does not establish
 SMAppService compatibility, notarization, or distributable signing. Main still
 owns discovery; the service can finish stored snapshots after UI exit but does
 not discover files added or edited while the UI is closed.
+
+### 2026-10-16 — An old SMAppService registration shared the agent label
+
+The 2026-09-17 SMAppService attempt left `com.knoter.wiki-demo.worker`
+registered in the GUI domain, relaunching with exit code 1 more than 20,000
+times, although `~/Library/LaunchAgents` held no plist. Registration skips the
+bootstrap when that label already exists, so Enable background would have
+reported the stale job. Running the old bundle's `KnoterServiceControl
+sm-unregister` removed it before the replacement. Before reinstalling, check
+`launchctl print gui/$(id -u)/com.knoter.wiki-demo.worker`, not only the
+LaunchAgents directory.
+
+### 2026-10-16 — A stale service lock blocked startup after PID reuse
+
+The new LaunchAgent then exited with code 1 on every spawn, logging "Another
+service owns this workspace." The `service.lock` from 2026-09-21 named a PID
+that macOS had since reused for a root daemon. `kill(pid, 0)` returns EPERM for
+another user's process, and the lock check treats any error other than ESRCH as
+a live owner. Moving the stale lock aside let the service start. Until the check
+verifies the owner, inspect the lock's PID when the service log shows that
+message.
 
 ### 2026-09-17 — Native chooser stopped enabling Open
 
