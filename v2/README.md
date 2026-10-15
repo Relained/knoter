@@ -30,8 +30,8 @@ location such as `~/Applications/Knoter Wiki Demo.app` before enabling backgroun
 work. Before replacing or moving an installed build, **Disable service**, quit the
 app completely, replace it, reopen it, and enable the service again.
 
-1. Open **Sources → Enable background**. The status should show
-   `local_agent_running` and a connected service PID.
+1. Open **Agent** from the status bar (⌘⇧A) and choose **Enable background**. The
+   status should show `local_agent_running` and a connected service PID.
 2. Choose **Connect Codex CLI** and select the installed executable. In the macOS
    chooser, ⌘⇧G can navigate to the absolute path reported by `command -v codex`.
    The service checks its version and existing ChatGPT login. Reconnect here after
@@ -40,17 +40,20 @@ app completely, replace it, reopen it, and enable the service again.
    from `command -v claude` (such as `~/.local/bin/claude` or
    `/opt/homebrew/bin/claude`); the launcher path is
    kept so self-updates stay connected, and each attempt re-checks its tool surface.
-3. Choose **Watch Markdown folder** and select a small disposable folder. **Import
-   snapshot** instead registers selected files once. Source discovery runs only
-   while the app is open; the service works from stored immutable versions.
+3. Open **Sources** (⌘⇧S), choose **Watch Markdown folder**, and select a small
+   disposable folder. **Import snapshot** instead registers selected files once.
+   Source discovery runs only while the app is open; the service works from stored
+   immutable versions.
 4. Wait for the next 60-second queue check. **Run now** uses the same queue. Open
    the resulting wiki, its source links, and the stored version/segment evidence.
    Edit the source and observe a new version and an update to the same wiki topic.
-   **Jobs** shows the result and its explanation. **No linked wiki** means processing
-   did not connect an active document; historical no-change results can be retried.
+   **Jobs** in Agent shows the result and its explanation. **No linked wiki** means
+   processing did not connect an active document; historical no-change results can be
+   retried.
    New no-change results without a linked wiki require review instead of reporting success.
 5. Editing a wiki yourself protects it. Subsequent worker changes appear for review
-   in Sources/Settings; **Accept changes** and **Reject** resolve those proposals.
+   in the side panel's **Changes** (⌘⇧H), with notes that did not reach the wiki;
+   **Accept** and **Reject** resolve those proposals.
    Trash is recoverable, and pages you delete are not recreated automatically.
    Deleting a note removes its wiki content two minutes after a scan last saw it:
    pages left with no source move to Trash as **Moved by knoter** (protected pages
@@ -129,10 +132,46 @@ For development, run `npm run check`, then `npm run service` in one terminal and
 variable for a disposable workspace. Development mode does not register an OS
 service and stops when its service terminal exits.
 
+### Workspace layout
+
+The wiki is the main view. **Home** shows one search field over the graph of every
+note; typing highlights matches and Enter opens the first. The graph lays notes out
+with forces, like Obsidian's: notes repel each other, links pull like springs whose
+length grows with the number of connections and the label width, and a weak gravity
+keeps unlinked notes nearby. It is not limited to the window; the view fits itself
+until you pan or zoom. **Forces** (the sliders button) adjusts the center, repel,
+link, and distance forces; **Graph around this note** (⌘G) shows one to three links
+around a note.
+
+- **Sources** and **Agent** open as windows inside the app: drag their title bar to
+  move them, double-click it to maximize. `#/sources` links open the Sources window.
+- The side panel holds **Chat** and **Changes**. Changes lists, for the whole
+  workspace, proposals waiting for review, notes that did not reach the wiki, and
+  revision history for the open note or all notes.
+- The status bar at the bottom shows the save and service state and toggles
+  navigation, Sources, Agent, Activity, Chat, Changes, and Zen, as Zed's dock
+  buttons do.
+- **Settings → Window** chooses knoter's own title bar (search built in; macOS
+  keeps its traffic lights, other platforms get knoter's window controls) or the
+  system title bar. The window reopens to apply it after checking for unsaved edits.
+  The choice is stored by the app in `window-preferences.json` in Electron's user
+  data folder, not in the workspace.
+- **Settings → Shortcuts** lists every command with its shortcut (⌘ on macOS, Ctrl
+  elsewhere). Select one and press new keys; shortcuts need ⌘/Ctrl or Alt, and
+  conflicts are marked. Keys an editor uses, such as ⌘B for bold while editing,
+  stay with the editor. The search palette (⌘K) also runs every command.
+
+**Settings → Writing** sets how much of a page the marked supplements (**보충**)
+should make up, 30% by default; it applies to pages the worker and Chat write from
+then on. **Rewrite** on a page (⌘⇧E) rebalances that page: choose a ratio, and Chat
+rewrites it as a restorable revision that keeps everything you wrote and changes the
+amount and depth of the supplements. The ratio guides the model's writing; the
+service does not measure or enforce it.
+
 ### Side chat
 
-Open the right panel's **Chat**. It answers from your wiki and applies the changes
-you ask for, following the same writing and evidence rules as the worker.
+Open **Chat** from the status bar (⌘L). It answers from your wiki and applies the
+changes you ask for, following the same writing and evidence rules as the worker.
 
 - Type `@` to mention a note. The open note is included unless you remove its chip.
   Mentioned notes are the scope of the request.
@@ -210,13 +249,15 @@ deferred by user instruction; use manual walkthroughs with disposable data.
   [examples/reading-note.md](examples/reading-note.md), to try the import flow.
 - Use **Link a note** for stable ID links. Typed `[[Title]]`, `[[id]]`, and
   `[[Title|label]]` references also work; title references require a unique match
-  and can break on rename. **Graph** opens the workspace graph;
-  **Explore graph** opens the selected note's neighborhood.
+  and can break on rename. **Home** shows the workspace graph; **Explore graph**
+  opens the selected note's neighborhood.
 - Use a document's right-click or **⋯** menu for contextual actions.
   **Move to Trash** is recoverable; restore from Trash or the old document URL.
 - Compact navigation keeps an icon rail; **Zen mode** temporarily fills the
   app with the main view and restores the previous layout on exit. It is
   separate from OS fullscreen.
+- **Rewrite** and the Writing ratio are simulated: the reply states the requested
+  balance and no note changes. The title bar is always knoter's own in the browser.
 
 Detailed interaction requirements belong in the rewrite brief, not a repeated
 feature inventory here. UI integration rules live in [agents.md](agents.md).
@@ -246,16 +287,19 @@ Observations from the macOS in-app browser on 2026-09-16/17. The build
 environment was Node 22.14.0 with Vite 7.3.6. Manual evidence covered demo flows
 on desktop and a 390px viewport, not an installed application.
 
-| Date / issue                                        | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                                                                                                                                                                |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-16 — OS file chooser blocked by tooling     | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks.                                                                                                                                                    |
-| 2026-09-17 — graph wheel events scrolled the page   | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case.                                                                                                                                                    |
-| 2026-09-16/17 — bundle-size warning persisted       | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                                                                                                                                                              |
-| 2026-09-17 — limits of deletion checks              | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                                                                                                                                                    |
-| 2026-09-17 — Router history key collision           | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them.                                                                                                                                     |
-| 2026-10-16 — mention insertion moved the caret      | Text typed right after choosing an `@` mention landed before it: the caret was restored in an animation frame that the hidden browser pane delayed. A layout effect now restores it after the value renders; the retest kept the typed text in order.                                                                                                                                                               |
-| 2026-10-16 — Korean emphasis and TeX showed as text | `**"매주 수요일"**로` kept its asterisks (CommonMark flanking) and `$$…$$` showed as source. The reader, outline, and link graph now parse with CJK-friendly emphasis and remark-math; KaTeX renders lazily. Math is inert in link checks, so `$[[a, b]]$` is no longer an unresolved link. Main JS grew 733→750 kB; KaTeX is a separate 261 kB chunk shared with the editor (1,361→1,092 kB).                      |
-| 2026-10-16 — editor save rewrote math and emphasis  | One edit-and-save produced `\int\_0^1 x^2,dx`, `$\[\[a, b]]$`, and `\*\*"매주 수요일"\*\*로`. Enabling the editor's LaTeX feature and CJK emphasis (parse and serialize) kept them on retest. Typed `[[…]]` links are still saved as `\[\[…]]`, which continues to resolve. Restart the dev server after adding dependencies: re-optimization during hot reload produced duplicate-React hook errors until restart. |
+| Date / issue                                        | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-16 — OS file chooser blocked by tooling     | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks.                                                                                                                                                                           |
+| 2026-09-17 — graph wheel events scrolled the page   | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case.                                                                                                                                                                           |
+| 2026-09-16/17 — bundle-size warning persisted       | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                                                                                                                                                                                     |
+| 2026-09-17 — limits of deletion checks              | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                                                                                                                                                                           |
+| 2026-09-17 — Router history key collision           | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them.                                                                                                                                                            |
+| 2026-10-16 — mention insertion moved the caret      | Text typed right after choosing an `@` mention landed before it: the caret was restored in an animation frame that the hidden browser pane delayed. A layout effect now restores it after the value renders; the retest kept the typed text in order.                                                                                                                                                                                      |
+| 2026-10-16 — Korean emphasis and TeX showed as text | `**"매주 수요일"**로` kept its asterisks (CommonMark flanking) and `$$…$$` showed as source. The reader, outline, and link graph now parse with CJK-friendly emphasis and remark-math; KaTeX renders lazily. Math is inert in link checks, so `$[[a, b]]$` is no longer an unresolved link. Main JS grew 733→750 kB; KaTeX is a separate 261 kB chunk shared with the editor (1,361→1,092 kB).                                             |
+| 2026-10-16 — editor save rewrote math and emphasis  | One edit-and-save produced `\int\_0^1 x^2,dx`, `$\[\[a, b]]$`, and `\*\*"매주 수요일"\*\*로`. Enabling the editor's LaTeX feature and CJK emphasis (parse and serialize) kept them on retest. Typed `[[…]]` links are still saved as `\[\[…]]`, which continues to resolve. Restart the dev server after adding dependencies: re-optimization during hot reload produced duplicate-React hook errors until restart.                        |
+| 2026-10-16 — Buttons ignored their text sizes       | An unlayered `button { font: inherit }` reset outranked Tailwind's layered utilities, so every Button inherited 16px text whatever its size. The reset now lives in `@layer base`; Buttons use one scale (32, 28, and 24px high). Re-check spacing where a view relied on the inherited size.                                                                                                                                              |
+| 2026-10-16 — Graph squeezed into a rectangle        | The old layout clamped every note into a fixed 960×620 box, so larger graphs became a crowded rectangle. It is now an unbounded force layout with Barnes–Hut repulsion, label-aware collision, and a fitted camera. Synthetic workspaces of 250 and 1,000 notes rendered without errors; first graph paint, including page load, took about 1.3 s and 3 s in the headless dev build. Labels hide below 55% zoom except for up to ten hubs. |
+| 2026-10-16 — Bundle size after the shell rewrite    | Main JavaScript grew from 822 kB to 866 kB before gzip (graph engine, windows, shortcut editor); the editor chunk is unchanged at 1,096 kB. Vite's chunk-size warning remains.                                                                                                                                                                                                                                                             |
 
 The `Document actions walkthrough` and `Router migration walkthrough` samples
 were left in Trash after the 2026-09-17 checks; user documents' saved contents
