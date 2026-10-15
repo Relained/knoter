@@ -187,6 +187,29 @@ export const linkSchema = z
     reason: z.string().min(1).max(500),
   })
   .strict();
+/** Add to or revise one section of an existing page without rewriting the rest. */
+export const sectionSchema = z
+  .object({
+    documentId: id,
+    expectedRevision: z.number().int().positive(),
+    heading: z.string().trim().min(1).max(120),
+    // append: add to the section (or create it); replace: rewrite that section's body.
+    mode: z.enum(['append', 'replace']),
+    body: text,
+    citations: z.array(citationSchema).max(300),
+    referenceCitations: z.array(referenceCitationSchema).max(200).optional(),
+    reason: z.string().min(1).max(2000),
+  })
+  .strict();
+/** Where each part of the changed note went: a page, or nowhere with a reason. */
+export const topicSchema = z
+  .object({
+    segmentIds: z.array(z.string().min(1).max(100)).min(1).max(500),
+    // An existing page ID, the exact title of a page created in this proposal, or null.
+    target: z.string().trim().min(1).max(200).nullable(),
+    reason: z.string().min(1).max(300),
+  })
+  .strict();
 /** Service-generated only: a protected document whose every source was removed. */
 export const trashSchema = z
   .object({
@@ -199,7 +222,10 @@ export const proposalSchema = z
   .object({
     outcome: z.enum(['changes', 'no_change', 'needs_review']),
     summary: z.string().min(1).max(3000),
-    operations: z.array(operationSchema).max(12),
+    // Worker output allows 12; section edits expand into replacements, hence 24 stored.
+    operations: z.array(operationSchema).max(24),
+    sections: z.array(sectionSchema).max(12).optional(),
+    topics: z.array(topicSchema).max(60).optional(),
     links: z.array(linkSchema).max(10).optional(),
     trash: z.array(trashSchema).max(50).optional(),
     warnings: z.array(z.string().max(1000)).max(20),
@@ -207,6 +233,7 @@ export const proposalSchema = z
   .strict();
 export type Proposal = z.infer<typeof proposalSchema>;
 export type LinkRequest = z.infer<typeof linkSchema>;
+export type SectionEdit = z.infer<typeof sectionSchema>;
 export type Citation = z.infer<typeof citationSchema>;
 export interface Segment {
   id: string;

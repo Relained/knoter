@@ -13,6 +13,8 @@ import {
   PIPELINE,
   tagSchema,
   linkSchema,
+  sectionSchema,
+  topicSchema,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -153,12 +155,21 @@ async function checkCodex(path: string): Promise<CliInfo> {
  * notes, so a source ID cannot land in the version field. Pair, segment, and read checks
  * still run before any write. Very large corpora fall back to plain UUIDs.
  */
-export function proposalSchemaForVersions(versionIds: string[]) {
+export function proposalSchemaForVersions(versionIds: string[], changedSegmentIds: string[] = []) {
   requireThat(versionIds.length > 0, 'EVIDENCE', 'A worker attempt needs source evidence.');
   const citation =
     versionIds.length <= 400
       ? citationSchema.extend({ versionId: z.enum(versionIds as [string, ...string[]]) })
       : citationSchema;
+  // Topics may only name segments of the changed note.
+  const topic = changedSegmentIds.length
+    ? topicSchema.extend({
+        segmentIds: z
+          .array(z.enum(changedSegmentIds as [string, ...string[]]))
+          .min(1)
+          .max(500),
+      })
+    : topicSchema;
   return proposalSchema.extend({
     operations: z
       .array(
@@ -169,6 +180,15 @@ export function proposalSchemaForVersions(versionIds: string[]) {
         }),
       )
       .max(12),
+    sections: z
+      .array(
+        sectionSchema.extend({
+          citations: z.array(citation).max(300),
+          referenceCitations: z.array(referenceCitationSchema).max(200),
+        }),
+      )
+      .max(12),
+    topics: z.array(topic).max(60),
     links: z.array(linkSchema).max(10),
   });
 }
@@ -448,7 +468,10 @@ export class Worker {
       output = join(cwd, 'proposal.json'),
       mcpConfig = join(cwd, 'mcp.json'),
       instructions = join(cwd, 'instructions.md'),
-      attemptSchema = proposalSchemaForVersions(this.store.latestVersionIds());
+      attemptSchema = proposalSchemaForVersions(
+        this.store.latestVersionIds(),
+        changed.segments.map((s) => s.id),
+      );
     writeFileSync(schema, JSON.stringify(z.toJSONSchema(attemptSchema)), { mode: 0o600 });
     const skill = composeSkill(this.skill, changed.removed ? ['removal'] : skillParts(changed));
     const capability = randomBytes(32).toString('hex');
@@ -496,8 +519,10 @@ export class Worker {
           deletedAt: d.deletedAt ?? null,
         };
       }),
+      // Existing pages that may hold each part of this note, for routing multi-topic notes.
+      sectionHints: this.store.sectionHints(changed),
       hints: {
-        documents: this.store.searchDocuments(hintQuery, 8).filter((d) => !d.deletedAt),
+        documents: this.store.searchDocuments(hintQuery, 6).filter((d) => !d.deletedAt),
         sources: this.store
           .searchSources(hintQuery, 9)
           .filter((r) => r.sourceId !== job.source_id)

@@ -12,15 +12,30 @@ Any subject is in scope: coursework, technology, history, books, hobbies, plans,
 
 # Workflow
 
-1. Read the changed source with `source_read`, and every required document in the job
-   with `wiki_read`. Find related pages with `wiki_search` and related notes with
-   `source_search`; read what you will change or rely on.
-2. Decide where the material belongs: update a page whose scope matches, create a page for
-   a distinct topic, or turn a broad note into a hub with `Parent/Child` subpages.
-   Prefer pages focused enough to find again over one page per note.
-3. Write from the user's material first, then supplement it.
-4. Return one proposal. The service validates and applies it; if it is rejected, the
+A note is a container, not a topic. A day's study log, a lecture, a meeting, or a setup
+log usually covers several subjects, and each subject belongs on its own page, often a
+page that already exists. Work subject by subject, not note by note.
+
+1. Read the changed note with `source_read` and every required page with `wiki_read`.
+2. Split the note into its subjects. For each, find where it belongs: the job's
+   `sectionHints` suggest existing pages per part, and `wiki_search`/`source_search` find
+   more by subject terms rather than the filename. Read a page before you change it.
+3. Record the plan in `topics`: every segment of the changed note goes to a page (an
+   existing page ID, or the exact title of a page you create) or to `null` with a reason
+   (empty, duplicated elsewhere in the note, pure scratch). Every segment must appear.
+4. Write each subject where it belongs:
+   - Already has a page: a `sections` edit that appends to or revises one section of it.
+     Rewrite a whole page with a replace operation only when its structure must change.
+   - New subject: a create operation for a focused page; use `Parent/Child` titles when a
+     broad subject needs subpages.
+   - The note's own context (a lecture, a day, a project) earns a page only when it is
+     worth keeping, as a short index linking to the subject pages.
+5. Return one proposal. The service validates and applies it; if it is rejected, the
    reason comes back on the next attempt.
+
+For example, a daily note on stacks, a C++ STL question, and a project idea becomes: a
+`sections` edit appending to the existing stack page, a new `C++ STL` page, and a section
+added to the existing project page. That is three topics and no page named after the date.
 
 # The user's content is the core
 
@@ -55,7 +70,8 @@ comparisons, examples.
   no raw HTML or remote images; code goes in fenced or inline code.
 - Cite the user's material with `[원본 노트](source:SOURCE_ID)` in the body and matching
   `citations` (sourceId, versionId, segmentId from a `source_read` in this attempt).
-  Every created or replaced page needs at least one such citation. Keep `source:` links
+  Every create, replace, or section edit needs at least one such citation, including the
+  segments its topic assigns to it. Keep `source:` links
   for claims you retain from other notes; their earlier citations carry over.
 - Link pages with `[[DOCUMENT_ID|label]]`, or `[[Exact New Title|label]]` for a page
   created in this proposal. Never invent IDs. The app shows the title, so do not repeat
@@ -68,12 +84,15 @@ comparisons, examples.
   mention and skips protected pages. Link key concepts, not every word.
 - Create: `documentId: null`, `expectedRevision: 0`. Replace: the ID and the revision you
   read, with the complete new body. Keep existing IDs and user-chosen titles.
+- A `sections` edit names the page, the revision you read, a section `heading` (reuse an
+  existing heading to extend it), `append` or `replace` (rewrites only that section's own
+  text), the Markdown to add, and its citations. The rest of the page is kept as is.
 - `description` says what the page is about. `category` is a broad collection; reuse an
   existing one when it fits. `tags` are 2–6 short labels that let the page be found
   across collections (subject, course, kind of note); reuse the job's existing tags when
   they fit and take the user's own `#tags` as hints.
 - Protected pages (edited by the user) are proposed for review, not overwritten. Trash
   entries are tombstones: do not recreate their topics.
-- `no_change` only when the source is already represented and nothing useful can be
-  added; `needs_review` only when you cannot write a faithful update. Neither has
-  operations; both explain why.
+- `no_change` only when every part of the note is already represented (its topics point
+  at those pages) and nothing useful can be added; `needs_review` only when you cannot
+  write a faithful update. Neither has operations; both explain why.

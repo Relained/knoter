@@ -2,7 +2,15 @@ import type { Segment } from '@knoter/contracts/native';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { requireThat } from './common.js';
 
-export function resolveWikiLinks(body: string, documents: { id: string; title: string }[]) {
+/**
+ * Pin wiki links to document IDs. With `unresolved`, a link naming no single page becomes its
+ * label text and is reported there, instead of rejecting the whole proposal.
+ */
+export function resolveWikiLinks(
+  body: string,
+  documents: { id: string; title: string }[],
+  unresolved?: string[],
+) {
   const root = fromMarkdown(body),
     edits: { start: number; end: number; text: string }[] = [];
   type Node = typeof root | (typeof root.children)[number];
@@ -47,6 +55,10 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
         const matches = documents.filter(
           (doc) => doc.id === target.trim() || normalize(doc.title) === normalize(target),
         );
+        if (matches.length !== 1 && unresolved) {
+          unresolved.push(target.trim());
+          return labels.join('|').trim() || target.trim();
+        }
         requireThat(
           matches.length === 1,
           'EVIDENCE',
@@ -122,6 +134,59 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
   visit(root);
   if (!hit) return body;
   return `${body.slice(0, hit.start)}[${hit.text}](#/wiki/${targetId})${body.slice(hit.end)}`;
+}
+
+/**
+ * Merge one section into a page body. The section is found by heading text (outside code
+ * fences). `replace` rewrites the section's own text before any subheading, keeping its
+ * subsections; `append` adds after the whole section, subsections included. A missing
+ * section is added at the end as `##`.
+ */
+export function mergeSection(
+  body: string,
+  heading: string,
+  content: string,
+  mode: 'append' | 'replace',
+) {
+  const key = (text: string) => text.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const lines = body.split('\n');
+  const headings: { index: number; level: number; text: string }[] = [];
+  let fence: string | null = null;
+  lines.forEach((line, index) => {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker && (!fence || marker[0] === fence[0])) fence = fence ? null : marker;
+    const h = !fence && /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) headings.push({ index, level: h[1].length, text: h[2] });
+  });
+  // The model sometimes repeats the heading as the content's first line.
+  const text = content
+    .replace(/^\s*#{1,6}\s+(.*)\n/, (all, first: string) =>
+      key(first) === key(heading) ? '' : all,
+    )
+    .trim();
+  const at = headings.findIndex((h) => key(h.text) === key(heading));
+  if (at < 0) return `${body.trimEnd()}\n\n## ${heading.trim()}\n\n${text}\n`;
+  const start = headings[at].index,
+    next = headings.slice(at + 1),
+    end =
+      (mode === 'replace' ? next[0] : next.find((h) => h.level <= headings[at].level))?.index ??
+      lines.length;
+  const before = lines.slice(0, start + 1),
+    after = lines.slice(end);
+  const kept =
+    mode === 'append'
+      ? lines
+          .slice(start + 1, end)
+          .join('\n')
+          .trimEnd()
+      : '';
+  const merged = [kept, text].filter(Boolean).join('\n\n');
+  return (
+    [...before, '', merged, '', ...after]
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd() + '\n'
+  );
 }
 
 export function validateWikiMarkdown(body: string) {

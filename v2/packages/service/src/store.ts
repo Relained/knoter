@@ -33,7 +33,13 @@ import {
   localDay,
   nextDay,
 } from './common.js';
-import { extract, validateWikiMarkdown, resolveWikiLinks, insertWikiLink } from './markdown.js';
+import {
+  extract,
+  validateWikiMarkdown,
+  resolveWikiLinks,
+  insertWikiLink,
+  mergeSection,
+} from './markdown.js';
 import { normalize, rank, snippet, terms } from './search.js';
 import { sameReference } from './references.js';
 
@@ -860,6 +866,13 @@ export class Store {
           revision: d.revision,
           deletedAt: d.deletedAt ?? null,
         }));
+    return this.rankDocuments(docs, q, limit).map(({ item, score }) => ({
+      ...summary(item),
+      score,
+      snippet: snippet(item.body, q),
+    }));
+  }
+  private rankDocuments(docs: StoredDocument[], q: string[], limit: number) {
     return rank(
       docs,
       q,
@@ -883,7 +896,30 @@ export class Store {
         ];
       },
       limit,
-    ).map(({ item, score }) => ({ ...summary(item), score, snippet: snippet(item.body, q) }));
+    );
+  }
+  /**
+   * Candidate pages for each part of a note (a heading's paragraphs, at most three at a time),
+   * so a multi-topic note can be routed to the pages its parts belong to.
+   */
+  sectionHints(version: EvidenceVersion, limit = 25) {
+    const groups: { heading: string; segments: EvidenceVersion['segments'] }[] = [];
+    for (const segment of version.segments) {
+      const last = groups.at(-1);
+      if (last && last.heading === segment.heading && last.segments.length < 3)
+        last.segments.push(segment);
+      else groups.push({ heading: segment.heading, segments: [segment] });
+    }
+    const active = this.documents().filter((d) => !d.deletedAt);
+    return groups.slice(0, limit).flatMap((g) => {
+      const text = g.segments.map((s) => s.text).join(' ');
+      const candidates = this.rankDocuments(active, terms(`${g.heading} ${text.slice(0, 160)}`), 3)
+        .filter((r) => r.score >= 4)
+        .map(({ item }) => ({ id: item.id, title: item.title, revision: item.revision }));
+      return candidates.length
+        ? [{ segmentIds: g.segments.map((s) => s.id), heading: g.heading, candidates }]
+        : [];
+    });
   }
   stage(j: JobRow, stage: string) {
     this.lease(j);
@@ -892,7 +928,10 @@ export class Store {
   finishError(j: JobRow, code: string, message: string) {
     const current = this.job(j.id);
     if (current.status !== 'running' || current.generation !== j.generation) return;
-    const retry = ['TRANSIENT', 'TIMEOUT'].includes(code) && current.attempts < 3;
+    // A proposal that missed the topic plan gets one automatic retry with the reason.
+    const retry =
+      (['TRANSIENT', 'TIMEOUT'].includes(code) && current.attempts < 3) ||
+      (code === 'REVISE' && current.attempts < 2);
     const status = current.cancel
       ? 'cancelled'
       : retry
@@ -1043,6 +1082,100 @@ export class Store {
       );
     })();
   }
+  /**
+   * Turn section edits into replacements of the current page with only that section
+   * merged, so every replacement check (read revision, citations, protection, carried
+   * evidence) applies unchanged. Several sections of one page merge into one replacement.
+   */
+  expandSections(proposal: Proposal): Proposal {
+    if (!proposal.sections?.length) return proposal;
+    const merged = new Map<string, Proposal['operations'][number]>();
+    for (const section of proposal.sections) {
+      requireThat(
+        !proposal.operations.some((o) => o.documentId === section.documentId),
+        'FORMAT',
+        'Edit a page either with sections or with one rewrite, not both.',
+      );
+      const doc = this.document(section.documentId);
+      requireThat(!doc.deletedAt, 'CONFLICT', 'Section target is in Trash.');
+      const previous = merged.get(doc.id);
+      requireThat(
+        !previous || previous.expectedRevision === section.expectedRevision,
+        'FORMAT',
+        'Sections of one page must name the same revision.',
+      );
+      const body = mergeSection(
+        previous?.body ?? doc.body,
+        section.heading,
+        section.body,
+        section.mode,
+      );
+      const reason = `Section “${section.heading}”: ${section.reason}`;
+      if (previous) {
+        previous.body = body;
+        previous.citations.push(...section.citations);
+        previous.referenceCitations!.push(...(section.referenceCitations ?? []));
+        previous.reason = `${previous.reason}\n${reason}`.slice(0, 2000);
+      } else
+        merged.set(doc.id, {
+          op: 'replace',
+          documentId: doc.id,
+          expectedRevision: section.expectedRevision,
+          title: doc.title,
+          body,
+          description: doc.description,
+          category: doc.category,
+          citations: [...section.citations],
+          referenceCitations: [...(section.referenceCitations ?? [])],
+          tags: doc.tags ?? [],
+          reason: reason.slice(0, 2000),
+        });
+    }
+    return { ...proposal, operations: [...proposal.operations, ...merged.values()], sections: [] };
+  }
+  /**
+   * Every part of the changed note must be assigned to a page or skipped with a reason, and a
+   * page written in this proposal must cite the parts assigned to it.
+   */
+  private checkCoverage(proposal: Proposal, context: AttemptContext) {
+    const changed = this.version(context.changedVersionId);
+    if (!proposal.topics || changed.removed || !changed.segments.length) return;
+    if (proposal.outcome === 'needs_review') return;
+    const known = new Set(changed.segments.map((s) => s.id)),
+      covered = new Set<string>();
+    for (const topic of proposal.topics) {
+      for (const id of topic.segmentIds) {
+        requireThat(known.has(id), 'REVISE', `A topic lists a segment not in the note: ${id}.`);
+        covered.add(id);
+      }
+      if (!topic.target) continue;
+      const op = proposal.operations.find(
+        (o) =>
+          o.documentId === topic.target ||
+          (o.op === 'create' && titleKey(o.title) === titleKey(topic.target!)),
+      );
+      if (op)
+        requireThat(
+          op.citations.some(
+            (c) => c.versionId === changed.id && topic.segmentIds.includes(c.segmentId),
+          ),
+          'REVISE',
+          `The page for “${op.title}” does not cite the note parts assigned to it.`,
+        );
+      else
+        requireThat(
+          this.linkTarget(topic.target, proposal),
+          'REVISE',
+          `Topic target is neither an active page ID nor a page created here: ${topic.target}.`,
+        );
+    }
+    const missing = [...known].filter((id) => !covered.has(id));
+    requireThat(
+      !missing.length,
+      'REVISE',
+      `Assign every part of the changed note in topics, or skip it with a reason. Unassigned: ${missing.slice(0, 12).join(', ')}.`,
+    );
+  }
   validateProposal(proposal: Proposal, context: AttemptContext) {
     proposalSchema.parse(proposal);
     const links = proposal.links ?? [];
@@ -1069,12 +1202,12 @@ export class Store {
         const parent = op.title.slice(0, op.title.lastIndexOf('/'));
         requireThat(
           targets.some((d) => d.title === parent && !('deletedAt' in d && d.deletedAt)),
-          'EVIDENCE',
+          'REVISE',
           `Subtopic ${op.title} needs an active or proposed parent titled ${parent}. Rename an unprotected summary hub when appropriate.`,
         );
       }
       validateWikiMarkdown(op.body);
-      resolveWikiLinks(op.body, targets);
+      resolveWikiLinks(op.body, targets, []);
       for (const c of op.referenceCitations ?? []) {
         const reference = context.references?.find((r) => sameReference(r.path, c.path));
         requireThat(
@@ -1122,13 +1255,13 @@ export class Store {
           'FORMAT',
           'Invalid create operation.',
         );
+        const same = documents.find((d) => titleKey(d.title) === titleKey(op.title));
         requireThat(
-          !documents.some(
-            (d) =>
-              d.title.normalize('NFKC').toLowerCase() === op.title.normalize('NFKC').toLowerCase(),
-          ),
-          'CONFLICT',
-          'A document or Trash entry already uses this title.',
+          !same,
+          same?.deletedAt ? 'CONFLICT' : 'REVISE',
+          same?.deletedAt
+            ? 'A Trash entry already uses this title.'
+            : `A page titled “${op.title}” already exists (${same?.id}); add to it with a sections edit instead of creating it.`,
         );
       } else {
         requireThat(op.documentId, 'FORMAT', 'Invalid replace operation.');
@@ -1152,6 +1285,7 @@ export class Store {
         'EVIDENCE',
         `Link target must be an active page ID or a page created in this proposal: ${l.target}`,
       );
+    this.checkCoverage(proposal, context);
   }
   /** The page a link request points to: an active page ID or a title created in the proposal. */
   private linkTarget(target: string, proposal: Proposal, assigned?: Map<string, string>) {
@@ -1186,6 +1320,7 @@ export class Store {
         this.event('Outdated result discarded', 'The latest source version remains queued.');
         return;
       }
+      proposal = this.expandSections(proposal);
       // Every cited version must still be current, including other sources used for integration.
       for (const c of proposal.operations.flatMap((o) => o.citations))
         requireThat(
@@ -1258,9 +1393,10 @@ export class Store {
       ...operations.map((o) => ({ id: o.assignedId, title: o.title })),
     ];
     const vocabulary = this.tagVocabulary().map(([tag]) => tag);
+    const unresolved: string[] = [];
     for (const op of operations) {
       const old = op.documentId ? this.document(op.documentId) : undefined;
-      const body = resolveWikiLinks(op.body, targets);
+      const body = resolveWikiLinks(op.body, targets, unresolved);
       // Evidence for retained claims carries over while its source link stays visible, so a
       // hub does not have to re-read every supporting note to keep its citations.
       const citations = [...op.citations];
@@ -1304,7 +1440,10 @@ export class Store {
       this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
     }
     const assigned = new Map(operations.map((o) => [titleKey(o.title), o.assignedId]));
-    return this.applyLinks(proposal, assigned, new Set(operations.map((o) => o.assignedId)));
+    return [
+      ...[...new Set(unresolved)].map((t) => `Left “${t}” unlinked: no page has that title.`),
+      ...this.applyLinks(proposal, assigned, new Set(operations.map((o) => o.assignedId))),
+    ];
   }
   /**
    * Link the first mention of a term in existing pages, deterministically: the body is not
@@ -1370,7 +1509,7 @@ export class Store {
         context?: AttemptContext;
         manifest?: LegacyManifest;
       };
-      const proposal = data.proposal,
+      const proposal = this.expandSections(data.proposal),
         context = contextOf(data);
       const j = this.job(r.job_id);
       if (accept) {
