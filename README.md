@@ -1,43 +1,18 @@
 # knoter
 
-Monorepo for the knoter CLI, shared project docs, and web frontend.
+A local-first knowledge workspace for source-backed wiki documents, chat, tasks,
+and calendar views.
 
-## Projects
+| Start here | Purpose |
+| --- | --- |
+| [V2 frontend](v2/README.md) | Browser prototype of the desktop rewrite; uses disposable demo data |
+| [V1 application](v1/README.md) | Legacy CLI, Electron workbench, and vault templates |
+| [Project memory](docs/README.md) | Design reasons, failures, constraints, and future implementation gates |
 
-- `cli/`: TypeScript/Bun CLI — vault management, indexing, agent work queue,
-  search, launchd scheduling. `kn sync` spawns the configured external agent
-  (codex/claude CLI) which maintains vault artifacts plus their HTML displays.
-- `res/templates/`: vault seed content (workflow contract + per-artifact
-  templates with default HTML), copied into each vault at `kn vault init`.
-- `docs/`: shared architecture, planning, and testing docs.
-- `web/`: React/Vite HTML workbench frontend with an Electron development shell
-  and CLI/fs-backed IPC. No web test harness currently exists; `npm run check`
-  is the verification baseline.
+Each package README owns its setup and check commands. The rewrite and legacy
+applications have separate storage and runtime contracts; do not use the
+prototype as a real vault or migrate existing data implicitly.
 
-Agent guides: root `agents.md` routes to `cli/agents.md` and `web/agents.md`.
-
-## Local Ports
-
-- CLI/local TEI embedding endpoint: `http://127.0.0.1:39280`
-- Web Vite dev/preview server: `http://127.0.0.1:39281`
-
-The CLI does not create or manage TEI containers. On macOS, run
-`text-embeddings-router` locally for Metal acceleration and point the vault at
-that OpenAI-compatible embedding endpoint.
-
-## Common Commands
-
-```sh
-cd cli
-# Current ad hoc typecheck; package metadata/check script is P1 work.
-bunx tsc --noEmit
-```
-
-```sh
-cd web
-npm install
-npm run check
-```
-
-The CLI/web test harnesses were removed during the queue-architecture rewrite;
-manual smoke steps live in `docs/testing.md`.
+For changes, start with the [root agent guide](agents.md).
+[Vault workflow templates](v1/res/templates/workflow.md) are runtime instructions
+copied into new vaults; existing vaults keep their customized copies.
