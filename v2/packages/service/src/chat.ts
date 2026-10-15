@@ -700,11 +700,13 @@ ${evidence.text || '(no message text: integrate the attachments into the wiki wh
         });
         this.store.event('Chat changed the wiki', proposal.summary);
       }
-      let content = reply;
+      // Models sometimes write a page link as `[title](wiki:ID)`; the reader drops that
+      // unknown scheme, so give it the app's own page address.
+      let content = reply.replace(/\]\(wiki:([0-9a-f-]{36})\)/gi, '](#/wiki/$1)');
       try {
         // Pin title links to IDs so the reply keeps working after a rename.
         content = resolveWikiLinks(
-          reply,
+          content,
           this.store.documents().filter((d) => !d.deletedAt),
         );
       } catch {
