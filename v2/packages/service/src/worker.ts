@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, accessSync, constants, realpathSync, rmSyn
 import { join, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import {
   CLI_VERSION,
@@ -11,6 +12,7 @@ import {
   MAX_TAGS,
   PIPELINE,
   tagSchema,
+  linkSchema,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -167,6 +169,7 @@ export function proposalSchemaForVersions(versionIds: string[]) {
         }),
       )
       .max(12),
+    links: z.array(linkSchema).max(10),
   });
 }
 /** Situational skill references a job needs, chosen from its changed source. */
@@ -589,6 +592,9 @@ ${priorFailure ? `The previous attempt was rejected: ${JSON.stringify(priorFailu
       this.store.db.prepare('UPDATE attempts SET pid=? WHERE id=?').run(child.pid, attemptId);
       this.store.stage(job, 'generating');
     });
+    // A multi-byte character can straddle two chunks; decoding each chunk separately
+    // turned Korean text into U+FFFD in proposals.
+    const decoders = { out: new StringDecoder('utf8'), err: new StringDecoder('utf8') };
     const consume = (chunk: Buffer, events: boolean) => {
       bytes += chunk.length;
       if (bytes > 2_000_000) {
@@ -596,10 +602,10 @@ ${priorFailure ? `The previous attempt was rejected: ${JSON.stringify(priorFailu
         return;
       }
       if (!events) {
-        session.tail = (session.tail + chunk.toString()).slice(-4000);
+        session.tail = (session.tail + decoders.err.write(chunk)).slice(-4000);
         return;
       }
-      lineBuffer += chunk.toString();
+      lineBuffer += decoders.out.write(chunk);
       let end: number;
       while ((end = lineBuffer.indexOf('\n')) >= 0) {
         const line = lineBuffer.slice(0, end);

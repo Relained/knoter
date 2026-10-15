@@ -60,6 +60,12 @@ comparisons, examples.
 - Link pages with `[[DOCUMENT_ID|label]]`, or `[[Exact New Title|label]]` for a page
   created in this proposal. Never invent IDs. The app shows the title, so do not repeat
   it as the first heading.
+- Connect important terms to their pages, so each page collects backlinks. In pages you
+  write, link the first meaningful mention. For other pages that mention a term (find
+  them with `wiki_search`), add a `links` item instead of rewriting them: `target` (page
+  ID, or the exact title of a page you create), `mentions` as written there (1–3
+  variants), and each page with the revision you saw. The service links the first
+  mention and skips protected pages. Link key concepts, not every word.
 - Create: `documentId: null`, `expectedRevision: 0`. Replace: the ID and the revision you
   read, with the complete new body. Keep existing IDs and user-chosen titles.
 - `description` says what the page is about. `category` is a broad collection; reuse an

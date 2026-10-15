@@ -33,7 +33,7 @@ import {
   localDay,
   nextDay,
 } from './common.js';
-import { extract, validateWikiMarkdown, resolveWikiLinks } from './markdown.js';
+import { extract, validateWikiMarkdown, resolveWikiLinks, insertWikiLink } from './markdown.js';
 import { normalize, rank, snippet, terms } from './search.js';
 import { sameReference } from './references.js';
 
@@ -136,6 +136,7 @@ export function contextOf(data: { context?: AttemptContext; manifest?: LegacyMan
  * page. A tag matching an existing one apart from case takes the existing spelling, so the
  * vocabulary converges instead of splitting into near-duplicates.
  */
+const titleKey = (title: string) => title.normalize('NFKC').trim().toLowerCase();
 export function normalizeTags(tags: string[], vocabulary: string[] = []) {
   const known = new Map(vocabulary.map((t) => [t.toLocaleLowerCase(), t]));
   const out: string[] = [];
@@ -1017,12 +1018,18 @@ export class Store {
   }
   validateProposal(proposal: Proposal, context: AttemptContext) {
     proposalSchema.parse(proposal);
+    const links = proposal.links ?? [];
     requireThat(
       proposal.outcome === 'changes'
-        ? proposal.operations.length > 0
-        : proposal.operations.length === 0,
+        ? proposal.operations.length + links.length > 0
+        : proposal.operations.length === 0 && links.length === 0,
       'FORMAT',
       'Proposal outcome and operations disagree.',
+    );
+    requireThat(
+      links.reduce((n, l) => n + l.documents.length, 0) <= 30,
+      'FORMAT',
+      'Link at most 30 pages per proposal.',
     );
     const touched = new Set<string>();
     const documents = this.documents();
@@ -1080,7 +1087,7 @@ export class Store {
           'EVIDENCE',
           'Citation link has no versioned evidence.',
         );
-      const key = op.documentId ?? op.title.normalize('NFKC').toLowerCase();
+      const key = op.documentId ?? titleKey(op.title);
       requireThat(!touched.has(key), 'FORMAT', 'Duplicate document operation.');
       touched.add(key);
       if (op.op === 'create') {
@@ -1113,6 +1120,24 @@ export class Store {
         );
       }
     }
+    for (const l of links)
+      requireThat(
+        this.linkTarget(l.target, proposal),
+        'EVIDENCE',
+        `Link target must be an active page ID or a page created in this proposal: ${l.target}`,
+      );
+  }
+  /** The page a link request points to: an active page ID or a title created in the proposal. */
+  private linkTarget(target: string, proposal: Proposal, assigned?: Map<string, string>) {
+    const existing = this.one<DocumentRow>(
+      'SELECT data,deleted_at,deleted_by,trash_reason FROM documents WHERE id=?',
+      target,
+    );
+    if (existing && !existing.deleted_at) return target;
+    const created = proposal.operations.find(
+      (o) => o.op === 'create' && titleKey(o.title) === titleKey(target),
+    );
+    return created ? (assigned?.get(titleKey(created.title)) ?? `new:${created.title}`) : null;
   }
   /** Current citations that may carry into a replacement: their versions are still latest. */
   carriedCitations(documentId: string) {
@@ -1182,7 +1207,9 @@ export class Store {
         this.event('Wiki proposal ready', proposal.summary);
         return proposal;
       }
-      this.commitOperations(proposal, false, context);
+      const skipped = this.commitOperations(proposal, false, context);
+      if (skipped.length)
+        proposal = { ...proposal, warnings: [...proposal.warnings, ...skipped].slice(0, 20) };
       this.db.prepare('INSERT INTO applications VALUES (?,?)').run(applicationId, j.id);
       this.db
         .prepare(
@@ -1194,6 +1221,7 @@ export class Store {
       return proposal;
     })();
   }
+  /** Commit a validated proposal; returns warnings about link requests that were skipped. */
   commitOperations(proposal: Proposal, human: boolean, context: AttemptContext) {
     const operations = proposal.operations.map((op) => ({
       ...op,
@@ -1249,6 +1277,58 @@ export class Store {
       };
       this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
     }
+    const assigned = new Map(operations.map((o) => [titleKey(o.title), o.assignedId]));
+    return this.applyLinks(proposal, assigned, new Set(operations.map((o) => o.assignedId)));
+  }
+  /**
+   * Link the first mention of a term in existing pages, deterministically: the body is not
+   * rewritten, so these pages need no new evidence. Protected, changed, or unmatched pages
+   * are skipped with a warning (D17).
+   */
+  private applyLinks(proposal: Proposal, assigned: Map<string, string>, written: Set<string>) {
+    const warnings: string[] = [],
+      bumped = new Map<string, number>();
+    for (const l of proposal.links ?? []) {
+      const targetId = this.linkTarget(l.target, proposal, assigned);
+      if (!targetId || targetId.startsWith('new:')) continue;
+      const targetTitle = this.document(targetId).title;
+      for (const ref of l.documents) {
+        if (written.has(ref.documentId) || ref.documentId === targetId) continue;
+        const row = this.one<DocumentRow>(
+          'SELECT data,deleted_at,deleted_by,trash_reason FROM documents WHERE id=?',
+          ref.documentId,
+        );
+        const d = row ? storedDocument(row) : undefined;
+        const skip = !d
+          ? 'it does not exist'
+          : d.deletedAt
+            ? 'it is in Trash'
+            : d.protected
+              ? 'it is protected'
+              : d.revision !== ref.expectedRevision + (bumped.get(d.id) ?? 0)
+                ? 'it changed'
+                : undefined;
+        if (skip || !d) {
+          warnings.push(`Did not link “${l.mentions[0]}” in ${d?.title ?? ref.documentId}: ${skip}.`);
+          continue;
+        }
+        const body = insertWikiLink(d.body, l.mentions, targetId);
+        if (body === d.body) {
+          if (!d.body.includes(`#/wiki/${targetId}`) && !d.body.includes(`[[${targetId}`))
+            warnings.push(`Did not link “${l.mentions[0]}” in ${d.title}: no unlinked mention.`);
+          continue;
+        }
+        validateWikiMarkdown(body);
+        this.recordRevision(
+          { ...d, body, revision: d.revision + 1, updatedAt: now() },
+          'knoter',
+          `Linked “${l.mentions[0]}” to ${targetTitle}`,
+          this.citations(d.id, d.revision),
+        );
+        bumped.set(d.id, (bumped.get(d.id) ?? 0) + 1);
+      }
+    }
+    return warnings;
   }
   resolveProposal(id: string, accept: boolean) {
     this.db.transaction(() => {

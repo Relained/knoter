@@ -64,6 +64,55 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
   return body;
 }
 
+// Korean particles that may follow a linked term: "스택은", "스택에서" still link "스택".
+const PARTICLES =
+  '(?:으로서|으로써|이라는|에서는|에게서|이라고|으로는|에서|에게|한테|까지|부터|보다|처럼|이나|이란|라는|라고|으로|이다|은|는|이|가|을|를|의|에|로|와|과|도|만|나|란|다|께)';
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Link the first unlinked mention of a term to a page. Headings, code, links, images, and
+ * raw [[...]] links are skipped; a mention must stand as a word, optionally followed by a
+ * Korean particle. Returns the body unchanged when the page already links the target or no
+ * mention is found.
+ */
+export function insertWikiLink(body: string, mentions: string[], targetId: string) {
+  if (body.includes(`#/wiki/${targetId}`) || body.includes(`[[${targetId}`)) return body;
+  const patterns = mentions.map(
+    (m) =>
+      new RegExp(
+        `(?<![\\p{L}\\p{N}_])(${escape(m)})(?=${PARTICLES}?(?![\\p{L}\\p{N}_]))`,
+        'iu',
+      ),
+  );
+  const root = fromMarkdown(body);
+  type Node = typeof root | (typeof root.children)[number];
+  let hit: { start: number; end: number; text: string } | undefined;
+  const visit = (node: Node) => {
+    if (hit) return;
+    if (
+      ['heading', 'code', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference', 'definition', 'html'].includes(node.type)
+    )
+      return;
+    if (node.type === 'text' && node.position) {
+      const start = node.position.start.offset!,
+        raw = body.slice(start, node.position.end.offset!);
+      // Mask raw [[...]] wiki links so a term inside one is not linked twice.
+      const masked = raw.replace(/\[\[[^\]\n]*\]\]/g, (m) => ' '.repeat(m.length));
+      for (const pattern of patterns) {
+        const m = pattern.exec(masked);
+        if (m) {
+          hit = { start: start + m.index, end: start + m.index + m[1].length, text: raw.slice(m.index, m.index + m[1].length) };
+          return;
+        }
+      }
+    }
+    if ('children' in node) node.children.forEach(visit);
+  };
+  visit(root);
+  if (!hit) return body;
+  return `${body.slice(0, hit.start)}[${hit.text}](#/wiki/${targetId})${body.slice(hit.end)}`;
+}
+
 export function validateWikiMarkdown(body: string) {
   const root = fromMarkdown(body);
   type Node = typeof root | (typeof root.children)[number];

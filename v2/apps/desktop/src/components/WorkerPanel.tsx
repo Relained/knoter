@@ -252,6 +252,11 @@ export function WorkerPanel({
               <pre>{op.body}</pre>
             </div>
           ))}
+          {p.proposal.links?.map((l, index) => (
+            <p key={`link-${index}`}>
+              Link “{l.mentions[0]}” in {l.documents.length} page(s): {l.reason}
+            </p>
+          ))}
           {p.proposal.trash?.map((t) => (
             <div key={t.documentId}>
               <strong>
