@@ -91,7 +91,9 @@ export function WorkerPanel({
       </p>
       <div className="worker-connection">
         <div>
-          <strong>Codex CLI · {worker.cli.status}</strong>
+          <strong>
+            {worker.cli.provider === 'claude' ? 'Claude Code' : 'Codex CLI'} · {worker.cli.status}
+          </strong>
           <p>{worker.cli.message}</p>
           <small>
             {worker.cli.path || 'No CLI selected'}
@@ -105,9 +107,16 @@ export function WorkerPanel({
         >
           Connect Codex CLI
         </Button>
+        <Button
+          disabled={busy || !worker.connected}
+          variant="outline"
+          onClick={() => desktop('chooseClaudeCode')}
+        >
+          Connect Claude Code
+        </Button>
       </div>
       <p className="worker-detail">
-        {worker.model} · low reasoning · 5 minutes per attempt · 2 automatic retries ·{' '}
+        {worker.model} · {worker.effort} reasoning · 5 minutes per attempt · 2 automatic retries ·{' '}
         {worker.callsToday}/{worker.dailyLimit} runs today. Resets {date(worker.resetsAt)} (
         {worker.timezone || 'local time'}).
       </p>

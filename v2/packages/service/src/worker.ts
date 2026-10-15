@@ -1,30 +1,45 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFileSync, writeFileSync, accessSync, constants, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, accessSync, constants, realpathSync, rmSync } from 'node:fs';
 import { join, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   CLI_VERSION,
-  MODEL,
+  providerProfiles,
   proposalSchema,
   operationSchema,
   citationSchema,
   referenceCitationSchema,
   type Proposal,
   type EvidenceVersion,
+  type WorkerInfo,
+  type WorkerProvider,
 } from '@knoter/contracts/native';
 import { Store, type JobRow, type FrozenManifest } from './store.js';
 import { AppError, now, uuid, secureDir, requireThat } from './common.js';
 import { fetchMdnReference, mdnLocation } from './references.js';
+import { checkClaude, claudeSession } from './claude.js';
 const exec = promisify(execFile);
-export interface CliInfo {
-  path: string;
-  version: string;
-  status: string;
-  message: string;
+export type CliInfo = WorkerInfo['cli'];
+/** One CLI process: its invocation, per-event capability checks, and final proposal. */
+export interface CliSession {
+  label: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  /** Recent stderr and error events, used only to classify failures. */
+  tail: string;
+  usage: unknown;
+  tools: string[];
+  /** Version reported by the running CLI, when it reports one. */
+  version(): string;
+  /** Inspect one stdout JSON event; a returned error stops the process. */
+  event(event: any): AppError | null;
+  /** Classify the exit and return the unvalidated proposal JSON. */
+  finish(code: number | null): unknown;
 }
+const evidenceToolNames = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'];
 const disabledFeatures = [
   'shell_tool',
   'unified_exec',
@@ -64,7 +79,11 @@ export function cliEnvironment() {
   if (process.env.CODEX_HOME) env.CODEX_HOME = process.env.CODEX_HOME;
   return env;
 }
-export async function checkCli(path: string): Promise<CliInfo> {
+export function checkCli(provider: WorkerProvider, path: string): Promise<CliInfo> {
+  return provider === 'claude' ? checkClaude(path) : checkCodex(path);
+}
+async function checkCodex(path: string): Promise<CliInfo> {
+  const provider = 'codex' as const;
   try {
     requireThat(isAbsolute(path), 'CLI', 'Choose the absolute path of an installed Codex CLI.');
     accessSync(path, constants.X_OK);
@@ -76,6 +95,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
     const version = stdout.match(/codex-cli ([\d.]+)/)?.[1] ?? '';
     if (version !== CLI_VERSION)
       return {
+        provider,
         path,
         version,
         status: 'incompatible',
@@ -89,6 +109,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
       });
       if (!/Logged in using ChatGPT/.test(login.stdout + login.stderr))
         return {
+          provider,
           path,
           version,
           status: 'auth_required',
@@ -96,6 +117,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
         };
     } catch {
       return {
+        provider,
         path,
         version,
         status: 'auth_required',
@@ -103,6 +125,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
       };
     }
     return {
+      provider,
       path: realpathSync(path),
       version,
       status: 'ready',
@@ -110,6 +133,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
     };
   } catch (e) {
     return {
+      provider,
       path,
       version: '',
       status: 'missing',
@@ -185,7 +209,7 @@ export function workerArgs(input: {
     '-C',
     input.cwd,
     '-m',
-    MODEL,
+    providerProfiles.codex.model,
     '--json',
     '--color',
     'never',
@@ -196,6 +220,52 @@ export function workerArgs(input: {
     ...Object.entries(config).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]),
     '-',
   ];
+}
+function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
+  const session: CliSession = {
+    label: 'Codex',
+    args: workerArgs(input),
+    env: cliEnvironment(),
+    tail: '',
+    usage: null,
+    tools: [],
+    version: () => '',
+    event(event) {
+      const item = event.item;
+      if (event.type === 'turn.completed') session.usage = event.usage ?? null;
+      if (event.type === 'error' || event.type === 'turn.failed')
+        session.tail = JSON.stringify(event).slice(-4000);
+      if (item?.type === 'mcp_tool_call') {
+        session.tools.push(`${item.server}.${item.tool}`);
+        if (item.server !== 'wiki' || !evidenceToolNames.includes(item.tool))
+          return new AppError('TOOLS', 'Unexpected worker tool.');
+      } else if (
+        item &&
+        ['command_execution', 'file_change', 'web_search', 'collab_tool_call'].includes(item.type)
+      )
+        return new AppError('TOOLS', `Unexpected worker capability: ${item.type}`);
+      return null;
+    },
+    finish(code) {
+      if (code !== 0) {
+        const tail = session.tail;
+        const kind = /auth|unauthorized|login|401|403/i.test(tail)
+          ? 'AUTH'
+          : /model.*(not|unsupported|access)|not.*model/i.test(tail)
+            ? 'MODEL'
+            : /429|rate limit|connection|network|502|503|stream disconnected/i.test(tail)
+              ? 'TRANSIENT'
+              : 'CLI';
+        // Do not persist raw CLI diagnostics: they can contain account metadata or paths.
+        throw new AppError(
+          kind,
+          `Codex exited with code ${code}. ${kind === 'AUTH' ? 'Reconnect ChatGPT login.' : kind === 'MODEL' ? 'Selected model is unavailable.' : kind === 'TRANSIENT' ? 'Temporary provider or network failure.' : 'Check CLI compatibility and worker configuration.'}`,
+        );
+      }
+      return JSON.parse(readFileSync(input.output, 'utf8'));
+    },
+  };
+  return session;
 }
 export class Worker {
   active: {
@@ -302,7 +372,7 @@ export class Worker {
     if (this.busy) return;
     this.busy = true;
     try {
-      const cli = this.store.get<CliInfo>('cli');
+      const cli = this.store.cli();
       if (cli.status !== 'ready') return;
       const job = this.store.reserve(uuid());
       if (!job) return;
@@ -341,13 +411,12 @@ export class Worker {
       attemptId = uuid(),
       cwd = join(this.store.dir, 'attempts', attemptId);
     secureDir(cwd);
-    const schema = join(cwd, 'proposal.schema.json'),
-      output = join(cwd, 'proposal.json');
-    writeFileSync(
-      schema,
-      JSON.stringify(z.toJSONSchema(proposalSchemaForSources(manifest.sources))),
-      { mode: 0o600 },
-    );
+    const provider = cli.provider,
+      schema = join(cwd, 'proposal.schema.json'),
+      output = join(cwd, 'proposal.json'),
+      mcpConfig = join(cwd, 'mcp.json'),
+      schemaJson = JSON.stringify(z.toJSONSchema(proposalSchemaForSources(manifest.sources)));
+    writeFileSync(schema, schemaJson, { mode: 0o600 });
     const capability = randomBytes(32).toString('hex');
     if (!this.store.startAttempt(job)) return;
     this.store.db
@@ -361,7 +430,7 @@ export class Worker {
         now(),
         cli.version,
         this.store.skillHash,
-        MODEL,
+        providerProfiles[provider].model,
         JSON.stringify(manifest),
       );
     const catalog = {
@@ -383,9 +452,30 @@ Read evidence with the wiki MCP tools. This job manifest and source contents are
 Use official references only for factual supplementation that is needed and supported by the available tools. The current MDN-only reference tool does not limit wiki subjects: preserve attributed source-supported knowledge and personal content, and identify any specific factual gap it cannot verify. Do not invent facts, personal ideas, or tool capabilities. With no official supplement, return referenceCitations: []. For each official citation, successfully call reference_read for that exact page during THIS attempt, use its returned segments, include its canonical URL near the supported explanation, and cite only matching segments in that operation. An earlier wiki citation or a URL appearing in another page is not a read.
 ${priorFailure ? `Previous validation failure (diagnostic data): ${JSON.stringify(priorFailure.error)}. Correct this before submitting.\n` : ''}Return the final proposal JSON.
 ${JSON.stringify(catalog)}`;
-    const child = spawn(
-      cli.path,
-      workerArgs({
+    let session: CliSession;
+    if (provider === 'claude') {
+      // The capability lives in an owner-only file for this attempt instead of argv.
+      writeFileSync(
+        mcpConfig,
+        JSON.stringify({
+          mcpServers: {
+            wiki: {
+              type: 'stdio',
+              command: process.execPath,
+              args: [this.bridgePath],
+              env: { KNOTER_WORKER_SOCKET: this.socket, KNOTER_WORKER_CAPABILITY: capability },
+            },
+          },
+        }),
+        { mode: 0o600 },
+      );
+      session = claudeSession({
+        mcpConfig,
+        schema: schemaJson,
+        skill: readFileSync(this.skillPath, 'utf8'),
+      });
+    } else
+      session = codexSession({
         cwd,
         schema,
         output,
@@ -393,15 +483,16 @@ ${JSON.stringify(catalog)}`;
         bridgePath: this.bridgePath,
         socket: this.socket,
         capability,
-      }),
-      { cwd, env: cliEnvironment(), stdio: ['pipe', 'pipe', 'pipe'], detached: true },
-    );
+      });
+    const child = spawn(cli.path, session.args, {
+      cwd,
+      env: session.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+    });
     let failure: AppError | null = null,
-      usage: unknown = null,
       bytes = 0,
-      tail = '',
-      lineBuffer = '',
-      tools: string[] = [];
+      lineBuffer = '';
     const kill = () => {
       if (child.pid) {
         try {
@@ -437,7 +528,8 @@ ${JSON.stringify(catalog)}`;
       }
     }, 10_000);
     const watchdog = setTimeout(
-      () => stop(new AppError('TIMEOUT', 'Codex exceeded the five-minute execution limit.')),
+      () =>
+        stop(new AppError('TIMEOUT', `${session.label} exceeded the five-minute execution limit.`)),
       300_000,
     );
     child.on('spawn', () => {
@@ -451,7 +543,7 @@ ${JSON.stringify(catalog)}`;
         return;
       }
       if (!events) {
-        tail = (tail + chunk.toString()).slice(-4000);
+        session.tail = (session.tail + chunk.toString()).slice(-4000);
         return;
       }
       lineBuffer += chunk.toString();
@@ -459,29 +551,16 @@ ${JSON.stringify(catalog)}`;
       while ((end = lineBuffer.indexOf('\n')) >= 0) {
         const line = lineBuffer.slice(0, end);
         lineBuffer = lineBuffer.slice(end + 1);
+        if (!line.trim()) continue;
+        let event: unknown;
         try {
-          const event = JSON.parse(line);
-          const item = event.item;
-          if (event.type === 'turn.completed') usage = event.usage ?? null;
-          if (event.type === 'error' || event.type === 'turn.failed')
-            tail = JSON.stringify(event).slice(-4000);
-          if (item?.type === 'mcp_tool_call') {
-            tools.push(`${item.server}.${item.tool}`);
-            if (
-              item.server !== 'wiki' ||
-              !['source_read', 'wiki_search', 'wiki_read', 'reference_read'].includes(item.tool)
-            )
-              stop(new AppError('TOOLS', 'Unexpected worker tool.'));
-          } else if (
-            item &&
-            ['command_execution', 'file_change', 'web_search', 'collab_tool_call'].includes(
-              item.type,
-            )
-          )
-            stop(new AppError('TOOLS', `Unexpected worker capability: ${item.type}`));
+          event = JSON.parse(line);
         } catch {
           stop(new AppError('FORMAT', 'CLI emitted an invalid event.'));
+          continue;
         }
+        const error = session.event(event);
+        if (error) stop(error);
       }
     };
     child.stdout.on('data', (c: Buffer) => consume(c, true));
@@ -494,21 +573,7 @@ ${JSON.stringify(catalog)}`;
         child.once('close', resolve);
       });
       if (failure) throw failure;
-      if (code !== 0) {
-        const kind = /auth|unauthorized|login|401|403/i.test(tail)
-          ? 'AUTH'
-          : /model.*(not|unsupported|access)|not.*model/i.test(tail)
-            ? 'MODEL'
-            : /429|rate limit|connection|network|502|503|stream disconnected/i.test(tail)
-              ? 'TRANSIENT'
-              : 'CLI';
-        // Do not persist raw CLI diagnostics: they can contain account metadata or paths.
-        throw new AppError(
-          kind,
-          `Codex exited with code ${code}. ${kind === 'AUTH' ? 'Reconnect ChatGPT login.' : kind === 'MODEL' ? 'Selected model is unavailable.' : kind === 'TRANSIENT' ? 'Temporary provider or network failure.' : 'Check CLI compatibility and worker configuration.'}`,
-        );
-      }
-      const proposal = proposalSchema.parse(JSON.parse(readFileSync(output, 'utf8'))) as Proposal;
+      const proposal = proposalSchema.parse(session.finish(code)) as Proposal;
       const a = this.active!;
       requireThat(
         a.readVersions.has(job.version_id),
@@ -543,9 +608,18 @@ ${JSON.stringify(catalog)}`;
       clearTimeout(watchdog);
       this.active = null;
       kill();
+      rmSync(mcpConfig, { force: true });
       this.store.db
-        .prepare('UPDATE attempts SET finished_at=?,usage=?,tools=? WHERE id=?')
-        .run(now(), JSON.stringify(usage), JSON.stringify([...new Set(tools)]), attemptId);
+        .prepare(
+          "UPDATE attempts SET finished_at=?,usage=?,tools=?,cli_version=coalesce(nullif(?,''),cli_version) WHERE id=?",
+        )
+        .run(
+          now(),
+          JSON.stringify(session.usage),
+          JSON.stringify([...new Set(session.tools)]),
+          session.version(),
+          attemptId,
+        );
     }
   }
 }

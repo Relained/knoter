@@ -6,6 +6,19 @@ export const MAX_WIRE_BYTES = 8 * 1024 * 1024;
 export const PIPELINE = 'markdown-wiki-1';
 export const MODEL = 'gpt-5.6-luna';
 export const CLI_VERSION = '0.154.0';
+// Claude Code updates itself frequently; versions at or above the verified one are
+// accepted, and every attempt re-checks the CLI's reported tool surface instead.
+export const CLAUDE_MODEL = 'claude-sonnet-5-5';
+export const CLAUDE_MIN_VERSION = '2.1.294';
+export const workerProviders = z.enum(['codex', 'claude']);
+export type WorkerProvider = z.infer<typeof workerProviders>;
+export const providerProfiles: Record<
+  WorkerProvider,
+  { label: string; model: string; effort: string }
+> = {
+  codex: { label: 'Codex CLI', model: MODEL, effort: 'low' },
+  claude: { label: 'Claude Code', model: CLAUDE_MODEL, effort: 'medium' },
+};
 const id = z.string().uuid();
 const text = z.string().max(200_000);
 const title = z.string().trim().min(1).max(200);
@@ -58,7 +71,7 @@ export const commands = {
       error: z.string().max(1000).nullable(),
     })
     .strict(),
-  configureCli: z.object({ path: z.string().min(1).max(4096) }).strict(),
+  configureCli: z.object({ path: z.string().min(1).max(4096), provider: workerProviders }).strict(),
   checkCli: nil,
   backup: z.object({ path: z.string().min(1).max(4096) }).strict(),
   restoreBackup: z.object({ path: z.string().min(1).max(4096) }).strict(),
@@ -90,6 +103,7 @@ export const desktopActions = z.enum([
   'status',
   'approvalSettings',
   'chooseCli',
+  'chooseClaudeCode',
   'chooseFolder',
   'importMarkdown',
   'backup',
@@ -212,8 +226,15 @@ export interface WorkerInfo {
   cursor: number;
   lastTick: number | null;
   nextTick: number;
-  cli: { path: string; version: string; status: string; message: string };
+  cli: {
+    provider: WorkerProvider;
+    path: string;
+    version: string;
+    status: string;
+    message: string;
+  };
   model: string;
+  effort: string;
   skillHash: string;
   callsToday: number;
   dailyLimit: number;

@@ -101,10 +101,11 @@ export function restoreEmpty(store: Store, path: string) {
     restored.db.prepare('UPDATE sources SET watch_id=NULL').run();
     restored.db.prepare('DELETE FROM watches').run();
     restored.set('cli', {
+      provider: 'codex',
       path: '',
       version: '',
       status: 'missing',
-      message: 'Reconnect this machine’s Codex CLI after restoring.',
+      message: 'Reconnect this machine’s Codex CLI or Claude Code after restoring.',
     });
     restored.set('settings', { ...restored.get<object>('settings'), workerPaused: true });
     restored.event(

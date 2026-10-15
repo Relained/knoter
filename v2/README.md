@@ -11,7 +11,10 @@ Node **22.14.0**, and npm. The build copies this exact Node runtime and its lice
 into the app; the installed service does not depend on shell PATH or global Node.
 Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
 (`codex login`, then `codex login status`). The selected account must have access
-to `gpt-5.6-luna`. The app never copies login tokens into its workspace.
+to `gpt-5.6-luna`. Alternatively, Claude Code **2.1.294 or newer** logged in with
+`claude auth login` (check with `claude auth status`) runs the same worker on
+`claude-sonnet-5-5`; it receives no built-in tools, only the wiki MCP bridge.
+The app never copies login tokens into its workspace.
 
 From `v2`:
 
@@ -33,6 +36,9 @@ app completely, replace it, reopen it, and enable the service again.
    chooser, ⌘⇧G can navigate to the absolute path reported by `command -v codex`.
    The service checks its version and existing ChatGPT login. Reconnect here after
    fixing authentication or an unavailable model; the worker does not switch models.
+   To use Claude Code instead, choose **Connect Claude Code** and select the launcher
+   from `command -v claude` (usually `~/.local/bin/claude`); the launcher path is
+   kept so self-updates stay connected, and each attempt re-checks its tool surface.
 3. Choose **Watch Markdown folder** and select a small disposable folder. **Import
    snapshot** instead registers selected files once. Source discovery runs only
    while the app is open; the service works from stored immutable versions.

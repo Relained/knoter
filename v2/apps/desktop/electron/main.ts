@@ -75,7 +75,18 @@ async function desktop(action: DesktopAction) {
       properties: ['openFile'],
       defaultPath: '/opt/homebrew/bin',
     });
-    if (!r.canceled) return send('configureCli', { path: await realpath(r.filePaths[0]) });
+    if (!r.canceled)
+      return send('configureCli', { provider: 'codex', path: await realpath(r.filePaths[0]) });
+    return null;
+  }
+  if (action === 'chooseClaudeCode') {
+    const r = await dialog.showOpenDialog(window!, {
+      title: 'Choose your installed Claude Code executable',
+      properties: ['openFile', 'treatPackageAsDirectory'],
+      defaultPath: join(app.getPath('home'), '.local', 'bin'),
+    });
+    // Keep the launcher path: the native installer repoints it on each self-update.
+    if (!r.canceled) return send('configureCli', { provider: 'claude', path: r.filePaths[0] });
     return null;
   }
   if (action === 'chooseFolder') {

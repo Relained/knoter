@@ -8,10 +8,11 @@ import {
   requestSchema,
   PROTOCOL,
   MAX_WIRE_BYTES,
+  providerProfiles,
   type Command,
 } from '@knoter/contracts/native';
 import { Store } from './store.js';
-import { Worker, checkCli, type CliInfo } from './worker.js';
+import { Worker, checkCli } from './worker.js';
 import {
   AppError,
   defaultDataDir,
@@ -121,13 +122,11 @@ async function dispatch(command: Command, payload: unknown) {
     }
     case 'configureCli':
     case 'checkCli': {
-      const path =
-        command === 'configureCli'
-          ? commands.configureCli.parse(input).path
-          : store.get<CliInfo>('cli').path;
-      const info = await checkCli(path);
+      const { provider, path } =
+        command === 'configureCli' ? commands.configureCli.parse(input) : store.cli();
+      const info = await checkCli(provider, path);
       store.set('cli', info);
-      store.event('Codex connection checked', info.message);
+      store.event(`${providerProfiles[provider].label} connection checked`, info.message);
       return info;
     }
     case 'backup':

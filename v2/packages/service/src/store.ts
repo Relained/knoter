@@ -5,7 +5,8 @@ import type { WikiDocument, WorkspaceSnapshot, Revision, Source } from '@knoter/
 import {
   MAX_SOURCE_BYTES,
   PIPELINE,
-  MODEL,
+  providerProfiles,
+  type WorkerInfo,
   proposalSchema,
   type EvidenceVersion,
   type JobInfo,
@@ -103,10 +104,11 @@ export class Store {
         this.set('workspaceId', uuid());
         this.set('settings', { theme: 'light', workerPaused: false });
         this.set('cli', {
+          provider: 'codex',
           path: '',
           version: '',
           status: 'missing',
-          message: 'Select an installed Codex CLI in Worker settings.',
+          message: 'Select an installed Codex CLI or Claude Code in Worker settings.',
         });
       })();
     this.workspaceId = this.get<string>('workspaceId');
@@ -143,6 +145,13 @@ export class Store {
     return JSON.parse(
       this.one<{ value: string }>('SELECT value FROM settings WHERE key=?', key)!.value,
     ) as T;
+  }
+  /** Connections saved before provider selection existed were Codex. */
+  cli(): WorkerInfo['cli'] {
+    return {
+      provider: 'codex',
+      ...this.get<Partial<WorkerInfo['cli']>>('cli'),
+    } as WorkerInfo['cli'];
   }
   set(key: string, value: unknown) {
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run(key, JSON.stringify(value));
@@ -215,7 +224,16 @@ export class Store {
       .prepare(
         "INSERT INTO jobs(id,source_id,version_id,pipeline,skill_hash,model,status,stage,next_run,created_at) VALUES (?,?,?,?,?,?,'queued','queued',?,?)",
       )
-      .run(id, sourceId, versionId, PIPELINE, this.skillHash, MODEL, Date.now(), now());
+      .run(
+        id,
+        sourceId,
+        versionId,
+        PIPELINE,
+        this.skillHash,
+        providerProfiles[this.cli().provider].model,
+        Date.now(),
+        now(),
+      );
     this.db
       .prepare(
         "UPDATE jobs SET status='cancelled',stage='superseded',successor=?,error='Superseded by a newer source version' WHERE source_id=? AND id<>? AND status IN ('queued','retry_wait')",
@@ -922,8 +940,9 @@ export class Store {
         )!.cursor,
         lastTick,
         nextTick,
-        cli: this.get('cli'),
-        model: MODEL,
+        cli: this.cli(),
+        model: providerProfiles[this.cli().provider].model,
+        effort: providerProfiles[this.cli().provider].effort,
         skillHash: this.skillHash,
         callsToday:
           this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ??
