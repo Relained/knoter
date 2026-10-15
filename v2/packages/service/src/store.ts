@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import type {
   WikiDocument,
   WorkspaceSnapshot,
@@ -33,6 +33,7 @@ import {
   nextDay,
 } from './common.js';
 import { extract, validateWikiMarkdown, resolveWikiLinks } from './markdown.js';
+import { normalize, rank, snippet, terms } from './search.js';
 
 export interface SourceRow {
   id: string;
@@ -83,8 +84,24 @@ function storedDocument(r: DocumentRow): StoredDocument {
       : {}),
   };
 }
-export interface FrozenManifest {
+/**
+ * What one attempt was given and what it read. Versions are immutable, so the corpus is no
+ * longer frozen per job; replacements are fenced by the revision recorded when read.
+ */
+export interface AttemptContext {
+  workspaceId: string;
+  jobId: string;
+  generation: number;
+  changedVersionId: string;
+  previousVersionId: string | null;
+  requiredDocumentIds: string[];
+  /** Append-only read log. */
+  readVersions: string[];
+  readDocuments: Record<string, number>;
   references?: ReferenceEvidence[];
+}
+/** Proposals saved for review before v2 carried a frozen corpus instead of a read log. */
+interface LegacyManifest {
   workspaceId: string;
   jobId: string;
   generation: number;
@@ -92,6 +109,30 @@ export interface FrozenManifest {
   sources: EvidenceVersion[];
   documents: StoredDocument[];
   requiredDocumentIds: string[];
+  references?: ReferenceEvidence[];
+}
+export function contextOf(data: { context?: AttemptContext; manifest?: LegacyManifest }) {
+  if (data.context) return data.context;
+  const m = data.manifest!;
+  return {
+    workspaceId: m.workspaceId,
+    jobId: m.jobId,
+    generation: m.generation,
+    changedVersionId: m.changedVersionId,
+    previousVersionId: null,
+    requiredDocumentIds: m.requiredDocumentIds,
+    readVersions: m.sources.map((v) => v.id),
+    readDocuments: Object.fromEntries(m.documents.map((d) => [d.id, d.revision])),
+    references: m.references,
+  } satisfies AttemptContext;
+}
+/** A visible link may be written with or without percent-encoding. */
+export function containsUrl(body: string, url: string) {
+  const variants = new Set([url, encodeURI(url)]);
+  try {
+    variants.add(decodeURI(url));
+  } catch {}
+  return [...variants].some((v) => body.includes(v));
 }
 export class Store {
   db: Database.Database;
@@ -357,7 +398,9 @@ export class Store {
           .run(versionId, input.filename, now(), input.watchId, sourceId);
       else
         this.db
-          .prepare('INSERT INTO sources VALUES (?,?,?,?,?,NULL,?,?,?)')
+          .prepare(
+            'INSERT INTO sources(id,path,watch_id,filename,latest,processed,availability,detected_at,added_at) VALUES (?,?,?,?,?,NULL,?,?,?)',
+          )
           .run(
             sourceId,
             input.path,
@@ -504,38 +547,138 @@ export class Store {
       .prepare('UPDATE jobs SET lease_until=? WHERE id=? AND generation=?')
       .run(Date.now() + 45_000, j.id, j.generation);
   }
-  manifest(j: JobRow): FrozenManifest {
-    const rows = this.all<SourceRow>('SELECT * FROM sources');
-    const documents = this.documents();
-    requireThat(
-      rows.length <= 100 && documents.length <= 100,
-      'CORPUS_LIMIT',
-      'Demo retrieval supports at most 100 sources and 100 wiki documents.',
-    );
-    const sources = rows.map((s) => this.version(s.id === j.source_id ? j.version_id : s.latest));
-    for (const source of sources)
-      requireThat(
-        sha(readFileSync(join(this.dir, 'blobs', source.hash))) === source.hash,
-        'HASH',
-        'Stored source checksum mismatch.',
-      );
-    requireThat(
-      JSON.stringify(sources).length <= 4_000_000,
-      'CORPUS_LIMIT',
-      'Demo evidence exceeds the 4 MB retrieval limit.',
+  attemptContext(j: JobRow): AttemptContext {
+    const changed = this.verifiedVersion(j.version_id);
+    const previous = this.one<{ id: string }>(
+      'SELECT id FROM versions WHERE source_id=? AND version=?',
+      j.source_id,
+      changed.version - 1,
     );
     return {
       workspaceId: this.workspaceId,
       jobId: j.id,
       generation: j.generation,
       changedVersionId: j.version_id,
-      sources,
-      documents,
+      previousVersionId: previous?.id ?? null,
       requiredDocumentIds: this.all<{ document_id: string }>(
         'SELECT document_id FROM dependencies WHERE source_id=?',
         j.source_id,
       ).map((r) => r.document_id),
+      readVersions: [],
+      readDocuments: {},
     };
+  }
+  private verified = new Set<string>();
+  /** A version whose stored original still matches its hash (checked once per process). */
+  verifiedVersion(id: string) {
+    const v = this.version(id);
+    if (!this.verified.has(v.hash)) {
+      requireThat(
+        sha(readFileSync(join(this.dir, 'blobs', v.hash))) === v.hash,
+        'HASH',
+        'Stored source checksum mismatch.',
+      );
+      this.verified.add(v.hash);
+    }
+    return v;
+  }
+  relPath(s: Pick<SourceRow, 'path' | 'filename' | 'watch_id'>) {
+    const w = s.watch_id
+      ? this.one<{ path: string }>('SELECT path FROM watches WHERE id=?', s.watch_id)
+      : undefined;
+    return w ? relative(w.path, s.path) : s.filename;
+  }
+  /** Latest version IDs of sources that still exist: the only versions a citation may use. */
+  latestVersionIds() {
+    return this.all<SourceRow>('SELECT * FROM sources')
+      .filter((s) => !this.searchable(s.latest).removed)
+      .map((s) => s.latest);
+  }
+  private searchCache = new Map<
+    string,
+    { removed: boolean; headings: string; text: string; segments: EvidenceVersion['segments'] }
+  >();
+  private searchable(versionId: string) {
+    let entry = this.searchCache.get(versionId);
+    if (!entry) {
+      const v = this.version(versionId);
+      entry = {
+        removed: !!v.removed,
+        headings: normalize([...new Set(v.segments.map((s) => s.heading))].join('\n')),
+        text: normalize(v.segments.map((s) => s.text).join('\n')),
+        segments: v.segments,
+      };
+      this.searchCache.set(versionId, entry);
+    }
+    return entry;
+  }
+  searchSources(query: string, limit = 10) {
+    const q = terms(query);
+    if (!q.length) return [];
+    const items = this.all<SourceRow>('SELECT * FROM sources')
+      .map((row) => ({ row, rel: this.relPath(row), v: this.searchable(row.latest) }))
+      .filter((i) => !i.v.removed);
+    return rank(
+      items,
+      q,
+      (i) => [
+        { text: normalize(i.rel), weight: 4 },
+        { text: i.v.headings, weight: 2 },
+        { text: i.v.text, weight: 1 },
+      ],
+      limit,
+    ).map(({ item, score }) => ({
+      sourceId: item.row.id,
+      versionId: item.row.latest,
+      relPath: item.rel,
+      score,
+      snippets: item.v.segments
+        .filter((seg) => q.some((t) => normalize(`${seg.heading}\n${seg.text}`).includes(t)))
+        .slice(0, 2)
+        .map((seg) => ({
+          segmentId: seg.id,
+          heading: seg.heading,
+          text: snippet(seg.text, q),
+        })),
+    }));
+  }
+  private docCache = new Map<string, { title: string; description: string; body: string }>();
+  /** Matching pages, Trash tombstones included; an empty query lists recent page titles. */
+  searchDocuments(query: string, limit = 12) {
+    const docs = this.documents();
+    const summary = (d: StoredDocument) => ({
+      id: d.id,
+      title: d.title,
+      description: d.description,
+      category: d.category,
+      revision: d.revision,
+      protected: d.protected,
+      deletedAt: d.deletedAt ?? null,
+    });
+    const q = terms(query);
+    if (!q.length)
+      return docs
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 200)
+        .map((d) => ({ id: d.id, title: d.title, revision: d.revision, deletedAt: d.deletedAt ?? null }));
+    return rank(
+      docs,
+      q,
+      (d) => {
+        const key = `${d.id}:${d.revision}`;
+        let n = this.docCache.get(key);
+        if (!n) {
+          n = { title: normalize(d.title), description: normalize(d.description), body: normalize(d.body) };
+          this.docCache.set(key, n);
+        }
+        return [
+          { text: n.title, weight: 4 },
+          { text: n.description, weight: 2 },
+          { text: n.body, weight: 1 },
+        ];
+      },
+      limit,
+    ).map(({ item, score }) => ({ ...summary(item), score, snippet: snippet(item.body, q) }));
   }
   stage(j: JobRow, stage: string) {
     this.lease(j);
@@ -578,7 +721,7 @@ export class Store {
     };
     this.db
       .prepare(
-        'INSERT INTO documents VALUES (?,?,NULL) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
+        'INSERT INTO documents(id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
       )
       .run(doc.id, JSON.stringify(doc));
     this.db
@@ -691,7 +834,7 @@ export class Store {
       );
     })();
   }
-  validateProposal(proposal: Proposal, manifest: FrozenManifest) {
+  validateProposal(proposal: Proposal, context: AttemptContext) {
     proposalSchema.parse(proposal);
     requireThat(
       proposal.outcome === 'changes'
@@ -701,8 +844,9 @@ export class Store {
       'Proposal outcome and operations disagree.',
     );
     const touched = new Set<string>();
+    const documents = this.documents();
     const targets = [
-      ...this.documents().filter((d) => !proposal.operations.some((o) => o.documentId === d.id)),
+      ...documents.filter((d) => !proposal.operations.some((o) => o.documentId === d.id)),
       ...proposal.operations.map((o) => ({ id: o.documentId ?? `new:${o.title}`, title: o.title })),
     ];
     for (const op of proposal.operations) {
@@ -717,32 +861,43 @@ export class Store {
       validateWikiMarkdown(op.body);
       resolveWikiLinks(op.body, targets);
       for (const c of op.referenceCitations ?? []) {
-        const reference = manifest.references?.find(
+        const reference = context.references?.find(
           (r) => r.path.toLowerCase() === c.path.toLowerCase(),
         );
         requireThat(
           reference && reference.segments.some((s) => s.id === c.segmentId),
           'EVIDENCE',
-          'Official citation was not read in this attempt.',
+          'Reference citation was not read in this attempt.',
         );
         requireThat(
-          op.body.includes(reference.url),
+          containsUrl(op.body, reference.url),
           'EVIDENCE',
-          'Supplemented knowledge needs a visible official reference link.',
+          'Supplemented knowledge needs a visible reference link.',
         );
       }
       requireThat(op.citations.length > 0, 'EVIDENCE', 'Each change needs source evidence.');
       for (const c of op.citations) {
-        const s = manifest.sources.find((s) => s.id === c.versionId && s.sourceId === c.sourceId);
         requireThat(
-          s?.segments.some((s) => s.id === c.segmentId),
+          context.readVersions.includes(c.versionId),
           'EVIDENCE',
-          'Citation is outside this attempt.',
+          'Worker cited a source it did not read.',
+        );
+        const v = this.one<{ data: string }>('SELECT data FROM versions WHERE id=?', c.versionId);
+        const version = v ? (JSON.parse(v.data) as EvidenceVersion) : undefined;
+        requireThat(
+          version &&
+            version.sourceId === c.sourceId &&
+            !version.removed &&
+            version.segments.some((s) => s.id === c.segmentId),
+          'EVIDENCE',
+          'Citation does not match a read source segment.',
         );
       }
+      const carried = op.documentId ? this.carriedCitations(op.documentId) : [];
       for (const m of op.body.matchAll(/\]\(source:([^\s)]+)\)/g))
         requireThat(
-          op.citations.some((c) => c.sourceId === m[1]),
+          op.citations.some((c) => c.sourceId === m[1]) ||
+            carried.some((c) => c.sourceId === m[1]),
           'EVIDENCE',
           'Citation link has no versioned evidence.',
         );
@@ -756,7 +911,7 @@ export class Store {
           'Invalid create operation.',
         );
         requireThat(
-          !this.documents().some(
+          !documents.some(
             (d) =>
               d.title.normalize('NFKC').toLowerCase() === op.title.normalize('NFKC').toLowerCase(),
           ),
@@ -764,13 +919,13 @@ export class Store {
           'A document or Trash entry already uses this title.',
         );
       } else {
-        const frozen = manifest.documents.find((d) => d.id === op.documentId);
+        requireThat(op.documentId, 'FORMAT', 'Invalid replace operation.');
         requireThat(
-          frozen && frozen.revision === op.expectedRevision && !frozen.deletedAt,
+          context.readDocuments[op.documentId] === op.expectedRevision,
           'EVIDENCE',
-          'Replacement is outside the input revisions.',
+          'Read a document at the revision you replace.',
         );
-        const current = this.document(frozen.id);
+        const current = this.document(op.documentId);
         requireThat(!current.deletedAt, 'CONFLICT', 'Target is in Trash.');
         requireThat(
           current.revision === op.expectedRevision,
@@ -780,7 +935,11 @@ export class Store {
       }
     }
   }
-  apply(j: JobRow, manifest: FrozenManifest, proposal: Proposal, applicationId: string) {
+  /** Current citations that may carry into a replacement: their versions are still latest. */
+  carriedCitations(documentId: string) {
+    return this.citations(documentId).filter((c) => this.source(c.sourceId).latest === c.versionId);
+  }
+  apply(j: JobRow, context: AttemptContext, proposal: Proposal, applicationId: string) {
     return this.db.transaction(() => {
       if (this.one('SELECT id FROM applications WHERE id=?', applicationId)) return;
       this.lease(j);
@@ -804,7 +963,7 @@ export class Store {
           'CONFLICT',
           'Supporting evidence changed during generation.',
         );
-      this.validateProposal(proposal, manifest);
+      this.validateProposal(proposal, context);
       if (proposal.outcome === 'no_change' && !this.hasActiveWiki(j.source_id)) {
         proposal = {
           ...proposal,
@@ -819,13 +978,12 @@ export class Store {
       const protectedTarget = proposal.operations.some(
         (o) => o.documentId && this.document(o.documentId).protected,
       );
+      // Only the user's own Trash is a tombstone; knoter's removals can be recreated.
+      const userTrash = this.documents().filter((d) => d.deletedAt && d.deletedBy !== 'knoter');
       const trashOverlap = proposal.operations.some(
         (o) =>
           o.op === 'create' &&
-          manifest.documents.some(
-            (d) =>
-              d.deletedAt && d.sourceIds.some((s) => o.citations.some((c) => c.sourceId === s)),
-          ),
+          userTrash.some((d) => d.sourceIds.some((s) => o.citations.some((c) => c.sourceId === s))),
       );
       requireThat(
         !trashOverlap,
@@ -835,7 +993,7 @@ export class Store {
       if (protectedTarget || proposal.outcome === 'needs_review') {
         this.db
           .prepare('INSERT INTO proposals VALUES (?,?,?,?,NULL)')
-          .run(uuid(), j.id, JSON.stringify({ proposal, manifest }), now());
+          .run(uuid(), j.id, JSON.stringify({ proposal, context }), now());
         this.db
           .prepare(
             "UPDATE jobs SET status='needs_review',stage='proposal',error=?,owner=NULL,lease_until=0 WHERE id=?",
@@ -844,7 +1002,7 @@ export class Store {
         this.event('Wiki proposal ready', proposal.summary);
         return proposal;
       }
-      this.commitOperations(proposal, false, manifest);
+      this.commitOperations(proposal, false, context);
       this.db.prepare('INSERT INTO applications VALUES (?,?)').run(applicationId, j.id);
       this.db
         .prepare(
@@ -856,7 +1014,7 @@ export class Store {
       return proposal;
     })();
   }
-  commitOperations(proposal: Proposal, human: boolean, manifest: FrozenManifest) {
+  commitOperations(proposal: Proposal, human: boolean, context: AttemptContext) {
     const operations = proposal.operations.map((op) => ({
       ...op,
       assignedId: op.documentId ?? uuid(),
@@ -867,32 +1025,46 @@ export class Store {
     ];
     for (const op of operations) {
       const old = op.documentId ? this.document(op.documentId) : undefined;
-      const sourceIds = [...new Set(op.citations.map((c) => c.sourceId))];
+      const body = resolveWikiLinks(op.body, targets);
+      // Evidence for retained claims carries over while its source link stays visible, so a
+      // hub does not have to re-read every supporting note to keep its citations.
+      const citations = [...op.citations];
+      if (old)
+        for (const c of this.carriedCitations(old.id))
+          if (
+            !op.citations.some((n) => n.sourceId === c.sourceId) &&
+            body.includes(`](source:${c.sourceId})`)
+          )
+            citations.push(c);
+      const fresh = (context.references ?? []).flatMap(({ segments: _segments, ...reference }) => {
+        const segmentIds = [
+          ...new Set(
+            (op.referenceCitations ?? [])
+              .filter((c) => c.path.toLowerCase() === reference.path.toLowerCase())
+              .map((c) => c.segmentId),
+          ),
+        ];
+        return segmentIds.length ? [{ ...reference, segmentIds }] : [];
+      });
+      const kept = (old?.references ?? []).filter(
+        (r) => !fresh.some((f) => f.url === r.url) && containsUrl(body, r.url),
+      );
       const doc: WikiDocument = {
         id: op.assignedId,
         title: op.title,
-        body: resolveWikiLinks(op.body, targets),
-        references: (manifest.references ?? []).flatMap(({ segments: _segments, ...reference }) => {
-          const segmentIds = [
-            ...new Set(
-              (op.referenceCitations ?? [])
-                .filter((c) => c.path.toLowerCase() === reference.path.toLowerCase())
-                .map((c) => c.segmentId),
-            ),
-          ];
-          return segmentIds.length ? [{ ...reference, segmentIds }] : [];
-        }),
+        body,
+        references: [...fresh, ...kept],
         description: op.description,
         category: op.category,
         icon: old?.icon ?? 'book',
-        sourceIds,
+        sourceIds: [...new Set(citations.map((c) => c.sourceId))],
         relatedIds: old?.relatedIds ?? [],
         favorite: old?.favorite ?? false,
         revision: (old?.revision ?? 0) + 1,
         updatedAt: now(),
         protected: old?.protected ?? human,
       };
-      this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, op.citations);
+      this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
     }
   }
   resolveProposal(id: string, accept: boolean) {
@@ -902,10 +1074,13 @@ export class Store {
         id,
       );
       requireThat(r, 'NOT_FOUND', 'Proposal already resolved.');
-      const { proposal, manifest } = JSON.parse(r.data) as {
+      const data = JSON.parse(r.data) as {
         proposal: Proposal;
-        manifest: FrozenManifest;
+        context?: AttemptContext;
+        manifest?: LegacyManifest;
       };
+      const proposal = data.proposal,
+        context = contextOf(data);
       const j = this.job(r.job_id);
       if (accept) {
         requireThat(
@@ -924,8 +1099,8 @@ export class Store {
             'CONFLICT',
             'Proposal evidence is stale.',
           );
-        this.validateProposal(proposal, manifest);
-        this.commitOperations(proposal, true, manifest);
+        this.validateProposal(proposal, context);
+        this.commitOperations(proposal, true, context);
         this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
       }
       this.db.prepare('UPDATE proposals SET resolved_at=? WHERE id=?').run(now(), id);
@@ -971,6 +1146,7 @@ export class Store {
         availability: s.availability,
         watchId: s.watch_id,
         detectedAt: s.detected_at,
+        relPath: this.relPath(s),
       };
     });
     return {

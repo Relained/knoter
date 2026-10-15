@@ -13,13 +13,13 @@ import {
 } from '@knoter/contracts/native';
 import { Store } from './store.js';
 import { Worker, checkCli } from './worker.js';
+import { loadSkill } from './skill.js';
 import {
   AppError,
   defaultDataDir,
   socketFor,
   secureDir,
   atomicWrite,
-  sha,
   requireThat,
 } from './common.js';
 import { backup, restoreEmpty, exportWiki } from './backup.js';
@@ -28,7 +28,7 @@ process.umask(0o077);
 const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(process.env.KNOTER_DATA_DIR ?? defaultDataDir());
 const resources = resolve(process.env.KNOTER_RESOURCES ?? join(here, '..', 'resources'));
-const skillPath = join(resources, 'skills', 'wiki-worker', 'SKILL.md');
+const skill = loadSkill(join(resources, 'skills', 'wiki-worker'));
 secureDir(dataDir);
 // A PID lock is acquired before opening SQLite. A live owner's lock is never removed.
 const lockPath = join(dataDir, 'service.lock');
@@ -50,8 +50,8 @@ const token = readFileSync(tokenPath, 'utf8');
 const socket = socketFor(dataDir);
 secureDir(dirname(socket));
 if (existsSync(socket)) unlinkSync(socket);
-let store = new Store(dataDir, sha(readFileSync(skillPath)));
-const worker = new Worker(store, socket, skillPath, join(here, 'bridge.mjs'));
+let store = new Store(dataDir, skill.hash);
+const worker = new Worker(store, socket, skill, join(here, 'bridge.mjs'));
 let maintenance = false;
 const sameToken = (candidate: string) =>
   candidate.length === token.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(token));
