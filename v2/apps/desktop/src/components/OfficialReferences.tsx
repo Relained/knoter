@@ -45,11 +45,7 @@ export function OfficialReferences({
           <small>
             {reference.license} · Explanations adapted in Korean.{' '}
             {(reference.licenseUrl ?? (reference.provider ? undefined : MDN_LICENSE)) && (
-              <a
-                href={reference.licenseUrl ?? MDN_LICENSE}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href={reference.licenseUrl ?? MDN_LICENSE} target="_blank" rel="noreferrer">
                 License
               </a>
             )}

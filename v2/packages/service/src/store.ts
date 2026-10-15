@@ -444,8 +444,7 @@ export class Store {
           )
           .run(versionId, input.filename, now(), input.watchId, sourceId);
         if (oldVersion!.removed) this.restoreRemovedPages(sourceId);
-      }
-      else
+      } else
         this.db
           .prepare(
             'INSERT INTO sources(id,path,watch_id,filename,latest,processed,availability,detected_at,added_at) VALUES (?,?,?,?,?,NULL,?,?,?)',
@@ -477,7 +476,9 @@ export class Store {
       // An unreadable folder (unmounted, renamed, denied) never counts as deleted notes.
       if (error) {
         this.db
-          .prepare("UPDATE sources SET availability='unavailable',missing_since=NULL WHERE watch_id=?")
+          .prepare(
+            "UPDATE sources SET availability='unavailable',missing_since=NULL WHERE watch_id=?",
+          )
           .run(watchId);
         return;
       }
@@ -523,18 +524,30 @@ export class Store {
     const jobId = this.enqueue(s.id, versionId);
     if (held)
       this.db
-        .prepare(
-          "UPDATE jobs SET status='needs_review',stage='mass removal',error=? WHERE id=?",
-        )
+        .prepare("UPDATE jobs SET status='needs_review',stage='mass removal',error=? WHERE id=?")
         .run('Many notes disappeared at once. Retry to remove their wiki content.', jobId);
     this.event(held ? 'Removal held for review' : 'Source removed', this.relPath(s));
+  }
+  /** Close a job that needs no model run, such as an empty note with no pages yet. */
+  finishWithoutRun(j: JobRow, stage: string) {
+    this.db.transaction(() => {
+      this.lease(j);
+      this.db
+        .prepare(
+          "UPDATE jobs SET status='succeeded',stage=?,error=NULL,owner=NULL,lease_until=0 WHERE id=?",
+        )
+        .run(stage, j.id);
+      this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
+    })();
   }
   /** A returning note brings back the pages knoter moved to Trash when it disappeared. */
   private restoreRemovedPages(sourceId: string) {
     for (const d of this.documents())
       if (d.deletedBy === 'knoter' && d.sourceIds.includes(sourceId)) {
         this.db
-          .prepare('UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?')
+          .prepare(
+            'UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?',
+          )
           .run(d.id);
         this.event('Restored with its source', d.title, d.id);
       }
@@ -559,7 +572,9 @@ export class Store {
           review.push({ documentId: d.id, expectedRevision: d.revision, reason });
         else {
           this.db
-            .prepare("UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?")
+            .prepare(
+              "UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?",
+            )
             .run(now(), reason, d.id);
           this.event('Moved to Trash', d.title, d.id);
         }
@@ -574,14 +589,17 @@ export class Store {
         };
         this.db
           .prepare('INSERT INTO proposals VALUES (?,?,?,?,NULL)')
-          .run(uuid(), j.id, JSON.stringify({ proposal, context: this.attemptContext(j, []) }), now());
+          .run(
+            uuid(),
+            j.id,
+            JSON.stringify({ proposal, context: this.attemptContext(j, []) }),
+            now(),
+          );
         this.event('Wiki proposal ready', proposal.summary);
       }
       if (!remaining.length) {
         this.db
-          .prepare(
-            'UPDATE jobs SET status=?,stage=?,error=?,owner=NULL,lease_until=0 WHERE id=?',
-          )
+          .prepare('UPDATE jobs SET status=?,stage=?,error=?,owner=NULL,lease_until=0 WHERE id=?')
           .run(
             review.length ? 'needs_review' : 'succeeded',
             review.length ? 'removal review' : 'removed',
@@ -836,7 +854,12 @@ export class Store {
       return docs
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .slice(0, 200)
-        .map((d) => ({ id: d.id, title: d.title, revision: d.revision, deletedAt: d.deletedAt ?? null }));
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          revision: d.revision,
+          deletedAt: d.deletedAt ?? null,
+        }));
     return rank(
       docs,
       q,
@@ -982,11 +1005,15 @@ export class Store {
           .run(JSON.stringify({ ...doc, favorite: !doc.favorite }), id);
       else if (action === 'deleteDocument')
         this.db
-          .prepare("UPDATE documents SET deleted_at=?,deleted_by='you',trash_reason=NULL WHERE id=?")
+          .prepare(
+            "UPDATE documents SET deleted_at=?,deleted_by='you',trash_reason=NULL WHERE id=?",
+          )
           .run(now(), id);
       else
         this.db
-          .prepare('UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?')
+          .prepare(
+            'UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?',
+          )
           .run(id);
       this.event(action, doc.title, id);
     })();
@@ -1082,8 +1109,7 @@ export class Store {
       const carried = op.documentId ? this.carriedCitations(op.documentId) : [];
       for (const m of op.body.matchAll(/\]\(source:([^\s)]+)\)/g))
         requireThat(
-          op.citations.some((c) => c.sourceId === m[1]) ||
-            carried.some((c) => c.sourceId === m[1]),
+          op.citations.some((c) => c.sourceId === m[1]) || carried.some((c) => c.sourceId === m[1]),
           'EVIDENCE',
           'Citation link has no versioned evidence.',
         );
@@ -1309,7 +1335,9 @@ export class Store {
                 ? 'it changed'
                 : undefined;
         if (skip || !d) {
-          warnings.push(`Did not link “${l.mentions[0]}” in ${d?.title ?? ref.documentId}: ${skip}.`);
+          warnings.push(
+            `Did not link “${l.mentions[0]}” in ${d?.title ?? ref.documentId}: ${skip}.`,
+          );
           continue;
         }
         const body = insertWikiLink(d.body, l.mentions, targetId);
@@ -1364,7 +1392,9 @@ export class Store {
             'The page changed after this removal was proposed.',
           );
           this.db
-            .prepare("UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?")
+            .prepare(
+              "UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?",
+            )
             .run(now(), t.reason, t.documentId);
           this.event('Moved to Trash', doc.title, doc.id);
         }
@@ -1428,9 +1458,7 @@ export class Store {
     });
     return {
       documents: docs.filter((d) => !d.deletedAt),
-      trashedDocuments: docs.filter(
-        (d): d is TrashedDocument => !!d.deletedAt,
-      ),
+      trashedDocuments: docs.filter((d): d is TrashedDocument => !!d.deletedAt),
       sources,
       tasks: [],
       events: [],

@@ -352,7 +352,11 @@ export class Worker {
       const version = this.store.verifiedVersion(versionId);
       const source = this.store.source(version.sourceId);
       if (!context.readVersions.includes(versionId)) context.readVersions.push(versionId);
-      return { ...version, relPath: this.store.relPath(source), latest: source.latest === versionId };
+      return {
+        ...version,
+        relPath: this.store.relPath(source),
+        latest: source.latest === versionId,
+      };
     }
     if (input.tool === 'wiki_read') {
       const { documentId } = z.object({ documentId: z.string().uuid() }).strict().parse(input.args);
@@ -426,11 +430,16 @@ export class Worker {
     // A removal settles certain pages itself; the worker only sees what remains.
     const remaining = changed.removed ? this.store.prepareRemoval(job) : undefined;
     if (remaining && !remaining.length) return;
-    const context = this.store.attemptContext(job, remaining),
-      // A removed note has no text; its last content gives the search hints.
-      basis = changed.removed && context.previousVersionId
-        ? this.store.version(context.previousVersionId)
-        : changed,
+    const context = this.store.attemptContext(job, remaining);
+    if (!changed.removed && !changed.segments.length && !context.requiredDocumentIds.length) {
+      this.store.finishWithoutRun(job, 'empty note');
+      return;
+    }
+    // A removed note has no text; its last content gives the search hints.
+    const basis =
+        changed.removed && context.previousVersionId
+          ? this.store.version(context.previousVersionId)
+          : changed,
       attemptId = uuid(),
       cwd = join(this.store.dir, 'attempts', attemptId);
     secureDir(cwd);

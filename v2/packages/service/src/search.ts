@@ -4,10 +4,13 @@
 export const normalize = (text: string) => text.normalize('NFKC').toLocaleLowerCase();
 
 export function terms(query: string) {
-  return [...new Set(normalize(query).split(/[\s,.;:!?()[\]{}"'`/\\|<>]+/).filter(Boolean))].slice(
-    0,
-    12,
-  );
+  return [
+    ...new Set(
+      normalize(query)
+        .split(/[\s,.;:!?()[\]{}"'`/\\|<>]+/)
+        .filter(Boolean),
+    ),
+  ].slice(0, 12);
 }
 
 export interface SearchField {
@@ -40,7 +43,10 @@ export function snippet(text: string, queryTerms: string[], radius = 90) {
     .filter((i) => i >= 0)
     .sort((a, b) => a - b)[0];
   const start = Math.max(0, (at ?? 0) - radius);
-  const excerpt = text.slice(start, start + radius * 2).replace(/\s+/g, ' ').trim();
+  const excerpt = text
+    .slice(start, start + radius * 2)
+    .replace(/\s+/g, ' ')
+    .trim();
   return `${start > 0 ? '…' : ''}${excerpt}${start + radius * 2 < text.length ? '…' : ''}`;
 }
 

@@ -28,6 +28,8 @@ export function loadSkill(dir: string): WorkerSkill {
 }
 
 export function composeSkill(skill: WorkerSkill, parts: string[]) {
-  return [skill.core.trimEnd(), ...parts.map((p) => skill.references[p]?.trimEnd()).filter(Boolean)]
-    .join('\n\n');
+  return [
+    skill.core.trimEnd(),
+    ...parts.map((p) => skill.references[p]?.trimEnd()).filter(Boolean),
+  ].join('\n\n');
 }

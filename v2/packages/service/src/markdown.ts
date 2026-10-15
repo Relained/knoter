@@ -79,10 +79,7 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
   if (body.includes(`#/wiki/${targetId}`) || body.includes(`[[${targetId}`)) return body;
   const patterns = mentions.map(
     (m) =>
-      new RegExp(
-        `(?<![\\p{L}\\p{N}_])(${escape(m)})(?=${PARTICLES}?(?![\\p{L}\\p{N}_]))`,
-        'iu',
-      ),
+      new RegExp(`(?<![\\p{L}\\p{N}_])(${escape(m)})(?=${PARTICLES}?(?![\\p{L}\\p{N}_]))`, 'iu'),
   );
   const root = fromMarkdown(body);
   type Node = typeof root | (typeof root.children)[number];
@@ -90,7 +87,17 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
   const visit = (node: Node) => {
     if (hit) return;
     if (
-      ['heading', 'code', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference', 'definition', 'html'].includes(node.type)
+      [
+        'heading',
+        'code',
+        'inlineCode',
+        'link',
+        'linkReference',
+        'image',
+        'imageReference',
+        'definition',
+        'html',
+      ].includes(node.type)
     )
       return;
     if (node.type === 'text' && node.position) {
@@ -101,7 +108,11 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
       for (const pattern of patterns) {
         const m = pattern.exec(masked);
         if (m) {
-          hit = { start: start + m.index, end: start + m.index + m[1].length, text: raw.slice(m.index, m.index + m[1].length) };
+          hit = {
+            start: start + m.index,
+            end: start + m.index + m[1].length,
+            text: raw.slice(m.index, m.index + m[1].length),
+          };
           return;
         }
       }

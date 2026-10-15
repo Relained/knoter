@@ -766,8 +766,7 @@ export function App({ client }: { client: KnoterClient }) {
               <div>
                 <strong>{item.title}</strong>
                 <small>
-                  {item.category} ·{' '}
-                  {item.deletedBy === 'knoter' ? 'Moved by knoter' : 'Deleted'}{' '}
+                  {item.category} · {item.deletedBy === 'knoter' ? 'Moved by knoter' : 'Deleted'}{' '}
                   {relativeTime(item.deletedAt)}
                   {item.trashReason ? ` · ${item.trashReason}` : ''}
                 </small>

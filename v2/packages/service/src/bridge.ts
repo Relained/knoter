@@ -68,7 +68,12 @@ const tools = [
     openWorldHint: tool.name === 'reference_read',
   },
 }));
-if (tools.map((t) => t.name).sort().join() !== [...EVIDENCE_TOOLS].sort().join())
+if (
+  tools
+    .map((t) => t.name)
+    .sort()
+    .join() !== [...EVIDENCE_TOOLS].sort().join()
+)
   throw new Error('Bridge tools differ from EVIDENCE_TOOLS.');
 let pending = Buffer.alloc(0);
 const reply = (id: unknown, result: unknown, error?: { code: number; message: string }) =>

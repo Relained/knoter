@@ -86,7 +86,11 @@ async function boundedFetch(url: string, max: number, what: string) {
   } catch {
     throw new AppError('EVIDENCE', `${what} could not be fetched.`);
   }
-  requireThat(response.ok && response.body, 'EVIDENCE', `${what} unavailable (${response.status}).`);
+  requireThat(
+    response.ok && response.body,
+    'EVIDENCE',
+    `${what} unavailable (${response.status}).`,
+  );
   const reader = response.body.getReader();
   const chunks: Buffer[] = [];
   let length = 0;
@@ -177,7 +181,10 @@ async function fetchWikipedia(lang: 'ko' | 'en', title: string): Promise<Referen
   );
   // "== Section ==" headings become Markdown headings so segments keep their section.
   const markdown = Buffer.from(
-    page.extract!.replace(/^(={2,6})\s*(.+?)\s*\1\s*$/gm, (_m, eq: string, h: string) => `${'#'.repeat(eq.length)} ${h}`),
+    page.extract!.replace(
+      /^(={2,6})\s*(.+?)\s*\1\s*$/gm,
+      (_m, eq: string, h: string) => `${'#'.repeat(eq.length)} ${h}`,
+    ),
   );
   return {
     id: uuid(),
@@ -232,7 +239,9 @@ function checkUrl(url: URL) {
   );
   const host = url.hostname.replace(/^\[|\]$/g, '');
   requireThat(
-    host && (!isIP(host) || !privateAddress(host)) && !/(^|\.)(localhost|local|internal)$/i.test(host),
+    host &&
+      (!isIP(host) || !privateAddress(host)) &&
+      !/(^|\.)(localhost|local|internal)$/i.test(host),
     'EVIDENCE',
     'That address is not a public website.',
   );
@@ -281,13 +290,17 @@ function guardedGet(url: URL, max: number) {
             if (length > max) req.destroy(new AppError('LIMIT', 'Web page exceeds 1 MiB.'));
             else chunks.push(chunk);
           });
-          res.on('end', () => resolve({ status, headers: res.headers, body: Buffer.concat(chunks) }));
+          res.on('end', () =>
+            resolve({ status, headers: res.headers, body: Buffer.concat(chunks) }),
+          );
           res.on('error', reject);
         },
       );
       req.setTimeout(TIMEOUT, () => req.destroy(new AppError('EVIDENCE', 'Web page timed out.')));
       req.on('error', (e) =>
-        reject(e instanceof AppError ? e : new AppError('EVIDENCE', 'Web page could not be fetched.')),
+        reject(
+          e instanceof AppError ? e : new AppError('EVIDENCE', 'Web page could not be fetched.'),
+        ),
       );
       req.end();
     },
@@ -295,12 +308,48 @@ function guardedGet(url: URL, max: number) {
 }
 
 const SKIP = new Set([
-  'script', 'style', 'noscript', 'template', 'svg', 'nav', 'footer', 'header', 'aside', 'form',
-  'iframe', 'button', 'select', 'canvas', 'object', 'menu', 'dialog',
+  'script',
+  'style',
+  'noscript',
+  'template',
+  'svg',
+  'nav',
+  'footer',
+  'header',
+  'aside',
+  'form',
+  'iframe',
+  'button',
+  'select',
+  'canvas',
+  'object',
+  'menu',
+  'dialog',
 ]);
 const BLOCK = new Set([
-  'p', 'div', 'section', 'article', 'main', 'li', 'ul', 'ol', 'table', 'tr', 'blockquote', 'dl',
-  'dt', 'dd', 'figure', 'figcaption', 'br', 'hr', 'td', 'th', 'caption', 'details', 'summary',
+  'p',
+  'div',
+  'section',
+  'article',
+  'main',
+  'li',
+  'ul',
+  'ol',
+  'table',
+  'tr',
+  'blockquote',
+  'dl',
+  'dt',
+  'dd',
+  'figure',
+  'figcaption',
+  'br',
+  'hr',
+  'td',
+  'th',
+  'caption',
+  'details',
+  'summary',
 ]);
 type HastNode = { type: string; tagName?: string; value?: string; children?: HastNode[] };
 const textOf = (n: HastNode): string =>
@@ -374,7 +423,9 @@ async function fetchWeb(start: URL): Promise<ReferenceEvidence> {
     const charset =
       /charset=["']?([\w-]+)/.exec(type)?.[1] ??
       (html
-        ? /<meta[^>]+charset=["']?([\w-]+)/i.exec(res.body.subarray(0, 4096).toString('latin1'))?.[1]
+        ? /<meta[^>]+charset=["']?([\w-]+)/i.exec(
+            res.body.subarray(0, 4096).toString('latin1'),
+          )?.[1]
         : undefined);
     let text: string;
     try {
