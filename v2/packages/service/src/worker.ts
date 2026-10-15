@@ -1,30 +1,52 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFileSync, writeFileSync, accessSync, constants, realpathSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  accessSync,
+  constants,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { join, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   CLI_VERSION,
-  MODEL,
+  providerProfiles,
   proposalSchema,
   operationSchema,
   citationSchema,
   referenceCitationSchema,
   type Proposal,
   type EvidenceVersion,
+  type WorkerInfo,
+  type WorkerProvider,
 } from '@knoter/contracts/native';
 import { Store, type JobRow, type FrozenManifest } from './store.js';
-import { AppError, now, uuid, secureDir, requireThat } from './common.js';
+import { AppError, now, uuid, secureDir, requireThat, sha } from './common.js';
 import { fetchMdnReference, mdnLocation } from './references.js';
+import { checkClaude, claudeSession } from './claude.js';
 const exec = promisify(execFile);
-export interface CliInfo {
-  path: string;
-  version: string;
-  status: string;
-  message: string;
+export type CliInfo = WorkerInfo['cli'];
+/** One CLI process: its invocation, per-event capability checks, and final proposal. */
+export interface CliSession {
+  label: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  /** Recent stderr and error events, used only to classify failures. */
+  tail: string;
+  usage: unknown;
+  tools: string[];
+  /** Version reported by the running CLI, when it reports one. */
+  version(): string;
+  /** Inspect one stdout JSON event; a returned error stops the process. */
+  event(event: any): AppError | null;
+  /** Classify the exit and return the unvalidated proposal JSON. */
+  finish(code: number | null): unknown;
 }
+const evidenceToolNames = ['source_read', 'wiki_search', 'wiki_read', 'reference_read'];
 const disabledFeatures = [
   'shell_tool',
   'unified_exec',
@@ -64,7 +86,11 @@ export function cliEnvironment() {
   if (process.env.CODEX_HOME) env.CODEX_HOME = process.env.CODEX_HOME;
   return env;
 }
-export async function checkCli(path: string): Promise<CliInfo> {
+export function checkCli(provider: WorkerProvider, path: string): Promise<CliInfo> {
+  return provider === 'claude' ? checkClaude(path) : checkCodex(path);
+}
+async function checkCodex(path: string): Promise<CliInfo> {
+  const provider = 'codex' as const;
   try {
     requireThat(isAbsolute(path), 'CLI', 'Choose the absolute path of an installed Codex CLI.');
     accessSync(path, constants.X_OK);
@@ -76,6 +102,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
     const version = stdout.match(/codex-cli ([\d.]+)/)?.[1] ?? '';
     if (version !== CLI_VERSION)
       return {
+        provider,
         path,
         version,
         status: 'incompatible',
@@ -89,6 +116,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
       });
       if (!/Logged in using ChatGPT/.test(login.stdout + login.stderr))
         return {
+          provider,
           path,
           version,
           status: 'auth_required',
@@ -96,6 +124,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
         };
     } catch {
       return {
+        provider,
         path,
         version,
         status: 'auth_required',
@@ -103,6 +132,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
       };
     }
     return {
+      provider,
       path: realpathSync(path),
       version,
       status: 'ready',
@@ -110,6 +140,7 @@ export async function checkCli(path: string): Promise<CliInfo> {
     };
   } catch (e) {
     return {
+      provider,
       path,
       version: '',
       status: 'missing',
@@ -196,6 +227,52 @@ export function workerArgs(input: {
     ...Object.entries(config).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]),
     '-',
   ];
+}
+function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
+  const session: CliSession = {
+    label: 'Codex',
+    args: workerArgs(input),
+    env: cliEnvironment(),
+    tail: '',
+    usage: null,
+    tools: [],
+    version: () => '',
+    event(event) {
+      const item = event.item;
+      if (event.type === 'turn.completed') session.usage = event.usage ?? null;
+      if (event.type === 'error' || event.type === 'turn.failed')
+        session.tail = JSON.stringify(event).slice(-4000);
+      if (item?.type === 'mcp_tool_call') {
+        session.tools.push(`${item.server}.${item.tool}`);
+        if (item.server !== 'wiki' || !evidenceToolNames.includes(item.tool))
+          return new AppError('TOOLS', 'Unexpected worker tool.');
+      } else if (
+        item &&
+        ['command_execution', 'file_change', 'web_search', 'collab_tool_call'].includes(item.type)
+      )
+        return new AppError('TOOLS', `Unexpected worker capability: ${item.type}`);
+      return null;
+    },
+    finish(code) {
+      if (code !== 0) {
+        const tail = session.tail;
+        const kind = /auth|unauthorized|login|401|403/i.test(tail)
+          ? 'AUTH'
+          : /model.*(not|unsupported|access)|not.*model/i.test(tail)
+            ? 'MODEL'
+            : /429|rate limit|connection|network|502|503|stream disconnected/i.test(tail)
+              ? 'TRANSIENT'
+              : 'CLI';
+        // Do not persist raw CLI diagnostics: they can contain account metadata or paths.
+        throw new AppError(
+          kind,
+          `Codex exited with code ${code}. ${kind === 'AUTH' ? 'Reconnect ChatGPT login.' : kind === 'MODEL' ? 'Selected model is unavailable.' : kind === 'TRANSIENT' ? 'Temporary provider or network failure.' : 'Check CLI compatibility and worker configuration.'}`,
+        );
+      }
+      return JSON.parse(readFileSync(input.output, 'utf8'));
+    },
+  };
+  return session;
 }
 export class Worker {
   active: {
