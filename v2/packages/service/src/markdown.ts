@@ -1,9 +1,16 @@
 import type { Segment } from '@knoter/contracts/native';
 import { fromMarkdown } from 'mdast-util-from-markdown';
+import { math } from 'micromark-extension-math';
+import { mathFromMarkdown } from 'mdast-util-math';
 import { requireThat } from './common.js';
 
+// The reader renders $…$ and $$…$$ as TeX; parse them the same way so math content,
+// such as a [[a, b]] matrix, stays inert like code instead of becoming a wiki link.
+const parse = (body: string) =>
+  fromMarkdown(body, { extensions: [math()], mdastExtensions: [mathFromMarkdown()] });
+
 export function resolveWikiLinks(body: string, documents: { id: string; title: string }[]) {
-  const root = fromMarkdown(body),
+  const root = parse(body),
     edits: { start: number; end: number; text: string }[] = [];
   type Node = typeof root | (typeof root.children)[number];
   const normalize = (text: string) => text.normalize('NFKC').trim().toLowerCase();
@@ -35,7 +42,16 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
       return;
     }
     if (
-      ['code', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference'].includes(node.type)
+      [
+        'code',
+        'inlineCode',
+        'math',
+        'inlineMath',
+        'link',
+        'linkReference',
+        'image',
+        'imageReference',
+      ].includes(node.type)
     )
       return;
     if (node.type === 'text' && node.position) {
@@ -65,7 +81,7 @@ export function resolveWikiLinks(body: string, documents: { id: string; title: s
 }
 
 export function validateWikiMarkdown(body: string) {
-  const root = fromMarkdown(body);
+  const root = parse(body);
   type Node = typeof root | (typeof root.children)[number];
   const definitions = new Map<string, string>();
   const collect = (node: Node) => {
@@ -80,7 +96,7 @@ export function validateWikiMarkdown(body: string) {
       'FORMAT',
       'Worker output contains raw HTML outside a code example.',
     );
-    // Code and inlineCode are leaf nodes: their contents are inert examples.
+    // Code, inlineCode, math, and inlineMath are leaf nodes: their contents are inert.
     const url =
       'url' in node
         ? node.url

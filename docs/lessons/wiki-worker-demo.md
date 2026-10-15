@@ -251,7 +251,10 @@ capability can no longer read evidence or apply changes.
 
 A Sonnet reply wrote `**"매주 수요일"**로`; the reader showed the asterisks
 because CommonMark does not close emphasis between a quote and a following Hangul
-particle. This affects any Korean Markdown in the reader and remains unresolved.
+particle. The same day the reader gained CJK-friendly emphasis and TeX math, and
+the editor stopped escaping both on save; the browser failure table in the V2
+README records the cause and retest. Dev Electron rendered both from `file://`
+with KaTeX fonts loaded; the packaged app was not rebuilt for this check.
 
 ## Native lifecycle and remaining verification limits
 

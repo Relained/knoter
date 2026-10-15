@@ -1,6 +1,8 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import remarkCjkFriendly from 'remark-cjk-friendly/parseOnly';
+import remarkMath from 'remark-math';
 
 interface Node {
   type: string;
@@ -20,13 +22,18 @@ function headings(tree: Node) {
   return result;
 }
 export function documentSections(body: string) {
-  return headings(unified().use(remarkParse).use(remarkGfm).parse(body) as Node).map(
-    (node, index) => ({
-      id: `wiki-heading-${index}`,
-      label: label(node),
-      depth: node.depth!,
-    }),
-  );
+  // Parse like the reader so outline labels and section IDs match what it renders.
+  const tree = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkCjkFriendly)
+    .use(remarkMath)
+    .parse(body) as Node;
+  return headings(tree).map((node, index) => ({
+    id: `wiki-heading-${index}`,
+    label: label(node),
+    depth: node.depth!,
+  }));
 }
 export function remarkSectionIds() {
   return (tree: Node) => {
