@@ -20,7 +20,7 @@
 wiki 생성과 증분 수정으로 증명한다. mock 응답이나 수동 실행만으로 완료 처리하지
 않는다. 서비스가 등록되지 않은 개발 실행은 별도로 표시한다.
 
-확정된 시연 범위는 **macOS + Markdown, 앱에서 Codex CLI 연결·호출,
+확정된 시연 범위는 **macOS + Markdown, 앱에서 Codex CLI(또는 D14의 Claude Code) 연결·호출,
 60초 주기, 여러 source를 통합한 한국어 주제별 wiki**다.
 main이 종료된 동안에는 이미 등록된 source snapshot만 처리한다. 그동안의 새
 추가·수정은 main을 다시 실행한 뒤 감지한다.
@@ -50,6 +50,7 @@ V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다
 | D11 | 참고용 wiki 작성 | source 요약 대신 정보를 찾아볼 수 있는 상위/하위 주제 문서와 Markdown 항목으로 구성. 예: HTML → HTML/attribute, HTML/element; attribute 안에는 href, src 항목 | 2026-09-18 사용자 확정 |
 | D12 | 부족한 정보 보충 | 모델 기억으로 채우지 않고 공식 문서를 확인한 뒤 출처를 표시. 현재 시연의 공식 자료 provider는 MDN Web Docs이며, 미지원 주제/확인 실패는 한계를 명시 | 2026-09-18 공식 문서 검증 방식 사용자 확정; MDN은 현재 시연 구현 범위 |
 | D13 | 개인 지식의 범위와 작성 방식 | 일반 정보뿐 아니라 사용자의 독창적인 생각·아이디어·경험·질문·시험 메모를 보존. 한 source 안에서도 내용의 성격에 맞게 구성하고, 개인의 관점·가설·학습 맥락을 사실 설명과 구별. 외부 입증이나 일률적인 참고 문서 형식을 요구하지 않음 | 2026-09-18 사용자 확정 |
+| D14 | Claude Code 연결 | Codex와 병행하는 선택식 worker. 마지막으로 연결한 CLI 하나가 활성. 기존 설치·로그인(`claude auth login`)을 사용하고 모델은 `claude-sonnet-5-5`. effort `medium`과 검증 버전 이상 허용은 구현 선택 | 2026-10-16 병행 방식·모델 사용자 확정 |
 
 비밀 값은 계획 문서에 저장하지 않는다.
 문서 분할은 기존 주제 문서를 먼저 찾고, 독립된 새 주제와 충분한 근거가 있을 때만
@@ -259,6 +260,21 @@ AI SDK adapter는 이번 시연에 추가하지 않는다. Electron main이 CLI�
 인증은 기존 CLI의 ChatGPT 로그인을 사용하며 재사용 여부를 실제 LaunchAgent에서
 확인한다. [Codex 인증 문서](https://learn.chatgpt.com/docs/auth)의 로그인 흐름을 사용하고
 앱 DB·로그에 토큰이나 credential 파일 사본을 저장하지 않는다.
+
+### Claude Code adapter (D14)
+
+같은 job manifest·skill·MCP bridge·검증·반영 경로를 사용하고 실행 방식만 바꾼다.
+`claude -p`의 stream-json 이벤트로 진행을 수집하고, 최종 변경안은 `--json-schema`의
+구조화 출력으로 받는다. Claude Code는 draft 2020-12 메타스키마 참조를 거부하므로 같은
+제약을 draft-07로 변환해 전달한다. built-in 도구는 `--tools ""`로 제거하고,
+`--strict-mcp-config`로 wiki bridge만 연결하며, `dontAsk` 권한 모드·설정 파일과 hook·slash
+command 비활성·세션 미저장을 적용한다. skill은 system prompt로 공급한다. capability는
+argv 대신 attempt 전용 0600 MCP 설정 파일로 전달하고 종료 후 삭제한다.
+
+Claude Code는 자동 업데이트되므로 Codex처럼 정확한 버전을 고정하지 않는다. 검증된
+최소 버전 이상을 허용하고, 선택한 launcher 경로를 유지하며 실행 중 업데이트는 끈다.
+대신 매 attempt의 init 이벤트가 보고한 도구·MCP 목록이 허용 목록과 다르면 실행을
+중단한다. 인증은 기존 `claude auth login`을 사용하고 `auth status`에서는 로그인 여부만 읽는다.
 
 ## 7. 전용 default skill 작성 계획
 

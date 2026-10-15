@@ -37,7 +37,8 @@ app completely, replace it, reopen it, and enable the service again.
    The service checks its version and existing ChatGPT login. Reconnect here after
    fixing authentication or an unavailable model; the worker does not switch models.
    To use Claude Code instead, choose **Connect Claude Code** and select the launcher
-   from `command -v claude` (usually `~/.local/bin/claude`); the launcher path is
+   from `command -v claude` (such as `~/.local/bin/claude` or
+   `/opt/homebrew/bin/claude`); the launcher path is
    kept so self-updates stay connected, and each attempt re-checks its tool surface.
 3. Choose **Watch Markdown folder** and select a small disposable folder. **Import
    snapshot** instead registers selected files once. Source discovery runs only

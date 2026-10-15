@@ -29,7 +29,8 @@ outside this demo.
 - Preserve validated wire messages, cancellation/lease fencing, immutable source
   versions, revision citations, and migration compatibility when changing the
   service. Do not grant the model shell, arbitrary web, filesystem, or DB mutation
-  tools. For the user's 2026-09-18 reference-wiki requirement, the service may
+  tools. Each worker CLI adapter (Codex, Claude Code) exposes only the wiki
+  evidence tools and stops an attempt whose reported tools differ. For the user's 2026-09-18 reference-wiki requirement, the service may
   fetch official MDN documentation through bounded `reference_read`; retain the
   fetched evidence and keep original-source and supplemental citations distinct.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not

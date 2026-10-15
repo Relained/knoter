@@ -171,6 +171,38 @@ generated explanations. The exam code was not executed or independently checked
 against language specifications, and no non-MDN official research was performed.
 The pending reading proposal was inspected but its acceptance was not exercised.
 
+## Claude Code worker (D14)
+
+### 2026-10-16 — Claude Code rejected the proposal schema
+
+The first real Claude Code 2.1.300 attempt exited with code 1 within a second and
+was recorded only as a generic CLI failure; the job moved to `needs_review` and the
+connection to `incompatible`. Raw CLI diagnostics are intentionally not persisted,
+so the cause was found by repeating the same invocation in a disposable directory:
+`--json-schema` refused the draft 2020-12 meta-schema reference that Zod emits.
+Claude now receives the same constraints rendered as draft-07, including UUID
+formats; Codex still reads the 2020-12 file. A generic CLI error does not show
+which flag failed, so reproduce the exact invocation before changing arguments.
+
+### 2026-10-16 — Scope of the Claude Code verification
+
+A disposable workspace ran the packaged backend and bundled Node from a terminal,
+not from the LaunchAgent, with `claude-sonnet-5-5` at medium effort. A Korean HTML
+note produced a hub and two subtopics with source and MDN citations in about 30
+seconds. Editing that note kept the existing IDs, revised the hub, and added a new
+subtopic. Attempts recorded only the four wiki evidence tools, and the per-attempt
+MCP configuration was removed afterward. Synthetic events confirmed that exposed
+built-in tools, missing or extra MCP servers, older versions, unexpected tool use,
+and server tools stop an attempt, and that 401/404/529 map to AUTH/MODEL/TRANSIENT.
+Claude Code updated itself from 2.1.294 to 2.1.300 during the session; the kept
+launcher path remained connected.
+
+Not established: keychain login access from the LaunchAgent; the native chooser
+returning the unresolved launcher path; whether a CLAUDE.md in the attempt
+directory's parents would be loaded (none existed on the test machine); and a
+Codex run after the shared runner refactor. The installed Codex 0.162.1 does not
+match the pinned 0.154.0, so its connection reports `incompatible`.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch
