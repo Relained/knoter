@@ -8,6 +8,27 @@ import type {
 import { createSeed } from './seed';
 
 const storageKey = 'knoter.frontend-demo.v1';
+// Mirrors the connected pickers so the preview can exercise them; nothing is called.
+const demoEfforts = ['low', 'medium', 'high', 'xhigh', 'max'];
+const demoModels: NonNullable<WorkspaceSnapshot['chat']>['models'] = [
+  ['claude-opus-5-5', 'Opus 5.5', 'medium'],
+  ['claude-sonnet-5-5', 'Sonnet 5.5', 'high'],
+  ['claude-haiku-5-5', 'Haiku 5.5', 'medium'],
+  ['claude-fable-5-1', 'Fable 5.1', 'high'],
+].map(([model, label, defaultEffort]) => ({
+  provider: 'claude' as const,
+  model,
+  label,
+  efforts: demoEfforts,
+  defaultEffort,
+}));
+demoModels.push({
+  provider: 'codex',
+  model: 'gpt-5.6-luna',
+  label: 'GPT-5.6-Luna',
+  efforts: ['low', 'medium', 'high'],
+  defaultEffort: 'low',
+});
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -159,6 +180,17 @@ export function createMockClient(): KnoterClient {
         if (item.documentId && !active.has(item.documentId)) delete item.documentId;
       });
       snapshot.revisions = snapshot.revisions.filter((revision) => active.has(revision.documentId));
+      snapshot.chat = {
+        models: demoModels,
+        selected: snapshot.settings.chat ?? {
+          provider: 'claude',
+          model: 'claude-sonnet-5-5',
+          effort: 'medium',
+        },
+        callsToday: 0,
+        dailyLimit: 0,
+        simulated: true,
+      };
       return snapshot;
     },
     subscribe(listener) {
@@ -325,8 +357,10 @@ export function createMockClient(): KnoterClient {
       data.events = data.events.filter((e) => e.id !== id);
       commit();
     },
-    async sendMessage({ question, documentId, signal }) {
+    async sendMessage({ text: question, documentIds, attachments, choice, signal }) {
       if (sending) throw new Error('Let the current answer finish first.');
+      const documentId = documentIds.find((id) => data.documents.some((d) => d.id === id));
+      const model = demoModels.find((m) => m.model === choice?.model);
       const tokens = question
         .toLowerCase()
         .split(/\s+/)
@@ -356,6 +390,9 @@ export function createMockClient(): KnoterClient {
               '',
             )}\n\n${related.length ? `You can also explore **${related[0].title}** to follow the connection.` : 'Open the linked note to explore its sources and add your own thinking.'}\n\n*This demo assembles saved notes to preview the chat experience. No language model is connected.*`
         : 'I couldn’t find a matching note in this demo workspace. Try asking about retrieval, embeddings, attention, or your knowledge garden.\n\n*This is a simulated response. No language model is connected.*';
+      const attached = attachments.length
+        ? `\n\n*Received ${attachments.map((a) => a.filename).join(', ')}. The preview does not read attachments or change notes.*`
+        : '';
       const answer = {
         id: uid(),
         role: 'assistant' as const,
@@ -363,6 +400,7 @@ export function createMockClient(): KnoterClient {
         documentIds: primary ? [primary.id, ...related.map((d) => d.id)] : [],
         status: 'streaming' as const,
         createdAt: now(),
+        model: `Demo · ${model?.label ?? 'no model'} · ${choice?.effort ?? '—'}`,
       };
       sending = true;
       data.messages.push(
@@ -370,19 +408,24 @@ export function createMockClient(): KnoterClient {
           id: uid(),
           role: 'user',
           content: question,
-          documentIds: [],
+          documentIds,
           status: 'complete',
           createdAt: now(),
+          attachments: attachments.map((a) => ({
+            name: a.filename,
+            size: new Blob([a.text]).size,
+          })),
         },
         answer,
       );
       try {
         commit();
-        for (let i = 0; i < text.length; i += 28) {
+        const reply = text + attached;
+        for (let i = 0; i < reply.length; i += 28) {
           if (signal.aborted) break;
           const message = data.messages.find((m) => m.id === answer.id);
           if (!message) break;
-          message.content += text.slice(i, i + 28);
+          message.content += reply.slice(i, i + 28);
           notify();
           await delay(24);
         }

@@ -1,6 +1,8 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Crepe } from '@milkdown/crepe';
-import { insert } from '@milkdown/kit/utils';
+import { $remark, insert } from '@milkdown/kit/utils';
+import remarkCjkFriendly from 'remark-cjk-friendly/bidi';
+import { blockDisplayMath, katexOptions } from '../wiki/math';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 
@@ -22,7 +24,7 @@ export default function Editor({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const activeEditor = useRef<Crepe | null>(null);
-  const initial = useRef(value);
+  const initial = useRef(blockDisplayMath(value));
   const change = useRef(onChange);
   const ready = useRef(onReady);
   const [failed, setFailed] = useState(false);
@@ -48,8 +50,12 @@ export default function Editor({
     const crepe = new Crepe({
       root: host.current,
       defaultValue: initial.current,
-      features: { [Crepe.Feature.ImageBlock]: false, [Crepe.Feature.Latex]: false },
+      // Math and CJK emphasis must round-trip: without them, saving escapes TeX
+      // (`\_`, a lost `\,`) and Korean `**"…"**로` into literal text.
+      features: { [Crepe.Feature.ImageBlock]: false },
+      featureConfigs: { [Crepe.Feature.Latex]: { katexOptions: { ...katexOptions } } },
     });
+    crepe.editor.use($remark('remarkCjkFriendly', () => remarkCjkFriendly));
     crepe.on((listener) =>
       listener.markdownUpdated((_ctx, markdown) => {
         if (!disposed) change.current(markdown);

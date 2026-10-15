@@ -22,7 +22,8 @@
   },
   "overrides": {
     "tar": "7.5.22",
-    "tmp": "0.2.7"
+    "tmp": "0.2.7",
+    "katex": "0.18.7"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.1",

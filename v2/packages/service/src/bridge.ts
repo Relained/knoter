@@ -3,7 +3,8 @@
 import { request } from './transport.js';
 import { EVIDENCE_TOOLS, MAX_WIRE_BYTES } from '@knoter/contracts/native';
 const socket = process.env.KNOTER_WORKER_SOCKET!,
-  capability = process.env.KNOTER_WORKER_CAPABILITY!;
+  capability = process.env.KNOTER_WORKER_CAPABILITY!,
+  chat = process.env.KNOTER_TOOLSET === 'chat';
 const tools = [
   {
     name: 'source_search',
@@ -60,6 +61,25 @@ const tools = [
       additionalProperties: false,
     },
   },
+  // The side chat may dry-run its proposal; the service still validates the final reply.
+  ...(chat
+    ? [
+        {
+          name: 'wiki_check',
+          description:
+            'Dry-run the operations and sections you plan to return (the same objects as the final arrays). Returns ok or the first validation error to fix. It never changes the wiki. At most five checks per reply.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              operations: { type: 'array', items: { type: 'object' } },
+              sections: { type: 'array', items: { type: 'object' } },
+            },
+            required: ['operations', 'sections'],
+            additionalProperties: false,
+          },
+        },
+      ]
+    : []),
 ].map((tool) => ({
   ...tool,
   annotations: {
@@ -71,6 +91,7 @@ const tools = [
 if (
   tools
     .map((t) => t.name)
+    .filter((name) => name !== 'wiki_check')
     .sort()
     .join() !== [...EVIDENCE_TOOLS].sort().join()
 )

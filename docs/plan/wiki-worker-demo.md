@@ -33,8 +33,9 @@ main이 종료된 동안에는 이미 등록된 source snapshot만 처리한다.
 시작 시점의 V2는 브라우저 mock이었다. source 파일명·크기·일부 텍스트만 전달하며 PDF
 원본은 보관하지 않는다. Electron main/preload, 영속 DB, 실제 worker와 OS
 서비스를 새로 연결해야 한다. 기존 mock 데이터는 시연용 새 저장소로 자동 이관하지
-않는다. 작업·달력·채팅의 실제 백엔드, PDF·TXT 입력, Windows 검증, 벡터 검색,
-V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다.
+않는다. 작업·달력의 실제 백엔드, PDF·TXT source 입력, Windows 검증, 벡터 검색,
+V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다. 채팅은 2026-10-16 사용자
+요청으로 D22의 side chat 범위에 한해 연결한다.
 
 ## 2. 사용자 결정표
 
@@ -63,6 +64,7 @@ V1 이관, 자동 업데이트와 출시용 배포는 후속 범위로 남긴다
 | D19 | 퍼온 글 | 퍼온·인용 내용은 원저자에게 귀속하고 요약하며 사용자 자신의 생각과 구분 | 2026-10-16 승인된 계획 |
 | D20 | skill 구조 | 범용 위키를 지향하는 짧은 핵심 `SKILL.md`와 상황별 `references/`를 서비스가 job에 맞춰 조합. 다른 skill의 progressive disclosure 구조를 참고해 비용을 줄임 | 2026-10-16 사용자 확정 |
 | D21 | 다주제 노트 분할 | 노트는 주제가 아니라 그릇. 변경안에 노트의 모든 구간을 페이지 또는 이유 있는 skip으로 배정하는 `topics`를 넣고 서비스가 누락을 검사. 기존 페이지는 `sections`로 한 소절만 추가·수정. job 데이터에 구간별 후보 페이지(단어장·제목 단어) 제공. 단계별 루프는 보류하고 한 번의 호출을 먼저 다듬음 | 2026-10-16 사용자 확정 |
+| D22 | Side chat | 채팅에서 위키 문서를 언급하고 파일을 첨부. wiki worker skill을 바탕으로 사용자의 요청을 위키에 반영. 모델·추론 수준은 연결된 Claude Code·Codex가 제공하는 목록에서 선택. 요청 변경의 즉시 반영(복원 가능한 revision), 보호 문서는 언급 시에만 수정, 하루 100회·응답당 10분 한도, 연결된 두 CLI를 모두 채팅에 제공하는 방식은 구현 선택 | 2026-10-16 기능 요구 사용자 확정 |
 
 비밀 값은 계획 문서에 저장하지 않는다.
 문서 분할은 기존 주제 문서를 먼저 찾고, 독립된 새 주제와 충분한 근거가 있을 때만
@@ -295,6 +297,23 @@ Claude Code는 자동 업데이트되므로 Codex처럼 정확한 버전을 고�
 대신 매 attempt의 init 이벤트가 보고한 도구·MCP 목록이 허용 목록과 다르면 실행을
 중단한다. 인증은 기존 `claude auth login`을 사용하고 `auth status`에서는 로그인 여부만 읽는다.
 
+### Side chat (D22)
+
+채팅 응답마다 서비스가 선택된 CLI를 한 번 실행한다. 사용자의 메시지와 첨부 파일은
+immutable evidence version으로 만들고, wiki revision이 인용할 때에만 `chat` origin
+source로 저장한다. 이 source는 background job을 만들지 않는다. CLI에는 worker와 같은
+근거·웹 보충 도구(D12·D15)에 더해, 변경안을 쓰기 없이 검사하는 채팅 전용 `wiki_check`만
+제공한다. 최종 응답은 `reply`와 worker proposal 형식의 `operations`·`sections`이며
+`topics`는 없다. 서비스는 반영 transaction 안에서 인용된 요청·첨부를 먼저 저장한 뒤
+worker와 같은 검증(읽은 version·revision, 인용 구간, 최신성)과 채팅 규칙(보호 문서는
+언급 시에만)을 적용한다. 검사(`wiki_check`)는 같은 transaction을 되돌린다. 취소·재시작된
+응답은 아무것도 반영하지 않는다. 이전 대화는 새 대화를 시작해도 보존한다.
+
+`resources/skills/wiki-chat/SKILL.md`가 채팅의 역할과 범위를 정하고, 글쓰기·근거·보충
+규칙은 매 실행에 함께 조합하는 wiki skill(D20)을 따른다. Codex 모델 목록은 연결 시
+`codex debug models`에서 읽고 실패하면 검증된 모델로 제한한다. Claude Code는 기계가
+읽을 목록이 없어 선택기 모델을 고정 목록으로 두고, effort 수준만 `--help`에서 읽는다.
+
 ## 7. 전용 default skill 작성 계획
 
 skill은 Codex wiki worker의 실행 입력으로 명시적으로 로드하는 제품 리소스다.
@@ -399,8 +418,8 @@ Codex CLI는 기존 설치를 선택한 절대 경로로 호출한다. CLI 설�
 
 새 service/worker/platform 모듈은 각 단계가 필요로 할 때 추가한다. 실행 경계는
 공유 domain/application 로직과 분리하되 빈 패키지부터 만들지 않는다. mock과
-connected 모드의 데이터·표시를 분리하고, 아직 연결하지 않은 채팅/작업/달력 기능을
-실제 기능처럼 표시하지 않는다. 작업마다 source 원본을 수정하지 않았는지 확인한다.
+connected 모드의 데이터·표시를 분리하고, 아직 연결하지 않은 작업/달력 기능을
+실제 기능처럼 표시하지 않는다. 브라우저 preview의 채팅은 시뮬레이션으로 표시한다. 작업마다 source 원본을 수정하지 않았는지 확인한다.
 
 ## 10. 수동 시연과 검증 시나리오
 

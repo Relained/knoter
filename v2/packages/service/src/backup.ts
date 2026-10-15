@@ -39,7 +39,9 @@ export async function backup(store: Store, path: string) {
 }
 export function restoreEmpty(store: Store, path: string) {
   requireThat(
-    store.documents().length === 0 && !store.one('SELECT id FROM sources LIMIT 1'),
+    store.documents().length === 0 &&
+      !store.one('SELECT id FROM sources LIMIT 1') &&
+      !store.one('SELECT id FROM chat_messages LIMIT 1'),
     'NOT_EMPTY',
     'Restore requires an empty demo workspace. Existing data will not be replaced.',
   );
@@ -60,7 +62,7 @@ export function restoreEmpty(store: Store, path: string) {
   try {
     // Store migrates a v1 backup forward when the restored database is reopened.
     requireThat(
-      [1, 2].includes(snapshot.pragma('user_version', { simple: true }) as number),
+      [1, 2, 3].includes(snapshot.pragma('user_version', { simple: true }) as number),
       'SCHEMA',
       'Unsupported backup schema.',
     );
@@ -108,6 +110,7 @@ export function restoreEmpty(store: Store, path: string) {
       status: 'missing',
       message: 'Reconnect this machine’s Codex CLI or Claude Code after restoring.',
     });
+    restored.set('cliConnections', {});
     restored.set('settings', { ...restored.get<object>('settings'), workerPaused: true });
     restored.event(
       'Backup restored',

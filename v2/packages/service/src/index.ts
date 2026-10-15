@@ -21,7 +21,9 @@ import {
   type Command,
 } from '@knoter/contracts/native';
 import { Store } from './store.js';
-import { Worker, checkCli } from './worker.js';
+import { Worker, checkCli, codexModels } from './worker.js';
+import { claudeModels } from './claude.js';
+import { ChatService } from './chat.js';
 import { loadSkill } from './skill.js';
 import {
   AppError,
@@ -38,6 +40,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(process.env.KNOTER_DATA_DIR ?? defaultDataDir());
 const resources = resolve(process.env.KNOTER_RESOURCES ?? join(here, '..', 'resources'));
 const skill = loadSkill(join(resources, 'skills', 'wiki-worker'));
+const chatSkillPath = join(resources, 'skills', 'wiki-chat', 'SKILL.md');
 secureDir(dataDir);
 // A PID lock is acquired before opening SQLite. A live owner's lock is never removed.
 // The owner runs as this user and writes the lock after it starts, so a PID that cannot
@@ -70,6 +73,7 @@ secureDir(dirname(socket));
 if (existsSync(socket)) unlinkSync(socket);
 let store = new Store(dataDir, skill.hash);
 const worker = new Worker(store, socket, skill, join(here, 'bridge.mjs'));
+const chat = new ChatService(store, socket, chatSkillPath, skill, join(here, 'bridge.mjs'));
 let maintenance = false;
 const sameToken = (candidate: string) =>
   candidate.length === token.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(token));
@@ -80,7 +84,11 @@ async function dispatch(command: Command, payload: unknown) {
     throw new AppError('BUSY', 'Backup restoration is in progress.');
   switch (command) {
     case 'snapshot':
-      return store.snapshot(worker.lastTick, worker.nextTick);
+      return {
+        ...store.snapshot(worker.lastTick, worker.nextTick),
+        messages: chat.messages(),
+        chat: chat.info(),
+      };
     case 'saveDocument':
       return store.saveDocument(commands.saveDocument.parse(input));
     case 'createDocument':
@@ -144,6 +152,13 @@ async function dispatch(command: Command, payload: unknown) {
         command === 'configureCli' ? commands.configureCli.parse(input) : store.cli();
       const info = await checkCli(provider, path);
       store.set('cli', info);
+      // The side chat can use every ready connection, with the models that CLI offers.
+      store.setConnection({
+        ...info,
+        ...(info.status === 'ready'
+          ? { models: await (provider === 'claude' ? claudeModels : codexModels)(info.path) }
+          : {}),
+      });
       store.event(`${providerProfiles[provider].label} connection checked`, info.message);
       return info;
     }
@@ -151,16 +166,23 @@ async function dispatch(command: Command, payload: unknown) {
       return backup(store, commands.backup.parse(input).path);
     case 'exportWiki':
       return exportWiki(store, commands.exportWiki.parse(input).path);
+    case 'chatSend':
+      return chat.send(commands.chatSend.parse(input));
+    case 'chatCancel':
+      return chat.cancel();
+    case 'chatNewThread':
+      return chat.newThread();
     case 'restoreBackup': {
       requireThat(
-        !worker.busy,
+        !worker.busy && !chat.active,
         'BUSY',
-        'Pause and finish or cancel the current worker before restoration.',
+        'Pause and finish or cancel the current worker and chat reply before restoration.',
       );
       maintenance = true;
       try {
         store = restoreEmpty(store, commands.restoreBackup.parse(input).path);
         worker.store = store;
+        chat.store = store;
         return;
       } finally {
         maintenance = false;
@@ -190,7 +212,9 @@ const server = createServer((client) => {
         requestId = envelope.requestId;
         let result: unknown;
         if (envelope.command === 'workerRead')
-          result = await worker.read(envelope.token, envelope.payload);
+          result = chat.owns(envelope.token)
+            ? await chat.read(envelope.token, envelope.payload)
+            : await worker.read(envelope.token, envelope.payload);
         else {
           requireThat(sameToken(envelope.token), 'AUTH', 'Service handshake failed.');
           requireThat(Object.hasOwn(commands, envelope.command), 'COMMAND', 'Unknown command.');
@@ -233,9 +257,11 @@ const scheduler = setInterval(() => {
 async function shutdown() {
   clearInterval(scheduler);
   worker.stop();
+  chat.stop();
   server.close();
   const until = Date.now() + 4000;
-  while (worker.busy && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+  while ((worker.busy || chat.active) && Date.now() < until)
+    await new Promise((r) => setTimeout(r, 50));
   store.db.close();
   // server.close() already removed the socket; force keeps that from skipping the lock.
   try {

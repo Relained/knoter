@@ -77,6 +77,13 @@ Existing IDs and revisions are retained when a document is reorganized. Hierarch
 labels come from slash-separated titles; renaming a parent does not rename child
 titles, while stored UUID links remain stable.
 
+Notes and chat replies render GFM with TeX math: `$…$` inline, and `$$…$$` on its
+own line, a `$$` block, or a ` ```math ` fence for display. KaTeX loads only for
+text containing `$`, with `\href` and HTML commands disabled. Emphasis next to
+Hangul, such as `**"매주 수요일"**로`, renders as bold. The editor keeps both when
+saving; it writes a standalone one-line `$$…$$` as a `$$` block and an in-sentence
+`$$…$$` as `$…$`.
+
 Substantive factual supplements are checked against pages the service reads for
 the worker: Wikipedia (Korean or English) through its API, MDN, or any public https
 page the worker found with web search. At most ten pages are read per attempt.
@@ -122,6 +129,30 @@ For development, run `npm run check`, then `npm run service` in one terminal and
 variable for a disposable workspace. Development mode does not register an OS
 service and stops when its service terminal exits.
 
+### Side chat
+
+Open the right panel's **Chat**. It answers from your wiki and applies the changes
+you ask for, following the same writing and evidence rules as the worker.
+
+- Type `@` to mention a note. The open note is included unless you remove its chip.
+  Mentioned notes are the scope of the request.
+- Attach up to five UTF-8 `.md`, `.markdown`, or `.txt` files (256 KiB each) with
+  the paperclip or by dropping them on the composer.
+- Choose the model and reasoning effort below the message. The lists show every
+  connected and ready CLI: Codex models come from the selected Codex's own catalog;
+  Claude Code lists Opus, Sonnet, Haiku, and Fable with the effort levels its
+  `--help` reports. Connecting a CLI also makes it the background worker's CLI.
+- Requested changes are applied immediately as revisions you can restore, and the
+  reply lists the notes it created or updated. A note you edited manually changes
+  only when you mention it. Stopping a reply, a failure, or a service restart applies
+  nothing.
+- Your message and attachments are stored as `chat` sources only when a change
+  cites them; they do not enter the background queue. **New conversation** keeps
+  earlier conversations in the workspace.
+
+Each reply may run for ten minutes and the chat allows 100 replies per local day,
+separately from the worker's 20 runs. Both count started runs, not tokens or cost.
+
 ## Native demo limits and failure evidence
 
 Markdown must be UTF-8, at most 256 KiB per file. Hidden entries and symlinks are
@@ -134,8 +165,8 @@ started per local calendar day per workspace (retries of a started note do not
 count). A reserved start counts even if a crash occurs
 immediately before spawning; these limits are not token or subscription quotas.
 
-Only Markdown/wiki generation is connected. Chat, tasks/calendar, PDF/TXT,
-embeddings, multi-user access, and Windows are outside this demo. The browser
+Markdown/wiki generation and the side chat are connected. Tasks/calendar, PDF/TXT
+sources, embeddings, multi-user access, and Windows are outside this demo. The browser
 preview below still simulates its backend. Generation is evidence-constrained,
 but semantic accuracy and useful topic boundaries still require human review.
 
@@ -199,7 +230,8 @@ originals expecting the preview to preserve them.
 
 PDF bytes are neither extracted nor retained; PDF previews and seeded excerpts
 are illustrative. Chat uses demo text matching, not a real LLM or semantic
-retrieval. The graph has only been exercised with a small preview corpus.
+retrieval; its model pickers and attachments are simulated and change no notes.
+The graph has only been exercised with a small preview corpus.
 The Protected label is a demo manual-edit flag, not proof of backend conflict
 protection. Native services, storage, extraction, and portable exports follow
 the rewrite milestones; frontend state does not demonstrate those capabilities.
@@ -214,13 +246,16 @@ Observations from the macOS in-app browser on 2026-09-16/17. The build
 environment was Node 22.14.0 with Vite 7.3.6. Manual evidence covered demo flows
 on desktop and a 390px viewport, not an installed application.
 
-| Date / issue                                      | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                            |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-16 — OS file chooser blocked by tooling   | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks.                |
-| 2026-09-17 — graph wheel events scrolled the page | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case.                |
-| 2026-09-16/17 — bundle-size warning persisted     | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                          |
-| 2026-09-17 — limits of deletion checks            | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                |
-| 2026-09-17 — Router history key collision         | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them. |
+| Date / issue                                        | Evidence, remedy, or remaining limit                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-16 — OS file chooser blocked by tooling     | The browser-control tool lost its file-input reference: `No node found for given backend id`. A disposable sample File passed the import path; that did not verify actual chooser selection, drag/drop, or PDF selection. Those paths still needed human checks.                                                                                                                                                    |
+| 2026-09-17 — graph wheel events scrolled the page   | Wheeling over controls moved the page 134.5px without zooming. Containing wheel handling across the canvas and controls produced zoom with page scroll at 0, including at the 45% minimum; scrolling outside the canvas still worked. Keep this regression case.                                                                                                                                                    |
+| 2026-09-16/17 — bundle-size warning persisted       | Lazy-loading the editor did not remove Vite's warning. After Router integration, the main JavaScript was about 703 kB (previously 607 kB) and the editor 1,361 kB before gzip. Dependency trimming and packaged-renderer review remain follow-up work.                                                                                                                                                              |
+| 2026-09-17 — limits of deletion checks              | Delete/reload/restore of a disposable note preserved saved content, revision, favorite state, and backlinks. Windows and storage-write failure injection were not exercised; successful browser restoration does not establish failure recovery.                                                                                                                                                                    |
+| 2026-09-17 — Router history key collision           | Direct hash navigation reused Router's fallback key and incorrectly enabled Forward. Include the URL in toolbar journal identity; unknown entries reset the toolbar boundary. In-app blockers cover Router-created history; manually changing the address hash can bypass them.                                                                                                                                     |
+| 2026-10-16 — mention insertion moved the caret      | Text typed right after choosing an `@` mention landed before it: the caret was restored in an animation frame that the hidden browser pane delayed. A layout effect now restores it after the value renders; the retest kept the typed text in order.                                                                                                                                                               |
+| 2026-10-16 — Korean emphasis and TeX showed as text | `**"매주 수요일"**로` kept its asterisks (CommonMark flanking) and `$$…$$` showed as source. The reader, outline, and link graph now parse with CJK-friendly emphasis and remark-math; KaTeX renders lazily. Math is inert in link checks, so `$[[a, b]]$` is no longer an unresolved link. Main JS grew 733→750 kB; KaTeX is a separate 261 kB chunk shared with the editor (1,361→1,092 kB).                      |
+| 2026-10-16 — editor save rewrote math and emphasis  | One edit-and-save produced `\int\_0^1 x^2,dx`, `$\[\[a, b]]$`, and `\*\*"매주 수요일"\*\*로`. Enabling the editor's LaTeX feature and CJK emphasis (parse and serialize) kept them on retest. Typed `[[…]]` links are still saved as `\[\[…]]`, which continues to resolve. Restart the dev server after adding dependencies: re-optimization during hot reload produced duplicate-React hook errors until restart. |
 
 The `Document actions walkthrough` and `Router migration walkthrough` samples
 were left in Trash after the 2026-09-17 checks; user documents' saved contents

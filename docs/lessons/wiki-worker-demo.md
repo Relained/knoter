@@ -320,6 +320,67 @@ Not established:
 - The packaged app under the LaunchAgent with these changes.
 - Content quality beyond spot checks.
 
+## Side chat (D22)
+
+### 2026-10-16 — Scope of the side-chat verification
+
+Before `dev`'s personal-wiki redesign was merged, a disposable workspace created
+by the pre-chat service (schema 1) opened under the chat build and migrated with its source, queued job, and manually
+edited note intact. With the development service, development Electron, and Claude
+Code 2.1.300, real replies covered: a Haiku 5.5/low question with no changes; a
+Sonnet 5.5/medium edit of a mentioned note that cited the request and carried the
+note's existing source citations; an attachment that became a new note and a cited
+`chat` source; a protected note left unchanged until mentioned; a second send
+rejected while a reply ran; a stopped reply and a service killed mid-reply, both
+applying nothing. A background job on the same build still succeeded after the
+worker's process launch and evidence reads moved into shared modules. One Electron
+turn combined a typed mention, the open-note chip, and a dropped attachment
+through IPC.
+
+The model followed the protection rule itself, so the service's rejection of an
+unmentioned protected target and of an unread replacement were not triggered by a
+live reply. Codex chat replies were not run: the installed Codex was 0.162.1,
+while the demo requires 0.154.0. Its catalog parser was checked only against
+0.162.1's `debug models`; whether 0.154.0 provides that command is unknown, and
+the verified model is used if it does not. The packaged app and LaunchAgent, the
+OS file chooser (the drop was synthetic), Opus/Fable, `xhigh`/`max` effort, and
+answer quality beyond this small corpus were not exercised. As with the worker,
+a CLI orphaned by a killed service keeps running until it exits, but its expired
+capability can no longer read evidence or apply changes.
+
+A Sonnet reply wrote `**"매주 수요일"**로`; the reader showed the asterisks
+because CommonMark does not close emphasis between a quote and a following Hangul
+particle. The same day the reader gained CJK-friendly emphasis and TeX math, and
+the editor stopped escaping both on save; the browser failure table in the V2
+README records the cause and retest. Dev Electron rendered both from `file://`
+with KaTeX fonts loaded; the packaged app was not rebuilt for this check.
+
+### 2026-10-16 — The installed build used another schema 2
+
+Before installing, the live workspace reported schema 2, but its tables were `dev`'s
+redesign (`sources.missing_since`), not the chat tables this branch had numbered 2.
+The installed app had been built from that newer `dev`. Installing the branch alone
+would have skipped the chat migration on that database and failed at startup, and
+dropped the redesign. `dev` was merged first; the chat migration became schema 3,
+and the chat was rebuilt on its search-based evidence reads and section edits.
+Check `PRAGMA user_version` and the tables of the live workspace before replacing an
+installed build, and number new migrations after the base branch's.
+
+On the merged build, a fresh disposable workspace ran one worker job and the same
+Claude Code chat scenarios as before (question, mentioned edit as a section edit,
+attachment to a new page, protection with and without a mention, stop); all behaved
+as designed. A Haiku reply linked a page as `[title](wiki:ID)`, which the reader
+drops; such links are now rewritten to the app's page address. An online SQLite
+copy of the live workspace migrated from schema 2 to 3 with its 66 pages, 349
+sources, and queue unchanged; no model was called on that copy, and it was deleted.
+
+The packaged merge was then installed in `~/Applications` following the replacement
+steps: a full backup through the old service, **Disable service**, the old bundle
+moved aside, the new bundle copied, and the LaunchAgent registered again. The service
+started without the stale-lock failure, migrated the live workspace to schema 3 with
+the same counts, kept the worker paused, and listed the Claude Code chat models. The
+app UI and a chat reply on the live workspace were not exercised.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch

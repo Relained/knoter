@@ -134,7 +134,12 @@ export function createConnectedClient(bridge: NativeBridge): KnoterClient {
     updateTask: unavailable,
     saveEvent: unavailable,
     deleteEvent: unavailable,
-    sendMessage: unavailable,
-    clearMessages: unavailable,
+    // The service records the request and keeps generating after this resolves.
+    sendMessage: async ({ text, documentIds, attachments, choice }) => {
+      if (!choice) throw new Error('Connect Codex CLI or Claude Code in Sources to use chat.');
+      await mutation('chatSend', { text, documentIds, attachments, choice });
+    },
+    stopMessage: () => mutation('chatCancel'),
+    clearMessages: () => mutation('chatNewThread'),
   };
 }

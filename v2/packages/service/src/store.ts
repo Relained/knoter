@@ -15,6 +15,7 @@ import {
   MAX_TERMS,
   PIPELINE,
   providerProfiles,
+  type ChatModelOption,
   type WorkerInfo,
   proposalSchema,
   type EvidenceVersion,
@@ -55,7 +56,11 @@ export interface SourceRow {
   detected_at: string;
   added_at: string;
   missing_since: string | null;
+  /** `chat` sources hold side-chat requests or attachments that a revision cites. */
+  origin: 'file' | 'chat';
 }
+/** A saved CLI connection; the side chat can use any ready one. */
+export type CliConnection = WorkerInfo['cli'] & { models?: ChatModelOption[] };
 /** A missing file becomes a removal after this grace, so moves and saves settle first. */
 export const REMOVAL_GRACE_MS = 120_000;
 export interface JobRow {
@@ -143,7 +148,7 @@ export function contextOf(data: { context?: AttemptContext; manifest?: LegacyMan
  * page. A tag matching an existing one apart from case takes the existing spelling, so the
  * vocabulary converges instead of splitting into near-duplicates.
  */
-const titleKey = (title: string) => title.normalize('NFKC').trim().toLowerCase();
+export const titleKey = (title: string) => title.normalize('NFKC').trim().toLowerCase();
 export function normalizeTags(tags: string[], vocabulary: string[] = []) {
   const known = new Map(vocabulary.map((t) => [t.toLocaleLowerCase(), t]));
   const out: string[] = [];
@@ -206,7 +211,7 @@ export class Store {
     this.db.pragma('foreign_keys = ON');
     this.db.pragma('synchronous = FULL');
     let version = this.db.pragma('user_version', { simple: true }) as number;
-    requireThat(version <= 2, 'SCHEMA', 'This database requires a newer knoter version.');
+    requireThat(version <= 3, 'SCHEMA', 'This database requires a newer knoter version.');
     if (!version) {
       this.db.transaction(() => {
         this.db.exec(`
@@ -250,6 +255,18 @@ export class Store {
         PRAGMA user_version = 2;
       `);
       })();
+    if (version <= 2)
+      // v3: side-chat history. Chat-origin sources exist only once a revision cites them.
+      this.db.transaction(() => {
+        this.db.exec(`
+        ALTER TABLE sources ADD COLUMN origin TEXT NOT NULL DEFAULT 'file';
+        CREATE TABLE chat_threads (id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+        CREATE TABLE chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES chat_threads(id), role TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE chat_turns (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES chat_threads(id), request_id TEXT NOT NULL REFERENCES chat_messages(id), reply_id TEXT NOT NULL REFERENCES chat_messages(id), provider TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL, status TEXT NOT NULL, cancel INTEGER NOT NULL DEFAULT 0, started_at TEXT NOT NULL, finished_at TEXT, cli_version TEXT, skill_hash TEXT NOT NULL, evidence TEXT NOT NULL, manifest TEXT, result TEXT, error TEXT, usage TEXT, tools TEXT);
+        CREATE TABLE chat_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
+        PRAGMA user_version = 3;
+      `);
+      })();
     this.workspaceId = this.get<string>('workspaceId');
     // Only abandoned staging files are disposable. Referenced immutable blobs remain untouched.
     for (const file of readdirSync(join(dir, 'blobs')))
@@ -265,6 +282,28 @@ export class Store {
           "UPDATE attempts SET finished_at=?, error='Service restarted during execution' WHERE finished_at IS NULL",
         )
         .run(now());
+      // A reply interrupted by a restart is shown as incomplete; nothing was applied.
+      for (const turn of this.all<{ id: string; reply_id: string }>(
+        "SELECT id,reply_id FROM chat_turns WHERE status='running'",
+      )) {
+        const reply = this.one<{ data: string }>(
+          'SELECT data FROM chat_messages WHERE id=?',
+          turn.reply_id,
+        )!;
+        this.db.prepare('UPDATE chat_messages SET data=? WHERE id=?').run(
+          JSON.stringify({
+            ...JSON.parse(reply.data),
+            status: 'failed',
+            error: 'Service restarted during the reply. No wiki changes were applied.',
+          }),
+          turn.reply_id,
+        );
+        this.db
+          .prepare(
+            "UPDATE chat_turns SET status='failed',finished_at=?,error='Service restarted during execution' WHERE id=?",
+          )
+          .run(now(), turn.id);
+      }
       // A queued job must identify the skill and pipeline actually used by its next attempt.
       for (const row of this.all<{ source_id: string }>(
         "SELECT DISTINCT source_id FROM jobs WHERE status IN ('queued','retry_wait') AND (skill_hash<>? OR pipeline<>?)",
@@ -291,6 +330,20 @@ export class Store {
       provider: 'codex',
       ...this.get<Partial<WorkerInfo['cli']>>('cli'),
     } as WorkerInfo['cli'];
+  }
+  /** Saved CLI connections by provider; older workspaces stored only the worker's. */
+  connections(): Partial<Record<WorkerInfo['cli']['provider'], CliConnection>> {
+    const saved = this.one<{ value: string }>(
+      "SELECT value FROM settings WHERE key='cliConnections'",
+    );
+    const cli = this.cli();
+    return {
+      ...(cli.path ? { [cli.provider]: cli } : {}),
+      ...(saved ? JSON.parse(saved.value) : {}),
+    };
+  }
+  setConnection(info: CliConnection) {
+    this.set('cliConnections', { ...this.connections(), [info.provider]: info });
   }
   set(key: string, value: unknown) {
     this.db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run(key, JSON.stringify(value));
@@ -648,6 +701,11 @@ export class Store {
   }
   retry(sourceId: string) {
     this.db.transaction(() => {
+      requireThat(
+        this.source(sourceId).origin !== 'chat',
+        'CHAT',
+        'Chat evidence is applied by its chat reply, not the background worker.',
+      );
       const source = this.source(sourceId),
         jobId = this.enqueue(sourceId, source.latest),
         j = this.job(jobId);
@@ -1218,8 +1276,10 @@ export class Store {
    * page written in this proposal must cite the parts assigned to it.
    */
   private checkCoverage(proposal: Proposal, context: AttemptContext) {
+    // Chat proposals carry no topics and have no stored changed note.
+    if (!proposal.topics) return;
     const changed = this.version(context.changedVersionId);
-    if (!proposal.topics || changed.removed || !changed.segments.length) return;
+    if (changed.removed || !changed.segments.length) return;
     if (proposal.outcome === 'needs_review') return;
     const known = new Set(changed.segments.map((s) => s.id)),
       covered = new Set<string>();
@@ -1463,7 +1523,12 @@ export class Store {
     })();
   }
   /** Commit a validated proposal; returns warnings about link requests that were skipped. */
-  commitOperations(proposal: Proposal, human: boolean, context: AttemptContext) {
+  commitOperations(
+    proposal: Proposal,
+    human: boolean,
+    context: AttemptContext,
+    summaryPrefix = '',
+  ) {
     const operations = proposal.operations.map((op) => ({
       ...op,
       assignedId: op.documentId ?? uuid(),
@@ -1529,7 +1594,7 @@ export class Store {
         tags: normalizeTags(op.tags ?? old?.tags ?? [], vocabulary),
         terms: normalizeTerms(op.terms ?? old?.terms ?? []),
       };
-      this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
+      this.recordRevision(doc, human ? 'You' : 'knoter', summaryPrefix + op.reason, citations);
     }
     const assigned = new Map(operations.map((o) => [titleKey(o.title), o.assignedId]));
     const written = new Set(operations.map((o) => o.assignedId));
@@ -1744,6 +1809,7 @@ export class Store {
         latestVersionId: s.latest,
         latestVersion: v.version,
         processedVersionId: s.processed,
+        origin: s.origin,
         availability: this.searchable(s.latest).removed ? 'removed' : s.availability,
         watchId: s.watch_id,
         detectedAt: s.detected_at,

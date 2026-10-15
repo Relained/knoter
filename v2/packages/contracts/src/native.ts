@@ -30,10 +30,51 @@ export const providerProfiles: Record<
   codex: { label: 'Codex CLI', model: MODEL, effort: 'low' },
   claude: { label: 'Claude Code', model: CLAUDE_MODEL, effort: 'medium' },
 };
+/** A model the side chat can run on, as the connected CLI offers it. */
+export interface ChatModelOption {
+  provider: WorkerProvider;
+  model: string;
+  label: string;
+  efforts: string[];
+  defaultEffort: string;
+}
+export const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+// Claude Code has no machine-readable model list; these are the models its picker
+// offers. Effort levels are re-read from the selected CLI's --help when connecting.
+export const claudeChatModels: ChatModelOption[] = [
+  { model: 'claude-opus-5-5', label: 'Opus 5.5', defaultEffort: 'medium' },
+  { model: CLAUDE_MODEL, label: 'Sonnet 5.5', defaultEffort: 'high' },
+  { model: 'claude-haiku-5-5', label: 'Haiku 5.5', defaultEffort: 'medium' },
+  { model: 'claude-fable-5-1', label: 'Fable 5.1', defaultEffort: 'high' },
+].map((m) => ({ ...m, provider: 'claude' as const, efforts: CLAUDE_EFFORTS }));
+// Used when the selected Codex CLI cannot render its model catalog.
+export const codexFallbackModels: ChatModelOption[] = [
+  {
+    provider: 'codex',
+    model: MODEL,
+    label: 'GPT-5.6-Luna',
+    efforts: ['low', 'medium', 'high'],
+    defaultEffort: 'low',
+  },
+];
+export const CHAT_DAILY_LIMIT = 100;
+export const MAX_CHAT_ATTACHMENTS = 5;
+export const MAX_CHAT_TEXT = 20_000;
+export const chatAttachmentExtensions = /\.(md|markdown|txt)$/i;
+/** The side chat's extra tool: a dry run of its proposal that never writes. */
+export const CHAT_TOOLS = [...EVIDENCE_TOOLS, 'wiki_check'] as const;
 const id = z.string().uuid();
 const text = z.string().max(200_000);
 const title = z.string().trim().min(1).max(200);
 const nil = z.object({}).strict();
+export const chatChoice = z
+  .object({
+    provider: workerProviders,
+    model: z.string().min(1).max(100),
+    effort: z.string().min(1).max(20),
+  })
+  .strict();
+export type ChatChoice = z.infer<typeof chatChoice>;
 export const settingsPatch = z
   .object({
     theme: z.enum(['light', 'dark']).optional(),
@@ -43,6 +84,7 @@ export const settingsPatch = z
     leftSidebarCompact: z.boolean().optional(),
     leftSidebarCollapsed: z.boolean().optional(),
     rightSidebarCollapsed: z.boolean().optional(),
+    chat: chatChoice.optional(),
   })
   .strict();
 export const commands = {
@@ -87,6 +129,26 @@ export const commands = {
   backup: z.object({ path: z.string().min(1).max(4096) }).strict(),
   restoreBackup: z.object({ path: z.string().min(1).max(4096) }).strict(),
   exportWiki: z.object({ path: z.string().min(1).max(4096) }).strict(),
+  chatSend: z
+    .object({
+      text: z.string().max(MAX_CHAT_TEXT),
+      documentIds: z.array(id).max(20),
+      attachments: z
+        .array(
+          z
+            .object({
+              filename: title.regex(chatAttachmentExtensions),
+              // UTF-8 text only; the service checks the encoded byte limit.
+              text: z.string().max(MAX_SOURCE_BYTES),
+            })
+            .strict(),
+        )
+        .max(MAX_CHAT_ATTACHMENTS),
+      choice: chatChoice,
+    })
+    .strict(),
+  chatCancel: nil,
+  chatNewThread: nil,
 } as const;
 export type Command = keyof typeof commands;
 export const rendererCommands = new Set<Command>([
@@ -106,6 +168,9 @@ export const rendererCommands = new Set<Command>([
   'referenceVersion',
   'checkCli',
   'removeWatch',
+  'chatSend',
+  'chatCancel',
+  'chatNewThread',
 ]);
 export const desktopActions = z.enum([
   'enable',
@@ -236,6 +301,11 @@ export const proposalSchema = z
   })
   .strict();
 export type Proposal = z.infer<typeof proposalSchema>;
+/** A side-chat turn: the reply shown to the user plus an ordinary wiki proposal. */
+export const chatResultSchema = proposalSchema.extend({
+  reply: z.string().min(1).max(MAX_CHAT_TEXT),
+});
+export type ChatResult = z.infer<typeof chatResultSchema>;
 export type LinkRequest = z.infer<typeof linkSchema>;
 export type SectionEdit = z.infer<typeof sectionSchema>;
 export type Citation = z.infer<typeof citationSchema>;

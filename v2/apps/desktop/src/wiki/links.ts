@@ -1,6 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import type { WikiDocument } from '@knoter/contracts';
 import { routeHref } from '../routing/paths';
 
@@ -79,7 +80,8 @@ export interface WikiLinks {
 export function buildWikiLinks(documents: WikiDocument[]): WikiLinks {
   const edges = new Map<string, WikiEdge>();
   const unresolved: WikiLinks['unresolved'] = [];
-  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkWikiLinks);
+  // Parse math like the reader so a [[a, b]] matrix is not counted as a link.
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath).use(remarkWikiLinks);
   for (const doc of documents) {
     for (const target of doc.relatedIds) {
       if (target !== doc.id && documents.some((d) => d.id === target))

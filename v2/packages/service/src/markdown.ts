@@ -1,6 +1,13 @@
 import type { Segment } from '@knoter/contracts/native';
 import { fromMarkdown } from 'mdast-util-from-markdown';
+import { math } from 'micromark-extension-math';
+import { mathFromMarkdown } from 'mdast-util-math';
 import { requireThat } from './common.js';
+
+// The reader renders $…$ and $$…$$ as TeX; parse them the same way so math content,
+// such as a [[a, b]] matrix, stays inert like code instead of becoming a wiki link.
+const parse = (body: string) =>
+  fromMarkdown(body, { extensions: [math()], mdastExtensions: [mathFromMarkdown()] });
 
 /**
  * Pin wiki links to document IDs. With `unresolved`, a link naming no single page becomes its
@@ -11,7 +18,7 @@ export function resolveWikiLinks(
   documents: { id: string; title: string }[],
   unresolved?: string[],
 ) {
-  const root = fromMarkdown(body),
+  const root = parse(body),
     edits: { start: number; end: number; text: string }[] = [];
   type Node = typeof root | (typeof root.children)[number];
   const normalize = (text: string) => text.normalize('NFKC').trim().toLowerCase();
@@ -43,7 +50,16 @@ export function resolveWikiLinks(
       return;
     }
     if (
-      ['code', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference'].includes(node.type)
+      [
+        'code',
+        'inlineCode',
+        'math',
+        'inlineMath',
+        'link',
+        'linkReference',
+        'image',
+        'imageReference',
+      ].includes(node.type)
     )
       return;
     if (node.type === 'text' && node.position) {
@@ -93,7 +109,7 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
     (m) =>
       new RegExp(`(?<![\\p{L}\\p{N}_])(${escape(m)})(?=${PARTICLES}?(?![\\p{L}\\p{N}_]))`, 'iu'),
   );
-  const root = fromMarkdown(body);
+  const root = parse(body);
   type Node = typeof root | (typeof root.children)[number];
   let hit: { start: number; end: number; text: string } | undefined;
   const visit = (node: Node) => {
@@ -103,6 +119,8 @@ export function insertWikiLink(body: string, mentions: string[], targetId: strin
         'heading',
         'code',
         'inlineCode',
+        'math',
+        'inlineMath',
         'link',
         'linkReference',
         'image',
@@ -190,7 +208,7 @@ export function mergeSection(
 }
 
 export function validateWikiMarkdown(body: string) {
-  const root = fromMarkdown(body);
+  const root = parse(body);
   type Node = typeof root | (typeof root.children)[number];
   const definitions = new Map<string, string>();
   const collect = (node: Node) => {
@@ -205,7 +223,7 @@ export function validateWikiMarkdown(body: string) {
       'FORMAT',
       'Worker output contains raw HTML outside a code example.',
     );
-    // Code and inlineCode are leaf nodes: their contents are inert examples.
+    // Code, inlineCode, math, and inlineMath are leaf nodes: their contents are inert.
     const url =
       'url' in node
         ? node.url
