@@ -260,6 +260,30 @@ no check that every part of a note was placed, and whole-proposal rejection on
 any title or parent conflict. The user prioritised fixing this (topic plan,
 section edits, splitting workflow, per-part hints).
 
+### 2026-10-16 — Multi-topic notes after the topic plan, section edits, and glossary
+
+With the topic plan (D21), every segment of nine multi-topic notes was placed.
+Notes became two to four pages instead of one. Routing into other existing pages
+stayed at zero until the hints changed. The first per-part hints scored raw
+substrings, so long pages such as `Arch Linux 초기 설치` and `zsh & oh-my-posh` were
+offered for C++, capstone, and machine-learning parts alike. Hints now come from
+glossary terms (page titles, their parenthesised parts, and declared aliases),
+then from rare words in page titles only, with Korean particles stripped and
+English matched as whole words. With these hints:
+- `2026-03-19.md` added a section to the existing capstone page.
+- `기계학습/4강.md` added a section to the existing `Support Vector Machines` page,
+  leaving the rest of the page and its citations intact.
+- Glossary linking added links in four other pages without a model run.
+
+Remaining limits:
+- Daily and exam notes still often create a page per subject even when related
+  concept pages exist.
+- A note-context page such as `자료구조 중간고사 메모 (2026-04-09)` can appear.
+- The glossary links by surface form: `매개변수` in an SVM page linked to the C++
+  parameter page.
+- The staged loop (session cards, flow, separate routing call) is deferred by the
+  user in favour of refining this single call.
+
 ### 2026-10-16 — Scope of the redesign verification
 
 Disposable workspaces with Claude Code 2.1.300 (`claude-sonnet-5-5`), driven

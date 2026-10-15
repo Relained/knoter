@@ -10,9 +10,10 @@ import {
   CLI_VERSION,
   EVIDENCE_TOOLS,
   MAX_TAGS,
+  MAX_TERMS,
   PIPELINE,
   tagSchema,
-  linkSchema,
+  termSchema,
   sectionSchema,
   topicSchema,
   providerProfiles,
@@ -170,27 +171,29 @@ export function proposalSchemaForVersions(versionIds: string[], changedSegmentId
           .max(500),
       })
     : topicSchema;
-  return proposalSchema.extend({
-    operations: z
-      .array(
-        operationSchema.extend({
-          citations: z.array(citation).max(300),
-          referenceCitations: z.array(referenceCitationSchema).max(200),
-          tags: z.array(tagSchema).max(MAX_TAGS),
-        }),
-      )
-      .max(12),
-    sections: z
-      .array(
-        sectionSchema.extend({
-          citations: z.array(citation).max(300),
-          referenceCitations: z.array(referenceCitationSchema).max(200),
-        }),
-      )
-      .max(12),
-    topics: z.array(topic).max(60),
-    links: z.array(linkSchema).max(10),
-  });
+  return proposalSchema
+    .extend({
+      operations: z
+        .array(
+          operationSchema.extend({
+            citations: z.array(citation).max(300),
+            referenceCitations: z.array(referenceCitationSchema).max(200),
+            tags: z.array(tagSchema).max(MAX_TAGS),
+            terms: z.array(termSchema).max(MAX_TERMS),
+          }),
+        )
+        .max(12),
+      sections: z
+        .array(
+          sectionSchema.extend({
+            citations: z.array(citation).max(300),
+            referenceCitations: z.array(referenceCitationSchema).max(200),
+          }),
+        )
+        .max(12),
+      topics: z.array(topic).max(60),
+    })
+    .omit({ links: true, trash: true });
 }
 /** Situational skill references a job needs, chosen from its changed source. */
 export function skillParts(changed: EvidenceVersion) {

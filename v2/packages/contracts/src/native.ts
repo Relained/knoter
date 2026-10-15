@@ -4,7 +4,7 @@ export const PROTOCOL = 1;
 export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_WIRE_BYTES = 8 * 1024 * 1024;
 export const PIPELINE = 'markdown-wiki-2';
-/** Model runs per local day across automatic, manual, and retried attempts (D9). */
+/** Notes started per local day; retries of a started note do not count (D9, 2026-10-16). */
 export const DAILY_RUN_LIMIT = 200;
 /** The wiki MCP tools; every CLI adapter must expose exactly these and nothing else. */
 export const EVIDENCE_TOOLS = [
@@ -157,6 +157,9 @@ export const referenceCitationSchema = z
   .strict();
 export const MAX_TAGS = 8;
 export const tagSchema = z.string().trim().min(1).max(32);
+/** Glossary terms: words that name a page; their first mentions elsewhere link to it. */
+export const MAX_TERMS = 8;
+export const termSchema = z.string().trim().min(2).max(40);
 export const operationSchema = z
   .object({
     op: z.enum(['create', 'replace']),
@@ -171,6 +174,7 @@ export const operationSchema = z
     referenceCitations: z.array(referenceCitationSchema).max(200).optional(),
     // Optional when reading proposals saved before tags; required for new worker output.
     tags: z.array(tagSchema).max(MAX_TAGS).optional(),
+    terms: z.array(termSchema).max(MAX_TERMS).optional(),
     reason: z.string().min(1).max(2000),
   })
   .strict();

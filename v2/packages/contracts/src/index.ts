@@ -17,6 +17,8 @@ export interface WikiDocument {
   protected: boolean;
   /** Assigned by the wiki worker; absent on documents saved before tags existed. */
   tags?: string[];
+  /** Glossary terms besides the title that name this page (aliases, other languages). */
+  terms?: string[];
 }
 export interface TrashedDocument extends WikiDocument {
   deletedAt: string;

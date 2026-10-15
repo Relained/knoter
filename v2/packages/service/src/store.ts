@@ -12,6 +12,7 @@ import {
   DAILY_RUN_LIMIT,
   MAX_SOURCE_BYTES,
   MAX_TAGS,
+  MAX_TERMS,
   PIPELINE,
   providerProfiles,
   type WorkerInfo,
@@ -153,6 +154,34 @@ export function normalizeTags(tags: string[], vocabulary: string[] = []) {
     if (out.length >= MAX_TAGS) break;
   }
   return out;
+}
+// Generic words that name no particular page, even when a title happens to be one.
+const STOP_TERMS = new Set(
+  '노트 메모 정리 개념 기초 설명 문제 방법 예시 보충 기타 요약 참고 목록 개요 소개 내용 정의 특징 장점 단점 비교 사용 설정 설치 예제 실습 과제 질문 답 결과 원리 구조 종류 목적'.split(
+    ' ',
+  ),
+);
+/** A glossary term must be specific enough to link safely. */
+export function linkableTerm(term: string) {
+  const t = term.normalize('NFKC').trim();
+  if (STOP_TERMS.has(t) || /^[\d\s.,:-]+$/.test(t)) return false;
+  return /[^\x00-\x7f]/.test(t) ? t.length >= 2 : t.length >= 3;
+}
+export function normalizeTerms(terms: string[]) {
+  const out: string[] = [];
+  for (const raw of terms) {
+    const term = raw.normalize('NFKC').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (linkableTerm(term) && !out.some((o) => o.toLocaleLowerCase() === term.toLocaleLowerCase()))
+      out.push(term);
+    if (out.length >= MAX_TERMS) break;
+  }
+  return out;
+}
+/** Words naming a page: its leaf title, the parts of "강화학습 (Reinforcement Learning)", and declared terms. */
+export function pageTerms(doc: Pick<WikiDocument, 'title' | 'terms'>) {
+  const leaf = doc.title.split('/').at(-1)!.trim();
+  const parts = /^(.*?)\s*\((.+)\)\s*$/.exec(leaf);
+  return normalizeTerms([leaf, ...(parts ? [parts[1], parts[2]] : []), ...(doc.terms ?? [])]);
 }
 /** A visible link may be written with or without percent-encoding. */
 export function containsUrl(body: string, url: string) {
@@ -681,7 +710,8 @@ export class Store {
       if (!j) return null;
       const usage =
         this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ?? 0;
-      if (usage >= DAILY_RUN_LIMIT) {
+      // The limit counts notes started today (D9); retries of a started job still run.
+      if (usage >= DAILY_RUN_LIMIT && j.attempts === 0) {
         this.db
           .prepare("UPDATE jobs SET stage='daily limit',next_run=? WHERE id=?")
           .run(Date.parse(nextDay()), j.id);
@@ -700,7 +730,9 @@ export class Store {
       this.lease(j);
       const calls =
         this.one<{ calls: number }>('SELECT calls FROM usage WHERE day=?', localDay())?.calls ?? 0;
-      if (calls >= DAILY_RUN_LIMIT) {
+      // D9 counts notes, not CLI runs: only a job's first attempt reserves a slot.
+      const first = j.attempts <= 1;
+      if (first && calls >= DAILY_RUN_LIMIT) {
         this.db
           .prepare(
             "UPDATE jobs SET status='queued',stage='daily limit',attempts=attempts-1,owner=NULL,lease_until=0,next_run=? WHERE id=?",
@@ -709,9 +741,10 @@ export class Store {
         return false;
       }
       // Reserve immediately before spawn; a crash in this gap counts conservatively.
-      this.db
-        .prepare('INSERT INTO usage VALUES (?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1')
-        .run(localDay());
+      if (first)
+        this.db
+          .prepare('INSERT INTO usage VALUES (?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1')
+          .run(localDay());
       return true;
     })();
   }
@@ -900,7 +933,9 @@ export class Store {
   }
   /**
    * Candidate pages for each part of a note (a heading's paragraphs, at most three at a time),
-   * so a multi-topic note can be routed to the pages its parts belong to.
+   * so a multi-topic note can be routed to the pages its parts belong to. A glossary term in
+   * the part is the strongest signal; otherwise pages are matched on their titles, tags,
+   * descriptions, and headings, never on long bodies. Candidates list their section headings.
    */
   sectionHints(version: EvidenceVersion, limit = 25) {
     const groups: { heading: string; segments: EvidenceVersion['segments'] }[] = [];
@@ -910,15 +945,60 @@ export class Store {
         last.segments.push(segment);
       else groups.push({ heading: segment.heading, segments: [segment] });
     }
-    const active = this.documents().filter((d) => !d.deletedAt);
+    const active = this.documents().filter(
+      (d) => !d.deletedAt && !d.sourceIds.includes(version.sourceId),
+    );
+    const glossary = this.glossary().filter((e) => active.some((d) => d.id === e.documentId));
+    const headings = (d: StoredDocument) =>
+      [...d.body.matchAll(/^#{2,4}\s+(.+)$/gm)].map((m) => m[1].trim()).slice(0, 8);
+    const meta = active.map((d) => ({
+      doc: d,
+      title: normalize(d.title),
+      rest: normalize([d.description, ...(d.tags ?? []), ...headings(d)].join('\n')),
+    }));
     return groups.slice(0, limit).flatMap((g) => {
-      const text = g.segments.map((s) => s.text).join(' ');
-      const candidates = this.rankDocuments(active, terms(`${g.heading} ${text.slice(0, 160)}`), 3)
-        .filter((r) => r.score >= 4)
-        .map(({ item }) => ({ id: item.id, title: item.title, revision: item.revision }));
-      return candidates.length
-        ? [{ segmentIds: g.segments.map((s) => s.id), heading: g.heading, candidates }]
-        : [];
+      const text = normalize(`${g.heading}\n${g.segments.map((s) => s.text).join('\n')}`);
+      const ids = new Map<string, string>();
+      for (const e of glossary)
+        if (ids.size < 3 && text.includes(e.term.toLocaleLowerCase()) && !ids.has(e.documentId))
+          ids.set(e.documentId, `glossary: ${e.term}`);
+      const q = terms(`${g.heading} ${text.slice(0, 600)}`, 32);
+      // A search candidate must share a distinctive word with the part in its title: a Korean
+      // word of two or more characters, or a whole English word of three or more letters.
+      const inTitle = (title: string, t: string) =>
+        /[^\x00-\x7f]/.test(t)
+          ? t.length >= 2 && title.includes(t)
+          : t.length >= 3 && title.split(/[^a-z0-9+#]+/).includes(t);
+      const distinctive = q.filter((t) => {
+        const titles = meta.filter((m) => inTitle(m.title, t)).length;
+        return titles > 0 && titles <= 3;
+      });
+      for (const r of rank(
+        meta,
+        q,
+        (m) => [
+          { text: m.title, weight: 3 },
+          { text: m.rest, weight: 1 },
+        ],
+        3,
+      ))
+        if (
+          ids.size < 3 &&
+          !ids.has(r.item.doc.id) &&
+          distinctive.some((t) => inTitle(r.item.title, t))
+        )
+          ids.set(r.item.doc.id, 'search');
+      if (!ids.size) return [];
+      return [
+        {
+          segmentIds: g.segments.map((s) => s.id),
+          heading: g.heading,
+          candidates: [...ids].map(([id, via]) => {
+            const d = active.find((x) => x.id === id)!;
+            return { id, title: d.title, revision: d.revision, via, sections: headings(d) };
+          }),
+        },
+      ];
     });
   }
   stage(j: JobRow, stage: string) {
@@ -1394,9 +1474,20 @@ export class Store {
     ];
     const vocabulary = this.tagVocabulary().map(([tag]) => tag);
     const unresolved: string[] = [];
+    const glossary = this.glossary(
+      operations.map((o) => ({
+        id: o.assignedId,
+        title: o.title,
+        terms: o.terms ?? (o.documentId ? this.document(o.documentId).terms : undefined),
+      })),
+    );
     for (const op of operations) {
       const old = op.documentId ? this.document(op.documentId) : undefined;
-      const body = resolveWikiLinks(op.body, targets, unresolved);
+      const body = this.linkTerms(
+        resolveWikiLinks(op.body, targets, unresolved),
+        op.assignedId,
+        glossary,
+      ).body;
       // Evidence for retained claims carries over while its source link stays visible, so a
       // hub does not have to re-read every supporting note to keep its citations.
       const citations = [...op.citations];
@@ -1436,14 +1527,78 @@ export class Store {
         protected: old?.protected ?? human,
         // Proposals saved before tags existed keep the page's tags.
         tags: normalizeTags(op.tags ?? old?.tags ?? [], vocabulary),
+        terms: normalizeTerms(op.terms ?? old?.terms ?? []),
       };
       this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
     }
     const assigned = new Map(operations.map((o) => [titleKey(o.title), o.assignedId]));
+    const written = new Set(operations.map((o) => o.assignedId));
     return [
       ...[...new Set(unresolved)].map((t) => `Left “${t}” unlinked: no page has that title.`),
-      ...this.applyLinks(proposal, assigned, new Set(operations.map((o) => o.assignedId))),
+      ...this.applyLinks(proposal, assigned, written),
+      ...this.autoLink(written),
     ];
+  }
+  /**
+   * Term → page for every active page, with pages being written replacing their old entries;
+   * a term naming two pages is ambiguous and omitted.
+   */
+  glossary(writing: { id: string; title: string; terms?: string[] }[] = []) {
+    const owners = new Map<string, { term: string; ids: Set<string> }>();
+    const pages = [
+      ...this.documents().filter((d) => !d.deletedAt && !writing.some((w) => w.id === d.id)),
+      ...writing,
+    ];
+    for (const d of pages)
+      for (const term of pageTerms(d)) {
+        const key = term.toLocaleLowerCase();
+        const entry = owners.get(key) ?? { term, ids: new Set<string>() };
+        entry.ids.add(d.id);
+        owners.set(key, entry);
+      }
+    return [...owners.values()]
+      .filter((e) => e.ids.size === 1)
+      .map((e) => ({ term: e.term, documentId: [...e.ids][0] }))
+      .sort((a, b) => b.term.length - a.term.length);
+  }
+  /** Link the first mention of each glossary term in a body (longest terms first, 10 at most). */
+  private linkTerms(body: string, selfId: string, glossary: ReturnType<Store['glossary']>) {
+    const lower = body.toLocaleLowerCase(),
+      linked: string[] = [];
+    for (const e of glossary) {
+      if (e.documentId === selfId || linked.length >= 10) continue;
+      if (!lower.includes(e.term.toLocaleLowerCase())) continue;
+      const next = insertWikiLink(body, [e.term], e.documentId);
+      if (next !== body) {
+        body = next;
+        linked.push(e.term);
+      }
+    }
+    return { body, linked };
+  }
+  /**
+   * Glossary linking (D17): after pages are written, link the first mention of their terms in
+   * other pages. Protected pages are skipped.
+   */
+  private autoLink(written: Set<string>) {
+    const glossary = this.glossary();
+    const fresh = glossary.filter((e) => written.has(e.documentId));
+    let edited = 0;
+    for (const d of this.documents()) {
+      if (!fresh.length) break;
+      if (d.deletedAt || d.protected || written.has(d.id) || edited >= 100) continue;
+      const { body, linked } = this.linkTerms(d.body, d.id, fresh);
+      if (!linked.length) continue;
+      validateWikiMarkdown(body);
+      this.recordRevision(
+        { ...d, body, revision: d.revision + 1, updatedAt: now() },
+        'knoter',
+        `Linked glossary terms: ${linked.join(', ')}`.slice(0, 2000),
+        this.citations(d.id, d.revision),
+      );
+      edited++;
+    }
+    return edited >= 100 ? ['Glossary linking stopped at 100 pages in one change.'] : [];
   }
   /**
    * Link the first mention of a term in existing pages, deterministically: the body is not

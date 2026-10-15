@@ -18,8 +18,9 @@ page that already exists. Work subject by subject, not note by note.
 
 1. Read the changed note with `source_read` and every required page with `wiki_read`.
 2. Split the note into its subjects. For each, find where it belongs: the job's
-   `sectionHints` suggest existing pages per part, and `wiki_search`/`source_search` find
-   more by subject terms rather than the filename. Read a page before you change it.
+   `sectionHints` list existing pages (with their section headings) for each part, found
+   by glossary terms or title words; `wiki_search`/`source_search` find more by subject
+   terms rather than the filename. Read a page before you change it.
 3. Record the plan in `topics`: every segment of the changed note goes to a page (an
    existing page ID, or the exact title of a page you create) or to `null` with a reason
    (empty, duplicated elsewhere in the note, pure scratch). Every segment must appear.
@@ -76,12 +77,10 @@ comparisons, examples.
 - Link pages with `[[DOCUMENT_ID|label]]`, or `[[Exact New Title|label]]` for a page
   created in this proposal. Never invent IDs. The app shows the title, so do not repeat
   it as the first heading.
-- Connect important terms to their pages, so each page collects backlinks. In pages you
-  write, link the first meaningful mention. For other pages that mention a term (find
-  them with `wiki_search`), add a `links` item instead of rewriting them: `target` (page
-  ID, or the exact title of a page you create), `mentions` as written there (1–3
-  variants), and each page with the revision you saw. The service links the first
-  mention and skips protected pages. Link key concepts, not every word.
+- `terms` are the words that name a page besides its title: aliases, the other-language
+  name, a common abbreviation (e.g. `스택`, `stack` for a stack page). They form the
+  glossary: the service links the first mention of every glossary term across the wiki,
+  so you do not add such links yourself. Name only terms specific to this page.
 - Create: `documentId: null`, `expectedRevision: 0`. Replace: the ID and the revision you
   read, with the complete new body. Keep existing IDs and user-chosen titles.
 - A `sections` edit names the page, the revision you read, a section `heading` (reuse an

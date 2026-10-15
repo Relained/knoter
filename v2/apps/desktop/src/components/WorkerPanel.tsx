@@ -117,8 +117,8 @@ export function WorkerPanel({
       </div>
       <p className="worker-detail">
         {worker.model} · {worker.effort} reasoning · 5 minutes per attempt · 2 automatic retries ·{' '}
-        {worker.callsToday}/{worker.dailyLimit} runs today. Resets {date(worker.resetsAt)} (
-        {worker.timezone || 'local time'}).
+        {worker.callsToday}/{worker.dailyLimit} notes started today. Resets {date(worker.resetsAt)}{' '}
+        ({worker.timezone || 'local time'}).
       </p>
       <div className="worker-controls">
         <Button disabled={busy || !worker.connected} onClick={() => desktop('chooseFolder')}>

@@ -86,11 +86,17 @@ each page with its provider and licence; choose **Inspect cited passages** to re
 the stored snapshot. Its URL, retrieval date, hash, and attribution survive
 revisions and full backup/restore.
 
+A note is treated as a container of subjects. The worker assigns every part of the
+changed note to the page where it belongs (or skips it with a reason), creates
+pages for new subjects, and adds or revises single sections of existing pages
+instead of rewriting them. The service rejects a plan that leaves parts unplaced
+and retries once with the reason.
+
 The worker tags pages (shown on pages and cards, in the sidebar **TAGS** group, and
-as a library filter) and links the first mention of key terms to their pages. It
-asks the service to add such links to existing pages instead of rewriting them;
-protected pages are skipped. **Backlinks** on each page show where it is linked
-from.
+as a library filter). Page titles and the aliases the worker declares form a
+glossary; the service links the first mention of each glossary term across the
+wiki, skipping ambiguous terms and protected pages. **Backlinks** on each page show
+where it is linked from.
 
 The user approved a **local LaunchAgent for this demo** after SMAppService rejected
 the unsigned helper. Registration creates only
@@ -123,8 +129,9 @@ skipped during folder discovery, and a folder may hold at most 2,000 notes. The
 worker searches notes and pages instead of receiving the whole corpus; an attempt
 may make 60 evidence reads, ten reference reads, and eight web searches. Jobs
 stop visibly when these limits are exceeded. Each attempt has a five-minute
-watchdog, at most two automatic retries for temporary failures, and 200 starts per
-local calendar day per workspace. A reserved start counts even if a crash occurs
+watchdog, at most two automatic retries for temporary failures, and 200 notes
+started per local calendar day per workspace (retries of a started note do not
+count). A reserved start counts even if a crash occurs
 immediately before spawning; these limits are not token or subscription quotas.
 
 Only Markdown/wiki generation is connected. Chat, tasks/calendar, PDF/TXT,
