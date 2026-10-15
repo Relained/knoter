@@ -56,8 +56,8 @@ export function WorkerPanel({
         you quit.
       </p>
       <p className="worker-detail">
-        Reference wiki · linked topics and lookup sections. Official supplements currently use MDN
-        Web Docs; checked passages are saved with each revision.
+        Personal wiki · your notes come first; gaps are filled from the model and the web, marked as
+        supplements. Pages read on the web, Wikipedia, or MDN are saved with each revision.
       </p>
       {!worker.connected && (
         <p role="status" className="worker-error">
@@ -252,12 +252,24 @@ export function WorkerPanel({
               <pre>{op.body}</pre>
             </div>
           ))}
+          {p.proposal.trash?.map((t) => (
+            <div key={t.documentId}>
+              <strong>
+                Move to Trash: {snapshot.documents.find((d) => d.id === t.documentId)?.title}
+              </strong>
+              <p>{t.reason}</p>
+            </div>
+          ))}
           {p.proposal.warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
           <div className="worker-controls">
             <Button
-              disabled={busy || !worker.connected || !p.proposal.operations.length}
+              disabled={
+                busy ||
+                !worker.connected ||
+                !(p.proposal.operations.length || p.proposal.trash?.length)
+              }
               onClick={() => void action(() => client.resolveProposal!(p.id, true))}
             >
               Accept changes

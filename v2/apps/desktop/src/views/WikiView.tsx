@@ -26,6 +26,7 @@ import { DocIcon, relativeTime } from '../components/helpers';
 import { Dialog } from '../components/ui/dialog';
 import { documentHref, documentMarkdownLink, resolveDocument, type WikiLinks } from '../wiki/links';
 import { documentSections } from '../wiki/structure';
+import { routeHref } from '../routing/paths';
 import { OfficialReferences } from '../components/OfficialReferences';
 import { DocumentContextMenu, DocumentMenuButton } from '../components/DocumentMenu';
 
@@ -35,12 +36,14 @@ export type RunAction = (action: () => Promise<unknown>, message?: string) => Pr
 export function WikiLibrary({
   snapshot,
   category,
+  tag,
   onOpen,
   onNew,
   onTrash,
 }: {
   snapshot: WorkspaceSnapshot;
   category: string | null;
+  tag: string | null;
   onOpen: (id: string) => void;
   onNew: () => void;
   onTrash: () => void;
@@ -50,6 +53,7 @@ export function WikiLibrary({
   const docs = snapshot.documents.filter(
     (d) =>
       (!category || d.category === category) &&
+      (!tag || d.tags?.includes(tag)) &&
       (filter !== 'favorites' || d.favorite) &&
       `${d.title} ${d.description}`.toLowerCase().includes(query.toLowerCase()),
   );
@@ -58,7 +62,7 @@ export function WikiLibrary({
       <div className="page-heading">
         <div>
           <div className="eyebrow">YOUR CONNECTED KNOWLEDGE</div>
-          <h1>{category || 'The wiki'}</h1>
+          <h1>{category || (tag ? `#${tag}` : 'The wiki')}</h1>
           <p>A home for the ideas you want to keep.</p>
         </div>
         <div className="library-actions">
@@ -114,6 +118,15 @@ export function WikiLibrary({
                 <span className="tiny-label">{doc.category}</span>
                 <h2>{doc.title}</h2>
                 <p>{doc.description}</p>
+                {!!doc.tags?.length && (
+                  <span className="tag-list">
+                    {doc.tags.slice(0, 3).map((t) => (
+                      <span className="tag-chip" key={t}>
+                        #{t}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 <div className="document-card-bottom">
                   <span>
                     <Link2 size={13} /> {doc.sourceIds.length} sources
@@ -240,6 +253,11 @@ export function WikiDocumentView({
             <span className="category-label">
               <span />
               {doc.category}
+              {doc.tags?.map((t) => (
+                <a className="tag-chip" key={t} href={routeHref({ view: 'wiki', tag: t })}>
+                  #{t}
+                </a>
+              ))}
             </span>
             <div className="flex gap-1">
               {!editing && (

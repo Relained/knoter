@@ -11,6 +11,7 @@ import type {
 import {
   DAILY_RUN_LIMIT,
   MAX_SOURCE_BYTES,
+  MAX_TAGS,
   PIPELINE,
   providerProfiles,
   type WorkerInfo,
@@ -34,6 +35,7 @@ import {
 } from './common.js';
 import { extract, validateWikiMarkdown, resolveWikiLinks } from './markdown.js';
 import { normalize, rank, snippet, terms } from './search.js';
+import { sameReference } from './references.js';
 
 export interface SourceRow {
   id: string;
@@ -45,7 +47,10 @@ export interface SourceRow {
   availability: string;
   detected_at: string;
   added_at: string;
+  missing_since: string | null;
 }
+/** A missing file becomes a removal after this grace, so moves and saves settle first. */
+export const REMOVAL_GRACE_MS = 120_000;
 export interface JobRow {
   id: string;
   source_id: string;
@@ -125,6 +130,22 @@ export function contextOf(data: { context?: AttemptContext; manifest?: LegacyMan
     readDocuments: Object.fromEntries(m.documents.map((d) => [d.id, d.revision])),
     references: m.references,
   } satisfies AttemptContext;
+}
+/**
+ * Tags as labels: NFKC, no leading '#', single spaces, at most 32 characters and MAX_TAGS per
+ * page. A tag matching an existing one apart from case takes the existing spelling, so the
+ * vocabulary converges instead of splitting into near-duplicates.
+ */
+export function normalizeTags(tags: string[], vocabulary: string[] = []) {
+  const known = new Map(vocabulary.map((t) => [t.toLocaleLowerCase(), t]));
+  const out: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.normalize('NFKC').replace(/^#+/, '').replace(/\s+/g, ' ').trim().slice(0, 32);
+    const key = tag.toLocaleLowerCase();
+    if (tag && !out.some((o) => o.toLocaleLowerCase() === key)) out.push(known.get(key) ?? tag);
+    if (out.length >= MAX_TAGS) break;
+  }
+  return out;
 }
 /** A visible link may be written with or without percent-encoding. */
 export function containsUrl(body: string, url: string) {
@@ -366,15 +387,40 @@ export class Store {
         'Unknown watched folder.',
       );
     const old = this.one<SourceRow>('SELECT * FROM sources WHERE path=?', input.path);
-    if (old && this.version(old.latest).hash === input.hash) {
+    const oldVersion = old ? this.version(old.latest) : undefined;
+    if (old && oldVersion!.hash === input.hash && !oldVersion!.removed) {
       // Every scan re-registers unchanged files; write only when something changed.
-      if (old.availability !== 'available' || (input.watchId && input.watchId !== old.watch_id))
+      if (
+        old.availability !== 'available' ||
+        old.missing_since ||
+        (input.watchId && input.watchId !== old.watch_id)
+      )
         this.db
           .prepare(
-            "UPDATE sources SET availability='available',detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
+            "UPDATE sources SET availability='available',missing_since=NULL,detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
           )
           .run(now(), input.watchId, old.id);
       return { sourceId: old.id, versionId: old.latest, duplicate: true };
+    }
+    if (!old && input.watchId) {
+      // A moved or renamed file has the same bytes as exactly one note that just went missing
+      // from this folder: keep that note's identity instead of removing and re-adding it.
+      const moved = this.all<SourceRow>(
+        'SELECT * FROM sources WHERE watch_id=? AND missing_since IS NOT NULL',
+        input.watchId,
+      ).filter((s) => {
+        const v = this.version(s.latest);
+        return !v.removed && v.hash === input.hash;
+      });
+      if (moved.length === 1) {
+        this.db
+          .prepare(
+            "UPDATE sources SET path=?,filename=?,availability='available',missing_since=NULL,detected_at=? WHERE id=?",
+          )
+          .run(input.path, input.filename, now(), moved[0].id);
+        this.event('Source moved', this.relPath({ ...moved[0], path: input.path }));
+        return { sourceId: moved[0].id, versionId: moved[0].latest, duplicate: true };
+      }
     }
     const sourceId = old?.id ?? uuid(),
       versionId = uuid();
@@ -390,12 +436,14 @@ export class Store {
     // Atomic replacement with identical bytes is safe even for A -> B -> A.
     atomicWrite(blob, bytes);
     return this.db.transaction(() => {
-      if (old)
+      if (old) {
         this.db
           .prepare(
-            "UPDATE sources SET latest=?,filename=?,availability='available',detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
+            "UPDATE sources SET latest=?,filename=?,availability='available',missing_since=NULL,detected_at=?,watch_id=coalesce(?,watch_id) WHERE id=?",
           )
           .run(versionId, input.filename, now(), input.watchId, sourceId);
+        if (oldVersion!.removed) this.restoreRemovedPages(sourceId);
+      }
       else
         this.db
           .prepare(
@@ -424,10 +472,124 @@ export class Store {
       this.db
         .prepare('UPDATE watches SET last_scan=?,error=? WHERE id=?')
         .run(now(), error, watchId);
-      for (const s of this.all<SourceRow>('SELECT * FROM sources WHERE watch_id=?', watchId)) {
-        const state = error ? 'unavailable' : paths.includes(s.path) ? 'available' : 'missing';
-        this.db.prepare('UPDATE sources SET availability=? WHERE id=?').run(state, s.id);
+      const rows = this.all<SourceRow>('SELECT * FROM sources WHERE watch_id=?', watchId);
+      // An unreadable folder (unmounted, renamed, denied) never counts as deleted notes.
+      if (error) {
+        this.db
+          .prepare("UPDATE sources SET availability='unavailable',missing_since=NULL WHERE watch_id=?")
+          .run(watchId);
+        return;
       }
+      const present = new Set(paths),
+        stamp = now(),
+        due: SourceRow[] = [];
+      for (const s of rows) {
+        if (this.searchable(s.latest).removed) continue;
+        if (present.has(s.path)) {
+          if (s.availability !== 'available' || s.missing_since)
+            this.db
+              .prepare("UPDATE sources SET availability='available',missing_since=NULL WHERE id=?")
+              .run(s.id);
+        } else if (!s.missing_since)
+          this.db
+            .prepare("UPDATE sources SET availability='missing',missing_since=? WHERE id=?")
+            .run(stamp, s.id);
+        else if (Date.now() - Date.parse(s.missing_since) >= REMOVAL_GRACE_MS) due.push(s);
+      }
+      const live = rows.filter((s) => !this.searchable(s.latest).removed).length;
+      const held = due.length > Math.max(10, Math.ceil(live * 0.25));
+      for (const s of due) this.tombstone(s, held);
+    })();
+  }
+  /** Record that a note is gone: a new version without content, then a removal job. */
+  private tombstone(s: SourceRow, held: boolean) {
+    const prev = this.version(s.latest),
+      versionId = uuid();
+    // The hash repeats the last content so backups and integrity checks keep working.
+    const evidence: EvidenceVersion = {
+      id: versionId,
+      sourceId: s.id,
+      version: prev.version + 1,
+      hash: prev.hash,
+      filename: prev.filename,
+      segments: [],
+      removed: true,
+    };
+    this.db
+      .prepare('INSERT INTO versions VALUES (?,?,?,?,?)')
+      .run(versionId, s.id, evidence.version, evidence.hash, JSON.stringify(evidence));
+    this.db.prepare('UPDATE sources SET latest=? WHERE id=?').run(versionId, s.id);
+    const jobId = this.enqueue(s.id, versionId);
+    if (held)
+      this.db
+        .prepare(
+          "UPDATE jobs SET status='needs_review',stage='mass removal',error=? WHERE id=?",
+        )
+        .run('Many notes disappeared at once. Retry to remove their wiki content.', jobId);
+    this.event(held ? 'Removal held for review' : 'Source removed', this.relPath(s));
+  }
+  /** A returning note brings back the pages knoter moved to Trash when it disappeared. */
+  private restoreRemovedPages(sourceId: string) {
+    for (const d of this.documents())
+      if (d.deletedBy === 'knoter' && d.sourceIds.includes(sourceId)) {
+        this.db
+          .prepare('UPDATE documents SET deleted_at=NULL,deleted_by=NULL,trash_reason=NULL WHERE id=?')
+          .run(d.id);
+        this.event('Restored with its source', d.title, d.id);
+      }
+  }
+  /**
+   * Settle a removal job's pages without a model where the outcome is certain: a page whose
+   * every source is gone moves to Trash (a protected one becomes a review proposal). Returns
+   * the pages that still need the worker: partly supported pages and hubs with subpages.
+   */
+  prepareRemoval(j: JobRow): string[] {
+    return this.db.transaction(() => {
+      this.lease(j);
+      const active = this.documents().filter((d) => !d.deletedAt);
+      const gone = (sourceId: string) => !!this.version(this.source(sourceId).latest).removed;
+      const remaining: string[] = [],
+        review: { documentId: string; expectedRevision: number; reason: string }[] = [];
+      const reason = `Its source note was deleted: ${this.relPath(this.source(j.source_id))}`;
+      for (const d of active.filter((d) => d.sourceIds.includes(j.source_id))) {
+        const hasChildren = active.some((c) => c.title.startsWith(`${d.title}/`));
+        if (!d.sourceIds.every(gone) || hasChildren) remaining.push(d.id);
+        else if (d.protected)
+          review.push({ documentId: d.id, expectedRevision: d.revision, reason });
+        else {
+          this.db
+            .prepare("UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?")
+            .run(now(), reason, d.id);
+          this.event('Moved to Trash', d.title, d.id);
+        }
+      }
+      if (review.length) {
+        const proposal: Proposal = {
+          outcome: 'needs_review',
+          summary: `${review.length} protected page(s) lost every source note. Accept to move them to Trash.`,
+          operations: [],
+          trash: review,
+          warnings: [],
+        };
+        this.db
+          .prepare('INSERT INTO proposals VALUES (?,?,?,?,NULL)')
+          .run(uuid(), j.id, JSON.stringify({ proposal, context: this.attemptContext(j, []) }), now());
+        this.event('Wiki proposal ready', proposal.summary);
+      }
+      if (!remaining.length) {
+        this.db
+          .prepare(
+            'UPDATE jobs SET status=?,stage=?,error=?,owner=NULL,lease_until=0 WHERE id=?',
+          )
+          .run(
+            review.length ? 'needs_review' : 'succeeded',
+            review.length ? 'removal review' : 'removed',
+            review.length ? 'Protected pages need review before removal.' : null,
+            j.id,
+          );
+        this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
+      }
+      return remaining;
     })();
   }
   retry(sourceId: string) {
@@ -547,7 +709,14 @@ export class Store {
       .prepare('UPDATE jobs SET lease_until=? WHERE id=? AND generation=?')
       .run(Date.now() + 45_000, j.id, j.generation);
   }
-  attemptContext(j: JobRow): AttemptContext {
+  /** Tags on active pages with their use counts, most used first. */
+  tagVocabulary() {
+    const counts = new Map<string, number>();
+    for (const d of this.documents())
+      if (!d.deletedAt) for (const t of d.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+  attemptContext(j: JobRow, required?: string[]): AttemptContext {
     const changed = this.verifiedVersion(j.version_id);
     const previous = this.one<{ id: string }>(
       'SELECT id FROM versions WHERE source_id=? AND version=?',
@@ -560,10 +729,12 @@ export class Store {
       generation: j.generation,
       changedVersionId: j.version_id,
       previousVersionId: previous?.id ?? null,
-      requiredDocumentIds: this.all<{ document_id: string }>(
-        'SELECT document_id FROM dependencies WHERE source_id=?',
-        j.source_id,
-      ).map((r) => r.document_id),
+      requiredDocumentIds:
+        required ??
+        this.all<{ document_id: string }>(
+          'SELECT document_id FROM dependencies WHERE source_id=?',
+          j.source_id,
+        ).map((r) => r.document_id),
       readVersions: [],
       readDocuments: {},
     };
@@ -642,7 +813,10 @@ export class Store {
         })),
     }));
   }
-  private docCache = new Map<string, { title: string; description: string; body: string }>();
+  private docCache = new Map<
+    string,
+    { title: string; description: string; tags: string; body: string }
+  >();
   /** Matching pages, Trash tombstones included; an empty query lists recent page titles. */
   searchDocuments(query: string, limit = 12) {
     const docs = this.documents();
@@ -651,6 +825,7 @@ export class Store {
       title: d.title,
       description: d.description,
       category: d.category,
+      tags: d.tags ?? [],
       revision: d.revision,
       protected: d.protected,
       deletedAt: d.deletedAt ?? null,
@@ -668,12 +843,18 @@ export class Store {
         const key = `${d.id}:${d.revision}`;
         let n = this.docCache.get(key);
         if (!n) {
-          n = { title: normalize(d.title), description: normalize(d.description), body: normalize(d.body) };
+          n = {
+            title: normalize(d.title),
+            description: normalize(d.description),
+            tags: normalize((d.tags ?? []).join('\n')),
+            body: normalize(d.body),
+          };
           this.docCache.set(key, n);
         }
         return [
           { text: n.title, weight: 4 },
           { text: n.description, weight: 2 },
+          { text: n.tags, weight: 2 },
           { text: n.body, weight: 1 },
         ];
       },
@@ -861,9 +1042,7 @@ export class Store {
       validateWikiMarkdown(op.body);
       resolveWikiLinks(op.body, targets);
       for (const c of op.referenceCitations ?? []) {
-        const reference = context.references?.find(
-          (r) => r.path.toLowerCase() === c.path.toLowerCase(),
-        );
+        const reference = context.references?.find((r) => sameReference(r.path, c.path));
         requireThat(
           reference && reference.segments.some((s) => s.id === c.segmentId),
           'EVIDENCE',
@@ -964,7 +1143,8 @@ export class Store {
           'Supporting evidence changed during generation.',
         );
       this.validateProposal(proposal, context);
-      if (proposal.outcome === 'no_change' && !this.hasActiveWiki(j.source_id)) {
+      const removal = !!this.version(j.version_id).removed;
+      if (proposal.outcome === 'no_change' && !removal && !this.hasActiveWiki(j.source_id)) {
         proposal = {
           ...proposal,
           outcome: 'needs_review',
@@ -1023,6 +1203,7 @@ export class Store {
       ...this.documents().filter((d) => !operations.some((o) => o.documentId === d.id)),
       ...operations.map((o) => ({ id: o.assignedId, title: o.title })),
     ];
+    const vocabulary = this.tagVocabulary().map(([tag]) => tag);
     for (const op of operations) {
       const old = op.documentId ? this.document(op.documentId) : undefined;
       const body = resolveWikiLinks(op.body, targets);
@@ -1040,7 +1221,7 @@ export class Store {
         const segmentIds = [
           ...new Set(
             (op.referenceCitations ?? [])
-              .filter((c) => c.path.toLowerCase() === reference.path.toLowerCase())
+              .filter((c) => sameReference(c.path, reference.path))
               .map((c) => c.segmentId),
           ),
         ];
@@ -1063,6 +1244,8 @@ export class Store {
         revision: (old?.revision ?? 0) + 1,
         updatedAt: now(),
         protected: old?.protected ?? human,
+        // Proposals saved before tags existed keep the page's tags.
+        tags: normalizeTags(op.tags ?? old?.tags ?? [], vocabulary),
       };
       this.recordRevision(doc, human ? 'You' : 'knoter', op.reason, citations);
     }
@@ -1084,7 +1267,7 @@ export class Store {
       const j = this.job(r.job_id);
       if (accept) {
         requireThat(
-          proposal.operations.length > 0,
+          proposal.operations.length > 0 || (proposal.trash?.length ?? 0) > 0,
           'EVIDENCE',
           'This result has no changes to accept.',
         );
@@ -1093,6 +1276,18 @@ export class Store {
           'CONFLICT',
           'Proposal uses an older source. Retry the latest source.',
         );
+        for (const t of proposal.trash ?? []) {
+          const doc = this.document(t.documentId);
+          requireThat(
+            !doc.deletedAt && doc.revision === t.expectedRevision,
+            'CONFLICT',
+            'The page changed after this removal was proposed.',
+          );
+          this.db
+            .prepare("UPDATE documents SET deleted_at=?,deleted_by='knoter',trash_reason=? WHERE id=?")
+            .run(now(), t.reason, t.documentId);
+          this.event('Moved to Trash', doc.title, doc.id);
+        }
         for (const c of proposal.operations.flatMap((o) => o.citations))
           requireThat(
             this.source(c.sourceId).latest === c.versionId,
@@ -1104,9 +1299,11 @@ export class Store {
         this.db.prepare('UPDATE sources SET processed=? WHERE id=?').run(j.version_id, j.source_id);
       }
       this.db.prepare('UPDATE proposals SET resolved_at=? WHERE id=?').run(now(), id);
-      this.db
-        .prepare('UPDATE jobs SET status=?,stage=?,error=NULL WHERE id=?')
-        .run(accept ? 'succeeded' : 'cancelled', accept ? 'accepted' : 'rejected', r.job_id);
+      // A removal job can also have run the worker; only a job waiting on review changes.
+      if (j.status === 'needs_review')
+        this.db
+          .prepare('UPDATE jobs SET status=?,stage=?,error=NULL WHERE id=?')
+          .run(accept ? 'succeeded' : 'cancelled', accept ? 'accepted' : 'rejected', r.job_id);
       this.event(accept ? 'Proposal accepted' : 'Proposal rejected', proposal.summary);
     })();
   }
@@ -1143,7 +1340,7 @@ export class Store {
         latestVersionId: s.latest,
         latestVersion: v.version,
         processedVersionId: s.processed,
-        availability: s.availability,
+        availability: this.searchable(s.latest).removed ? 'removed' : s.availability,
         watchId: s.watch_id,
         detectedAt: s.detected_at,
         relPath: this.relPath(s),

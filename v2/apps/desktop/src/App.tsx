@@ -104,7 +104,7 @@ export function App({ client }: { client: KnoterClient }) {
   const routerNavigate = useNavigate();
   const blocker = useBlocker(() => dirtyCheck.current?.() ?? false);
   const historyNav = useNavigationHistory();
-  const { view, documentId, category = null, focusId } = useWorkspaceRoute();
+  const { view, documentId, category = null, tag = null, focusId } = useWorkspaceRoute();
   const fileInput = useRef<HTMLInputElement>(null);
   const searchSelection = useRef<HTMLButtonElement>(null);
   const run: RunAction = useCallback(async (action, message) => {
@@ -292,10 +292,16 @@ export function App({ client }: { client: KnoterClient }) {
     view === 'wiki' && documentId ? snapshot.documents.find((d) => d.id === documentId) : undefined;
   const source = snapshot.sources.find((s) => s.id === sourceId);
   const categories = [...new Set(snapshot.documents.map((d) => d.category))];
+  const tagCounts = new Map<string, number>();
+  for (const d of snapshot.documents)
+    for (const t of d.tags ?? []) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+  const tags = [...tagCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const currentLabel = navigation.find((n) => n.id === view)!.label;
   const resultDocs = snapshot.documents
     .filter((d) =>
-      `${d.title} ${d.category} ${d.body}`.toLowerCase().includes(search.toLowerCase()),
+      `${d.title} ${d.category} ${(d.tags ?? []).join(' ')} ${d.body}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
     )
     .slice(0, 7);
   const results = [
@@ -473,6 +479,24 @@ export function App({ client }: { client: KnoterClient }) {
             </button>
           ))}
         </div>
+        {tags.length > 0 && (
+          <div className="sidebar-group">
+            <div className="sidebar-label">
+              TAGS<span>{tags.length}</span>
+            </div>
+            {tags.slice(0, 12).map(([name, count]) => (
+              <button
+                className={`collection-link ${tag === name ? 'note-selected' : ''}`}
+                key={name}
+                onClick={() => goTo({ view: 'wiki', tag: name })}
+              >
+                <i className="tag-hash">#</i>
+                <span>{name}</span>
+                <small>{count}</small>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="sidebar-bottom">
           <button className="workspace-pulse" onClick={() => setModal('activity')}>
             <span className="pulse-dot" />
@@ -742,7 +766,10 @@ export function App({ client }: { client: KnoterClient }) {
               <div>
                 <strong>{item.title}</strong>
                 <small>
-                  {item.category} · Deleted {relativeTime(item.deletedAt)}
+                  {item.category} ·{' '}
+                  {item.deletedBy === 'knoter' ? 'Moved by knoter' : 'Deleted'}{' '}
+                  {relativeTime(item.deletedAt)}
+                  {item.trashReason ? ` · ${item.trashReason}` : ''}
                 </small>
               </div>
               <Button

@@ -8,7 +8,9 @@ import { z } from 'zod';
 import {
   CLI_VERSION,
   EVIDENCE_TOOLS,
+  MAX_TAGS,
   PIPELINE,
+  tagSchema,
   providerProfiles,
   proposalSchema,
   operationSchema,
@@ -22,7 +24,7 @@ import {
 import { Store, type JobRow, type AttemptContext } from './store.js';
 import { composeSkill, type WorkerSkill } from './skill.js';
 import { AppError, now, uuid, secureDir, requireThat } from './common.js';
-import { fetchMdnReference, mdnLocation } from './references.js';
+import { fetchReference, referenceTarget } from './references.js';
 import { checkClaude, claudeSession } from './claude.js';
 const exec = promisify(execFile);
 export type CliInfo = WorkerInfo['cli'];
@@ -161,6 +163,7 @@ export function proposalSchemaForVersions(versionIds: string[]) {
         operationSchema.extend({
           citations: z.array(citation).max(300),
           referenceCitations: z.array(referenceCitationSchema).max(200),
+          tags: z.array(tagSchema).max(MAX_TAGS),
         }),
       )
       .max(12),
@@ -184,7 +187,7 @@ export function workerArgs(input: {
 }) {
   const config: Record<string, unknown> = {
     approval_policy: 'never',
-    web_search: 'disabled',
+    web_search: 'live',
     model_reasoning_effort: 'low',
     project_doc_max_bytes: 0,
     model_instructions_file: input.skillPath,
@@ -247,13 +250,14 @@ function codexSession(input: Parameters<typeof workerArgs>[0]): CliSession {
       if (event.type === 'turn.completed') session.usage = event.usage ?? null;
       if (event.type === 'error' || event.type === 'turn.failed')
         session.tail = JSON.stringify(event).slice(-4000);
-      if (item?.type === 'mcp_tool_call') {
+      if (item?.type === 'web_search') session.tools.push('web_search');
+      else if (item?.type === 'mcp_tool_call') {
         session.tools.push(`${item.server}.${item.tool}`);
         if (item.server !== 'wiki' || !evidenceToolNames.includes(item.tool))
           return new AppError('TOOLS', 'Unexpected worker tool.');
       } else if (
         item &&
-        ['command_execution', 'file_change', 'web_search', 'collab_tool_call'].includes(item.type)
+        ['command_execution', 'file_change', 'collab_tool_call'].includes(item.type)
       )
         return new AppError('TOOLS', `Unexpected worker capability: ${item.type}`);
       return null;
@@ -312,21 +316,21 @@ export class Worker {
       .parse(payload);
     const context = a.context;
     if (input.tool === 'reference_read') {
-      const { path } = z
-        .object({ path: z.string().max(240) })
+      const { target } = z
+        .object({ target: z.string().min(1).max(2000) })
         .strict()
         .parse(input.args);
-      mdnLocation(path);
-      const key = path.toLowerCase();
+      referenceTarget(target);
+      const key = target.trim().toLowerCase();
       if (!a.referenceReads.has(key)) {
         requireThat(
-          a.referenceReads.size < 8,
+          a.referenceReads.size < 10,
           'LIMIT',
-          'An attempt may fetch at most eight official references.',
+          'An attempt may read at most ten references.',
         );
         a.referenceReads.set(
           key,
-          fetchMdnReference(path).then((reference) => {
+          fetchReference(target).then((reference) => {
             this.store.lease(a.job);
             requireThat(this.active === a, 'LEASE', 'Reference arrived after the attempt ended.');
             this.store.set(`reference:${reference.id}`, reference);
@@ -414,9 +418,16 @@ export class Worker {
       'CONFIG',
       'Queued skill or pipeline version does not match this worker.',
     );
-    const context = this.store.attemptContext(job),
-      changed = this.store.version(job.version_id),
-      changedSource = this.store.source(job.source_id),
+    const changed = this.store.version(job.version_id),
+      changedSource = this.store.source(job.source_id);
+    // A removal settles certain pages itself; the worker only sees what remains.
+    const remaining = changed.removed ? this.store.prepareRemoval(job) : undefined;
+    if (remaining && !remaining.length) return;
+    const context = this.store.attemptContext(job, remaining),
+      // A removed note has no text; its last content gives the search hints.
+      basis = changed.removed && context.previousVersionId
+        ? this.store.version(context.previousVersionId)
+        : changed,
       attemptId = uuid(),
       cwd = join(this.store.dir, 'attempts', attemptId);
     secureDir(cwd);
@@ -427,7 +438,7 @@ export class Worker {
       instructions = join(cwd, 'instructions.md'),
       attemptSchema = proposalSchemaForVersions(this.store.latestVersionIds());
     writeFileSync(schema, JSON.stringify(z.toJSONSchema(attemptSchema)), { mode: 0o600 });
-    const skill = composeSkill(this.skill, skillParts(changed));
+    const skill = composeSkill(this.skill, changed.removed ? ['removal'] : skillParts(changed));
     const capability = randomBytes(32).toString('hex');
     if (!this.store.startAttempt(job)) return;
     this.store.db
@@ -446,15 +457,15 @@ export class Worker {
       );
     // The job carries pointers and search hints, not the corpus: the worker reads on demand.
     const hintQuery = [
-      changed.filename.replace(/\.md$/i, ''),
-      ...new Set(changed.segments.map((s) => s.heading).filter(Boolean)),
+      basis.filename.replace(/\.md$/i, ''),
+      ...new Set(basis.segments.map((s) => s.heading).filter(Boolean)),
     ]
       .slice(0, 8)
       .join(' ');
     const active = this.store.documents().filter((d) => !d.deletedAt);
     const jobData = {
       job: {
-        kind: 'source_changed',
+        kind: changed.removed ? 'source_removed' : 'source_changed',
         sourceId: job.source_id,
         versionId: job.version_id,
         previousVersionId: context.previousVersionId,
@@ -464,7 +475,14 @@ export class Worker {
       },
       requiredDocuments: context.requiredDocumentIds.map((id) => {
         const d = this.store.document(id);
-        return { id, title: d.title, revision: d.revision, protected: d.protected, deletedAt: d.deletedAt ?? null };
+        return {
+          id,
+          title: d.title,
+          revision: d.revision,
+          protected: d.protected,
+          tags: d.tags ?? [],
+          deletedAt: d.deletedAt ?? null,
+        };
       }),
       hints: {
         documents: this.store.searchDocuments(hintQuery, 8).filter((d) => !d.deletedAt),
@@ -475,6 +493,8 @@ export class Worker {
           .map(({ snippets: _snippets, ...r }) => r),
       },
       categories: [...new Set(active.map((d) => d.category))],
+      // Existing tags with use counts, so the vocabulary is reused rather than split.
+      tags: this.store.tagVocabulary().slice(0, 80),
       pageCount: active.length,
     };
     const priorFailure = this.store.one<{ error: string }>(
@@ -606,7 +626,7 @@ ${priorFailure ? `The previous attempt was rejected: ${JSON.stringify(priorFailu
       if (failure) throw failure;
       const proposal = proposalSchema.parse(session.finish(code)) as Proposal;
       requireThat(
-        context.readVersions.includes(job.version_id),
+        changed.removed || context.readVersions.includes(job.version_id),
         'EVIDENCE',
         'Worker did not read the changed source.',
       );
