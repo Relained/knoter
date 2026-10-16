@@ -1,7 +1,7 @@
 import { BookOpen, Undo2 } from 'lucide-react';
 import { Navigate, useMatches, useOutletContext, useParams, useSearchParams } from 'react-router';
 import type { KnoterClient, View, WorkspaceSnapshot } from '@knoter/contracts';
-import type { GraphForces, GraphView as GraphViewSetting } from '@knoter/contracts/native';
+import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { WikiDocumentView, WikiLibrary, type RunAction } from '../views/WikiView';
 import { TasksView } from '../views/TasksView';
@@ -30,7 +30,6 @@ export interface WorkspaceContext {
   onImport: () => void;
   onRestore: (id: string) => Promise<void>;
   onForces: (forces: GraphForces) => void;
-  onGraphView: (view: GraphViewSetting) => void;
   documentPending: boolean;
   rewriteBinding: string;
 }
@@ -56,8 +55,6 @@ export function HomeRoute() {
       links={context.links}
       forces={context.snapshot.settings.graph}
       onForces={context.onForces}
-      view={context.snapshot.settings.graphView}
-      onView={context.onGraphView}
       onOpen={context.onOpen}
       onNew={context.onNew}
       onLibrary={() => context.onView('wiki')}
@@ -160,8 +157,6 @@ export function GraphRoute() {
       focus={focus}
       forces={context.snapshot.settings.graph}
       onForces={context.onForces}
-      view={context.snapshot.settings.graphView}
-      onView={context.onGraphView}
       onOpen={context.onOpen}
       onGlobal={() => context.onView('home')}
     />

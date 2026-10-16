@@ -11,10 +11,6 @@
   --graph-6: #b5739b;
   --graph-7: #8a9452;
   --graph-edge: #c9d1c6;
-  --graph-label-halo: #fbfcfa;
-  --graph-space-inner: #ffffff;
-  --graph-space-mid: #f5f7f3;
-  --graph-space-outer: #e8ece5;
   --danger: #c42b1c;
 }
 :root[data-theme='dark'] {
@@ -27,10 +23,6 @@
   --graph-6: #d293b8;
   --graph-7: #adb874;
   --graph-edge: #5d6b62;
-  --graph-label-halo: #151b17;
-  --graph-space-inner: #222b25;
-  --graph-space-mid: #171d19;
-  --graph-space-outer: #0e1210;
 }
 
 /* ---------- Grid ---------- */
@@ -1587,59 +1579,7 @@ kbd {
   }
 }
 
-/* ---------- 3D graph ---------- */
-.graph-canvas.graph-3d {
-  background: radial-gradient(
-    ellipse 70% 75% at 50% 55%,
-    var(--graph-space-inner) 0%,
-    var(--graph-space-mid) 55%,
-    var(--graph-space-outer) 100%
-  );
-}
-.graph-3d > canvas {
-  display: block;
-  cursor: grab;
-  touch-action: none;
-  outline: none;
-}
-.graph-3d > canvas:active {
-  cursor: grabbing;
-}
-.graph-3d > canvas:focus-visible {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
-}
-.graph-tooltip {
-  position: absolute;
-  z-index: 5;
-  top: 0;
-  left: 0;
-  max-width: 280px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--background) 94%, transparent);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 8px 26px #1a2a1e1f;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.graph-tooltip.visible {
-  opacity: 1;
-}
-.graph-tooltip strong {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.graph-tooltip span {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
+/* ---------- Central notes ---------- */
 .graph-hubs {
   position: absolute;
   z-index: 4;
@@ -1701,11 +1641,6 @@ kbd {
   width: 10px;
   height: 10px;
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent);
-}
-.graph-controls .graph-mode-toggle {
-  min-width: 30px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
 }
 @media (max-width: 760px) {
   .graph-hubs {

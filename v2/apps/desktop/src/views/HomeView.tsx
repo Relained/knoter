@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Plus, Search } from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces, GraphView as GraphViewSetting } from '@knoter/contracts/native';
+import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { DocIcon } from '../components/helpers';
-import { WikiGraph } from '../graph/WikiGraph';
+import { GraphCanvas } from '../graph/GraphCanvas';
 import type { WikiLinks } from '../wiki/links';
 
 /** Rank by title match first, then category, tags, and body. */
@@ -37,8 +37,6 @@ export function HomeView({
   links,
   forces,
   onForces,
-  view,
-  onView,
   onOpen,
   onNew,
   onLibrary,
@@ -47,8 +45,6 @@ export function HomeView({
   links: WikiLinks;
   forces?: GraphForces;
   onForces: (forces: GraphForces) => void;
-  view?: GraphViewSetting;
-  onView: (view: GraphViewSetting) => void;
   onOpen: (id: string) => void;
   onNew: () => void;
   onLibrary: () => void;
@@ -138,9 +134,7 @@ export function HomeView({
           </Button>
         </div>
       </div>
-      <WikiGraph
-        view={view}
-        onView={onView}
+      <GraphCanvas
         className="graph-fill"
         insetTop={110}
         documents={documents}

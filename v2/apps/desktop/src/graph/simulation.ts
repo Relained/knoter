@@ -9,7 +9,7 @@ import {
 } from './hubs';
 
 /**
- * The flat map's layout: the 3D sphere's shape on a disc. Forces work as in d3-force,
+ * The graph's layout, a disc around the wiki's central notes. Forces work as in d3-force,
  * which Obsidian's graph also follows (Barnes–Hut repulsion, springs, collision that
  * keeps labels clear), and shape the result: the most central note sits at the center,
  * the other central notes on an inner ring, every other note radiates outward from its

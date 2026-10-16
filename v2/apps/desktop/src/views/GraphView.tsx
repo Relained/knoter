@@ -1,9 +1,9 @@
 import { BookOpen, Network } from 'lucide-react';
 import { useState } from 'react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces, GraphView as GraphViewSetting } from '@knoter/contracts/native';
+import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
-import { WikiGraph } from '../graph/WikiGraph';
+import { GraphCanvas } from '../graph/GraphCanvas';
 import type { WikiLinks } from '../wiki/links';
 
 /** The local graph: notes within one to three links of a focus note. */
@@ -13,8 +13,6 @@ export function GraphView({
   focus,
   forces,
   onForces,
-  view,
-  onView,
   onOpen,
   onGlobal,
 }: {
@@ -23,8 +21,6 @@ export function GraphView({
   focus: WikiDocument;
   forces?: GraphForces;
   onForces: (forces: GraphForces) => void;
-  view?: GraphViewSetting;
-  onView: (view: GraphViewSetting) => void;
   onOpen: (id: string) => void;
   onGlobal: () => void;
 }) {
@@ -57,9 +53,7 @@ export function GraphView({
           </Button>
         </div>
       </div>
-      <WikiGraph
-        view={view}
-        onView={onView}
+      <GraphCanvas
         className="graph-fill"
         documents={documents}
         edges={links.edges}

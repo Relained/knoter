@@ -9,7 +9,6 @@ import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
-  type ReactNode,
 } from 'react';
 import { Focus, Minus, Plus, SlidersHorizontal } from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
@@ -118,7 +117,6 @@ export function GraphCanvas({
   onOpen,
   className = '',
   insetTop = 0,
-  modeToggle,
 }: {
   documents: WikiDocument[];
   edges: WikiEdge[];
@@ -131,8 +129,6 @@ export function GraphCanvas({
   className?: string;
   /** Height covered by an overlay at the top, such as the home search field. */
   insetTop?: number;
-  /** Switches to the 3D view; shown with the zoom controls. */
-  modeToggle?: ReactNode;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -544,7 +540,6 @@ export function GraphCanvas({
         >
           <SlidersHorizontal />
         </Button>
-        {modeToggle}
       </div>
       {panel && (
         <ForcesPanel

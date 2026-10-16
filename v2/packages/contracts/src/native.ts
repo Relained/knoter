@@ -88,10 +88,6 @@ export const graphForces = z
   })
   .strict();
 export type GraphForces = z.infer<typeof graphForces>;
-/** How the graph is drawn: the 3D sphere (default) or the flat 2D map. */
-export const graphView = z.object({ mode: z.enum(['2d', '3d']), rotate: z.boolean() }).strict();
-export type GraphView = z.infer<typeof graphView>;
-export const defaultGraphView: GraphView = { mode: '3d', rotate: true };
 /** Shortcut overrides: command ID → binding such as `Mod+Shift+K`, or '' to unbind. */
 export const shortcutMap = z
   .record(
@@ -112,7 +108,6 @@ export const settingsPatch = z
     supplementRatio: supplementRatio.optional(),
     shortcuts: shortcutMap.optional(),
     graph: graphForces.optional(),
-    graphView: graphView.optional(),
   })
   .strict();
 export const commands = {

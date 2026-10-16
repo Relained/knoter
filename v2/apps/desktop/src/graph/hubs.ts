@@ -9,7 +9,7 @@ export interface GraphStructure {
   adjacency: Map<string, string[]>;
   /** PageRank scaled so the most central note is 1. */
   rank: Map<string, number>;
-  /** Most central first; the first is the core of the sphere. */
+  /** Most central first; the first sits in the middle of the layout. */
   hubs: string[];
   /** The hub each note radiates from, or null when no hub reaches it. */
   hubOf: Map<string, string | null>;
@@ -88,7 +88,7 @@ export function analyzeGraph(
   return { degree, adjacency, rank, hubs, hubOf, hops };
 }
 
-/** Where a note sits in the hub-centered layout, shared by the 2D and 3D views. */
+/** Where a note sits in the hub-centered layout. */
 export type Role = 'core' | 'hub' | 'member' | 'loose' | 'orphan';
 export function roleOf(structure: GraphStructure, id: string): Role {
   if (id === structure.hubs[0]) return 'core';
