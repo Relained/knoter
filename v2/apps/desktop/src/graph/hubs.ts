@@ -87,3 +87,26 @@ export function analyzeGraph(
   }
   return { degree, adjacency, rank, hubs, hubOf, hops };
 }
+
+/** Where a note sits in the hub-centered layout, shared by the 2D and 3D views. */
+export type Role = 'core' | 'hub' | 'member' | 'loose' | 'orphan';
+export function roleOf(structure: GraphStructure, id: string): Role {
+  if (id === structure.hubs[0]) return 'core';
+  if (structure.hubs.includes(id)) return 'hub';
+  if (!structure.degree.get(id)) return 'orphan';
+  return structure.hubOf.get(id) ? 'member' : 'loose';
+}
+/** Central notes are drawn larger, the core most of all. */
+export const roleScale = (role: Role) => (role === 'core' ? 1.7 : role === 'hub' ? 1.35 : 1);
+
+/** A repeatable pseudo-random stream per note, so the layout is the same each visit. */
+export function seededRandom(id: string) {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}

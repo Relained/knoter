@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
@@ -18,6 +19,7 @@ import { DocumentContextMenu } from '../components/DocumentMenu';
 import { documentHref, type WikiEdge } from '../wiki/links';
 import { defaultForces, ForceSimulation } from './simulation';
 import {
+  CentralNotes,
   ForcesPanel,
   GraphLegend,
   PALETTE_SIZE,
@@ -85,7 +87,17 @@ const GraphNode = memo(function GraphNode({
             arrange.
           </title>
           <circle className="node-halo" r={radius + 6} />
-          <circle className="node-dot" r={radius} />
+          <circle
+            className="node-dot"
+            r={radius}
+            style={
+              {
+                '--node-r': `${radius}px`,
+                // On screen a note never shrinks below this, central notes most of all.
+                '--node-min': `${Math.min(10, 1.8 + Math.sqrt(degree) * 0.9)}px`,
+              } as CSSProperties
+            }
+          />
           <text y={radius + 4} textAnchor="middle" dominantBaseline="hanging">
             {label.length > 34 ? `${label.slice(0, 32)}…` : label}
           </text>
@@ -161,9 +173,8 @@ export function GraphCanvas({
       localForces,
       known,
       new Map(visible.map((d) => [d.id, d.title.split('/').at(-1)!])),
+      focusId,
     );
-    const focusNode = focusId ? sim.byId.get(focusId) : undefined;
-    if (focusNode) Object.assign(focusNode, { x: 0, y: 0, fx: 0, fy: 0 });
     const reused = sim.nodes.filter((n) => known.has(n.id)).length;
     if (reused > sim.nodes.length * 0.8) sim.alpha = 0.3;
     else sim.warm(400, Math.min(160, 30 + sim.nodes.length / 4));
@@ -181,6 +192,7 @@ export function GraphCanvas({
     svg.current?.classList.toggle('labels-hidden', k < LABEL_ZOOM);
     // Pinned labels keep a readable size on screen while zoomed out.
     svg.current?.style.setProperty('--label-size', `${Math.max(11, 10 / k)}px`);
+    svg.current?.style.setProperty('--zoom', String(k));
     setZoom((current) => (Math.abs(current - k) > 0.004 ? k : current));
   }, []);
 
@@ -360,13 +372,11 @@ export function GraphCanvas({
     }
     return map;
   }, [edges]);
-  // The best-connected notes keep their labels when zoomed out, like map capitals.
-  const hubs = useMemo(() => {
-    const ranked = simulation.nodes.filter((n) => n.degree > 1).sort((a, b) => b.degree - a.degree);
-    return new Set(
-      ranked.slice(0, Math.min(10, Math.max(3, Math.ceil(ranked.length * 0.03)))).map((n) => n.id),
-    );
-  }, [simulation]);
+  // Central notes keep their labels when zoomed out, like map capitals.
+  const hubs = useMemo(() => new Set(simulation.structure.hubs), [simulation]);
+  const hubDocs = simulation.structure.hubs
+    .map((id) => visible.find((d) => d.id === id))
+    .filter((d): d is WikiDocument => !!d);
   const near = hovered ? (neighbors.get(hovered) ?? new Set<string>()) : null;
 
   return (
@@ -490,6 +500,13 @@ export function GraphCanvas({
         </g>
       </svg>
       {!visible.length && <div className="graph-empty">Create a note to start your graph.</div>}
+      <CentralNotes
+        notes={hubDocs}
+        colorOf={(doc) => Math.max(0, categories.indexOf(doc.category)) % PALETTE_SIZE}
+        top={insetTop + 12}
+        onHover={setHovered}
+        onOpen={onOpen}
+      />
       <GraphLegend categories={categories} />
       <div className="graph-controls">
         <Button

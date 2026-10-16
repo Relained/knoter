@@ -1414,6 +1414,7 @@ kbd {
   outline: none;
 }
 .graph-node .node-dot {
+  r: max(var(--node-r), calc(var(--node-min) / var(--zoom, 1)));
   fill: currentColor;
   stroke: var(--panel);
   stroke-width: 1.5;

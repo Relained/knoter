@@ -344,7 +344,8 @@ User refinements from 2026-10-16 replace parts of the layout above:
 - The graph is a 3D sphere by default, with the flat map one click away. Central
   notes are chosen automatically; the most central is the core, the others sit on an
   inner shell, the rest radiate outward from their nearest central note, and notes
-  without links form the outer shell. It is drawn on a 2D canvas with an own
+  without links form the outer shell. The flat map uses the same arrangement on a disc
+  (user request, 2026-10-16). It is drawn on a 2D canvas with an own
   perspective camera instead of a WebGL library (three.js would add about 600 kB);
   revisit that if wikis outgrow a few thousand notes.
 

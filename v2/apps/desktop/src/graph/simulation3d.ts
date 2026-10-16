@@ -1,5 +1,12 @@
 import type { GraphForces } from '@knoter/contracts/native';
-import { analyzeGraph, type GraphStructure } from './hubs';
+import {
+  analyzeGraph,
+  roleOf,
+  roleScale,
+  seededRandom,
+  type GraphStructure,
+  type Role,
+} from './hubs';
 import { defaultForces, nodeRadius } from './simulation';
 
 /**
@@ -11,7 +18,6 @@ import { defaultForces, nodeRadius } from './simulation';
  * sphere; the core's own notes form layers around it. Notes no hub reaches settle on an
  * outer shell that follows the petals as they grow, so nothing is clamped to a size.
  */
-export type Role = 'core' | 'hub' | 'member' | 'loose' | 'orphan';
 export interface Node3D {
   id: string;
   x: number;
@@ -43,17 +49,6 @@ const THETA2 = 0.81;
 const GRAVITY = 0.004;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
-/** A repeatable pseudo-random stream per note, so the layout is the same each visit. */
-function random(id: string) {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
-  return () => {
-    h = Math.imul(h ^ (h >>> 15), 2246822507);
-    h = Math.imul(h ^ (h >>> 13), 3266489909);
-    h ^= h >>> 16;
-    return (h >>> 0) / 4294967296;
-  };
-}
 function direction(next: () => number): Point3 {
   const z = next() * 2 - 1;
   const t = next() * Math.PI * 2;
@@ -201,20 +196,11 @@ export class ForceSimulation3D {
     focusId?: string,
   ) {
     const structure = analyzeGraph(ids, edges, focusId);
-    const [core, ...hubs] = structure.hubs;
+    const hubs = structure.hubs.slice(1);
     const nodes: Node3D[] = ids.map((id) => {
       const degree = structure.degree.get(id)!;
-      const role: Role =
-        id === core
-          ? 'core'
-          : hubs.includes(id)
-            ? 'hub'
-            : !degree
-              ? 'orphan'
-              : structure.hubOf.get(id)
-                ? 'member'
-                : 'loose';
-      const scale = role === 'core' ? 1.7 : role === 'hub' ? 1.35 : 1;
+      const role = roleOf(structure, id);
+      const scale = roleScale(role);
       return {
         id,
         x: 0,
@@ -239,25 +225,31 @@ export class ForceSimulation3D {
       const hub = structure.hubOf.get(n.id);
       n.hub = hub && hub !== n.id ? byId.get(hub)! : null;
     }
-    // Seed the shape: core, hubs on the inner shell, members around their hub, and
-    // unreached notes on the outer shell. Known notes keep their last position.
+    // Seed the shape: core, hubs on the inner shell, members out along their hub's ray,
+    // and unreached notes on the outer shell. Notes seen before keep their place, and
+    // new notes start in their own layer.
+    const known = (n: Node3D) => {
+      const p = previous?.get(n.id);
+      if (p) Object.assign(n, { x: p.x, y: p.y, z: p.z });
+      return !!p;
+    };
     hubs.forEach((id, i) => {
+      const hub = byId.get(id)!;
+      if (known(hub)) return;
       const d = fibonacci(i, hubs.length);
-      Object.assign(byId.get(id)!, {
-        x: d.x * sim.hubShell,
-        y: d.y * sim.hubShell,
-        z: d.z * sim.hubShell,
-      });
+      Object.assign(hub, { x: d.x * sim.hubShell, y: d.y * sim.hubShell, z: d.z * sim.hubShell });
     });
     const outer = nodes.filter((n) => n.role === 'orphan' || n.role === 'loose');
     outer.forEach((n, i) => {
+      if (known(n)) return;
       const d = fibonacci(i, outer.length);
       const r = sim.shell * (n.role === 'loose' ? 0.9 : 1);
       Object.assign(n, { x: d.x * r, y: d.y * r, z: d.z * r });
     });
+    if (structure.hubs[0]) known(byId.get(structure.hubs[0])!);
     for (const n of nodes) {
-      if (n.role !== 'member') continue;
-      const d = direction(random(n.id));
+      if (n.role !== 'member' || known(n)) continue;
+      const d = direction(seededRandom(n.id));
       const hub = n.hub!;
       const hr = Math.hypot(hub.x, hub.y, hub.z);
       // Around the core, a shell per layer; elsewhere, out along the hub's ray.
@@ -270,16 +262,6 @@ export class ForceSimulation3D {
         z: base.z * r + d.z * spread,
       });
     }
-    if (previous?.size)
-      for (const n of nodes) {
-        const p = previous.get(n.id);
-        if (p) Object.assign(n, { x: p.x, y: p.y, z: p.z });
-        else if (n.hub && previous.has(n.hub.id)) {
-          const h = previous.get(n.hub.id)!;
-          const d = direction(random(n.id));
-          Object.assign(n, { x: h.x + d.x * 30, y: h.y + d.y * 30, z: h.z + d.z * 30 });
-        }
-      }
     if (focusId) {
       const focus = byId.get(focusId);
       if (focus) Object.assign(focus, { x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: 0 });

@@ -186,3 +186,44 @@ export function GraphLegend({
     </div>
   );
 }
+
+const CENTRAL_LIST = 8;
+
+/** The notes the layout is built around, most central first; hovering one highlights it. */
+export function CentralNotes({
+  notes,
+  colorOf,
+  top,
+  onHover,
+  onOpen,
+}: {
+  notes: WikiDocument[];
+  colorOf: (doc: WikiDocument) => number;
+  top: number;
+  onHover: (id: string | null) => void;
+  onOpen: (id: string) => void;
+}) {
+  if (!notes.length) return null;
+  return (
+    <nav className="graph-hubs" style={{ top }} aria-label="Central notes">
+      <span>Central notes</span>
+      {notes.slice(0, CENTRAL_LIST).map((doc, i) => (
+        <button
+          key={doc.id}
+          className={i === 0 ? 'core' : ''}
+          onMouseEnter={() => onHover(doc.id)}
+          onMouseLeave={() => onHover(null)}
+          onFocus={() => onHover(doc.id)}
+          onBlur={() => onHover(null)}
+          onClick={() => onOpen(doc.id)}
+        >
+          <b className={`graph-color-${colorOf(doc)}`} />
+          {doc.title.split('/').at(-1)}
+        </button>
+      ))}
+      {notes.length > CENTRAL_LIST && (
+        <small>+{notes.length - CENTRAL_LIST} more central notes</small>
+      )}
+    </nav>
+  );
+}

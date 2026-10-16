@@ -16,7 +16,14 @@ import { DocumentContextMenu } from '../components/DocumentMenu';
 import type { WikiEdge } from '../wiki/links';
 import { defaultForces } from './simulation';
 import { ForceSimulation3D, type Node3D, type Point3 } from './simulation3d';
-import { ForcesPanel, GraphLegend, PALETTE_SIZE, useGraphData, useGraphForces } from './shared';
+import {
+  CentralNotes,
+  ForcesPanel,
+  GraphLegend,
+  PALETTE_SIZE,
+  useGraphData,
+  useGraphForces,
+} from './shared';
 
 /** Orbit camera: it circles `target` at `distance`, turned by yaw and pitch. */
 interface Camera {
@@ -704,7 +711,6 @@ export function Graph3D({
   const hubDocs = hubs
     .map((id) => scene.current.docs.get(id))
     .filter((d): d is WikiDocument => !!d);
-  const HUB_LIST = 8;
   const surface = (
     <canvas
       ref={canvas}
@@ -778,28 +784,13 @@ export function Graph3D({
         )}
       </div>
       {!visible.length && <div className="graph-empty">Create a note to start your graph.</div>}
-      {hubDocs.length > 0 && (
-        <nav className="graph-hubs" style={{ top: insetTop + 12 }} aria-label="Central notes">
-          <span>Central notes</span>
-          {hubDocs.slice(0, HUB_LIST).map((doc, i) => (
-            <button
-              key={doc.id}
-              className={i === 0 ? 'core' : ''}
-              onMouseEnter={() => setHover(doc.id)}
-              onMouseLeave={() => setHover(null)}
-              onFocus={() => setHover(doc.id)}
-              onBlur={() => setHover(null)}
-              onClick={() => onOpen(doc.id)}
-            >
-              <b className={`graph-color-${scene.current.color.get(doc.id) ?? 0}`} />
-              {doc.title.split('/').at(-1)}
-            </button>
-          ))}
-          {hubDocs.length > HUB_LIST && (
-            <small>+{hubDocs.length - HUB_LIST} more central notes</small>
-          )}
-        </nav>
-      )}
+      <CentralNotes
+        notes={hubDocs}
+        colorOf={(doc) => scene.current.color.get(doc.id) ?? 0}
+        top={insetTop + 12}
+        onHover={(id) => setHover(id)}
+        onOpen={onOpen}
+      />
       <GraphLegend categories={categories} />
       <div className="graph-controls">
         <Button

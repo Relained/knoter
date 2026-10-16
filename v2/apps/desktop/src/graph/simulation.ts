@@ -1,11 +1,21 @@
 import type { GraphForces } from '@knoter/contracts/native';
+import {
+  analyzeGraph,
+  roleOf,
+  roleScale,
+  seededRandom,
+  type GraphStructure,
+  type Role,
+} from './hubs';
 
 /**
- * An unbounded force-directed layout in the style of d3-force, which Obsidian's graph
- * view also follows: nodes repel each other (Barnes–Hut approximation), links act as
- * springs, overlapping nodes are pushed apart, and a weak gravity keeps disconnected
- * parts near the middle. Nothing clamps nodes to the viewport; the camera fits the
- * result instead.
+ * The flat map's layout: the 3D sphere's shape on a disc. Forces work as in d3-force,
+ * which Obsidian's graph also follows (Barnes–Hut repulsion, springs, collision that
+ * keeps labels clear), and shape the result: the most central note sits at the center,
+ * the other central notes on an inner ring, every other note radiates outward from its
+ * nearest central note one ring per link, within that note's wedge of the disc, and
+ * notes without links settle on an outer ring that follows the wedges as they grow.
+ * Nothing clamps nodes to the viewport; the camera fits the result instead.
  */
 export interface SimNode {
   id: string;
@@ -20,6 +30,10 @@ export interface SimNode {
   radius: number;
   /** Half the width of the node's label, which collision keeps clear (capped). */
   labelHalf: number;
+  role: Role;
+  /** The central note this note radiates from, if any. */
+  hub: SimNode | null;
+  hops: number;
 }
 export interface SimLink {
   source: SimNode;
@@ -31,10 +45,8 @@ export interface SimLink {
 
 export const defaultForces: GraphForces = { center: 1, repel: 1, link: 1, distance: 1 };
 
-const INITIAL_RADIUS = 12;
-const INITIAL_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const REPULSION = 260;
-const GRAVITY = 0.035;
+const GRAVITY = 0.006;
 const THETA2 = 0.81;
 const LABEL_GAP = 46;
 
@@ -53,14 +65,12 @@ export function labelHalfWidth(label: string) {
 export const nodeRadius = (degree: number) => Math.min(24, 5 + Math.sqrt(degree) * 2.8);
 
 /**
- * Rest length of a link: enough room for both nodes and their labels, and for a hub's
- * neighbors to sit around it in a ring without overlapping.
+ * Rest length of a link: room for both nodes and their labels, a little more around
+ * busy notes. The rings of the disc, not long spokes, give crowded notes their space.
  */
 export function linkDistance(a: SimNode, b: SimNode, scale = 1) {
-  const pair = a.radius + b.radius + LABEL_GAP;
   const crowd = Math.max(a.degree, b.degree);
-  const ring = (crowd * (2 * 9 + LABEL_GAP * 0.55)) / (2 * Math.PI);
-  return Math.max(pair, ring) * scale;
+  return (a.radius + b.radius + LABEL_GAP + Math.sqrt(crowd) * 6) * scale;
 }
 
 interface Quad {
@@ -152,8 +162,6 @@ const jiggle = () => {
   jiggleSeed = (jiggleSeed * 16807) % 2147483647;
   return (jiggleSeed / 2147483647 - 0.5) * 1e-6;
 };
-/** A deterministic offset of up to 20 units, for placing a new node beside a neighbor. */
-const nearby = () => jiggle() * 4e7;
 
 export class ForceSimulation {
   alpha = 1;
@@ -163,15 +171,27 @@ export class ForceSimulation {
   velocityDecay = 0.6;
   readonly byId: Map<string, SimNode>;
   links: SimLink[] = [];
+  /** Radius of the ring that holds the central notes around the core. */
+  hubRing: number;
+  /** Radius of the outer ring where notes without links settle. */
+  shell: number;
   private forces: GraphForces;
+  private ticks = 0;
+  /** Radial spacing between link rings. */
+  private get layer() {
+    return 74 * this.forces.distance;
+  }
 
   constructor(
     readonly nodes: SimNode[],
     edges: { source: string; target: string }[],
+    readonly structure: GraphStructure,
     forces: GraphForces = defaultForces,
   ) {
     this.byId = new Map(nodes.map((n) => [n.id, n]));
     this.forces = forces;
+    this.hubRing = 90 + 24 * Math.sqrt(nodes.length);
+    this.shell = this.hubRing * 2.2;
     for (const edge of edges) {
       const source = this.byId.get(edge.source);
       const target = this.byId.get(edge.target);
@@ -181,57 +201,84 @@ export class ForceSimulation {
     this.setForces(forces);
   }
 
-  /** Build nodes, placing known IDs where they were and new ones beside a neighbor. */
+  /**
+   * Build nodes around the wiki's central notes. Known IDs keep their last position;
+   * new notes start beside their central note.
+   */
   static create(
     ids: string[],
     edges: { source: string; target: string }[],
     forces: GraphForces,
     previous?: Map<string, { x: number; y: number }>,
     labels?: Map<string, string>,
+    focusId?: string,
   ) {
-    const degree = new Map(ids.map((id) => [id, 0]));
-    for (const e of edges) {
-      if (!degree.has(e.source) || !degree.has(e.target) || e.source === e.target) continue;
-      degree.set(e.source, degree.get(e.source)! + 1);
-      degree.set(e.target, degree.get(e.target)! + 1);
-    }
-    // Hubs start near the middle on a phyllotaxis spiral so the layout is deterministic.
-    const order = [...ids].sort(
-      (a, b) => degree.get(b)! - degree.get(a)! || (a < b ? -1 : a > b ? 1 : 0),
-    );
-    const nodes: SimNode[] = order.map((id, i) => {
-      const r = INITIAL_RADIUS * Math.sqrt(0.5 + i);
-      const angle = i * INITIAL_ANGLE;
-      const d = degree.get(id)!;
+    const structure = analyzeGraph(ids, edges, focusId);
+    const nodes: SimNode[] = ids.map((id) => {
+      const degree = structure.degree.get(id)!;
+      const role = roleOf(structure, id);
       return {
         id,
-        x: r * Math.cos(angle),
-        y: r * Math.sin(angle),
+        x: 0,
+        y: 0,
         vx: 0,
         vy: 0,
         fx: null,
         fy: null,
-        degree: d,
-        radius: nodeRadius(d),
+        degree,
+        radius: nodeRadius(degree) * roleScale(role),
         labelHalf: labelHalfWidth(labels?.get(id) ?? ''),
+        role,
+        hub: null,
+        hops: structure.hops.get(id)!,
       };
     });
-    if (previous?.size) {
-      const known = new Map(nodes.map((n) => [n.id, n]));
-      for (const n of nodes) {
-        const p = previous.get(n.id);
-        if (p) Object.assign(n, { x: p.x, y: p.y });
-      }
-      for (const n of nodes) {
-        if (previous.has(n.id)) continue;
-        const neighbor = edges
-          .map((e) => (e.source === n.id ? e.target : e.target === n.id ? e.source : null))
-          .find((id) => id && previous.has(id));
-        const anchor = neighbor ? known.get(neighbor) : undefined;
-        if (anchor) Object.assign(n, { x: anchor.x + nearby(), y: anchor.y + nearby() });
-      }
+    const sim = new ForceSimulation(nodes, edges, structure, forces);
+    const byId = sim.byId;
+    for (const n of nodes) {
+      const hub = structure.hubOf.get(n.id);
+      n.hub = hub && hub !== n.id ? byId.get(hub)! : null;
     }
-    return new ForceSimulation(nodes, edges, forces);
+    // Seed the disc: central notes evenly on their ring, each note out along its central
+    // note's direction (around the core, in every direction), unlinked notes outermost.
+    // Notes seen before keep their place, and new notes start on their own ring.
+    const known = (n: SimNode) => {
+      const p = previous?.get(n.id);
+      if (p) Object.assign(n, { x: p.x, y: p.y });
+      return !!p;
+    };
+    const hubs = structure.hubs.slice(1);
+    hubs.forEach((id, i) => {
+      const hub = byId.get(id)!;
+      if (known(hub)) return;
+      const angle = (i / hubs.length) * Math.PI * 2 - Math.PI / 2;
+      Object.assign(hub, { x: Math.cos(angle) * sim.hubRing, y: Math.sin(angle) * sim.hubRing });
+    });
+    const wedge = hubs.length ? (Math.PI * 2) / hubs.length : Math.PI * 2;
+    for (const n of nodes) {
+      if (n.role !== 'member' || known(n)) continue;
+      const next = seededRandom(n.id);
+      const hub = n.hub!;
+      const hr = Math.hypot(hub.x, hub.y);
+      const angle = hr
+        ? Math.atan2(hub.y, hub.x) + (next() - 0.5) * wedge * 0.7
+        : next() * Math.PI * 2;
+      const r = hr + n.hops * 74;
+      Object.assign(n, { x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+    }
+    const outer = nodes.filter((n) => n.role === 'orphan' || n.role === 'loose');
+    outer.forEach((n, i) => {
+      if (known(n)) return;
+      const angle = (i / outer.length) * Math.PI * 2;
+      const r = sim.shell * (n.role === 'loose' ? 0.9 : 1);
+      Object.assign(n, { x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+    });
+    if (structure.hubs[0]) known(byId.get(structure.hubs[0])!);
+    if (focusId) {
+      const focus = byId.get(focusId);
+      if (focus) Object.assign(focus, { x: 0, y: 0, fx: 0, fy: 0 });
+    }
+    return sim;
   }
 
   setForces(forces: GraphForces) {
@@ -256,9 +303,10 @@ export class ForceSimulation {
   tick() {
     this.alpha += (this.alphaTarget - this.alpha) * this.alphaDecay;
     const alpha = this.alpha;
+    if (this.ticks++ % 15 === 0) this.measureShell();
     this.applyLinks(alpha);
     this.applyRepulsion(alpha);
-    this.applyGravity(alpha);
+    this.applyShape(alpha);
     this.applyCollision();
     for (const n of this.nodes) {
       if (n.fx !== null) {
@@ -347,12 +395,48 @@ export class ForceSimulation {
     }
   }
 
-  private applyGravity(alpha: number) {
-    const k = GRAVITY * this.forces.center * alpha;
-    if (!k) return;
+  /** Keep the outer ring just outside the wedges as they grow or shrink. */
+  private measureShell() {
+    const radii = this.nodes
+      .filter((n) => n.role === 'member' || n.role === 'hub' || n.role === 'core')
+      .map((n) => Math.hypot(n.x, n.y))
+      .sort((a, b) => a - b);
+    if (!radii.length) return;
+    const r95 = radii[Math.min(radii.length - 1, Math.floor(radii.length * 0.95))];
+    const shell = Math.max(this.hubRing * 1.5, r95 * 1.1 + 90);
+    this.shell += (shell - this.shell) * 0.5;
+  }
+
+  /** The disc: core to the center, rings for central and unlinked notes, wedges outward. */
+  private applyShape(alpha: number) {
+    const center = this.forces.center;
+    if (!center) return;
+    const radial = (n: SimNode, target: number, strength: number) => {
+      const r = Math.hypot(n.x, n.y) || 1;
+      const k = ((target - r) / r) * strength * center * alpha;
+      n.vx += n.x * k;
+      n.vy += n.y * k;
+    };
     for (const n of this.nodes) {
-      n.vx -= n.x * k;
-      n.vy -= n.y * k;
+      if (n.role === 'core') radial(n, 0, 0.3);
+      else if (n.role === 'hub') radial(n, this.hubRing, 0.08);
+      else if (n.role === 'orphan') radial(n, this.shell, 0.12);
+      else if (n.role === 'loose') radial(n, this.shell * 0.88, 0.05);
+      else if (n.hub?.role === 'core') radial(n, n.hops * this.layer, 0.06);
+      else if (n.hub) {
+        // A ring per link outward from the central note, drawn gently toward its side
+        // of the disc so each central note grows a wedge rather than a thin spoke.
+        const h = n.hub;
+        const hr = Math.hypot(h.x, h.y) || 1;
+        radial(n, hr + n.hops * this.layer, 0.07);
+        const r = Math.hypot(n.x, n.y) || 1;
+        const k = 0.012 * center * alpha;
+        n.vx += ((h.x / hr) * r - n.x) * k;
+        n.vy += ((h.y / hr) * r - n.y) * k;
+      }
+      const g = GRAVITY * center * alpha;
+      n.vx -= n.x * g;
+      n.vy -= n.y * g;
     }
   }
 

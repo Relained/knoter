@@ -152,8 +152,10 @@ graph: notes repel, links pull like springs, and nothing is clamped to the windo
 - The graph turns slowly while nobody uses it (it pauses on hover and for a few
   seconds after you interact); the orbit button switches this off.
 - **Forces** (the sliders button) adjusts the center (shape), repel, link, and
-  distance forces. **2D** switches to the flat map, which keeps every note as a
-  keyboard-focusable link; the choice is remembered.
+  distance forces. **2D** switches to the flat map: the same arrangement on a disc
+  (core in the middle, central notes on a ring, each one's notes in its own wedge,
+  unlinked notes on the outer ring), with every note a keyboard-focusable link and the
+  same Central notes list. The choice is remembered.
 - **Graph around this note** (⌘G) shows one to three links around a note, with that
   note at the core.
 
