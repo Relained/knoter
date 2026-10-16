@@ -341,6 +341,12 @@ User refinements from 2026-10-16 replace parts of the layout above:
 - The graph follows Obsidian's force layout on an unbounded canvas: link distance is
   computed from connection counts and label width, and the view is fitted, not the
   layout clamped to the viewport.
+- The graph is a 3D sphere by default, with the flat map one click away. Central
+  notes are chosen automatically; the most central is the core, the others sit on an
+  inner shell, the rest radiate outward from their nearest central note, and notes
+  without links form the outer shell. It is drawn on a 2D canvas with an own
+  perspective camera instead of a WebGL library (three.js would add about 600 kB);
+  revisit that if wikis outgrow a few thousand notes.
 
 Use React Router's hash-based Data Mode to preserve shared `#/wiki/:id` links
 and support navigation blockers without server rewrite rules. Keep services
