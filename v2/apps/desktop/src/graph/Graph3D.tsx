@@ -68,11 +68,6 @@ function mix(a: string, b: string, t: number) {
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
-/** `#rgb`/`#rrggbb` with an alpha, for gradient stops; other colors pass through. */
-function withAlpha(color: string, alpha: number) {
-  const c = rgb(color);
-  return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})` : color;
-}
 function readPalette(element: Element): Palette {
   const style = getComputedStyle(element);
   const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
@@ -332,48 +327,19 @@ export function Graph3D({
       ctx.stroke(highlighted);
     }
 
-    // Notes, far to near; central notes glow.
+    // Notes, far to near, as flat single-color circles. Fog blends the color toward the
+    // background so circles stay opaque over the links behind them; only de-emphasized
+    // notes become translucent.
     const order = Array.from({ length: count }, (_, i) => i)
       .filter((i) => fade[i] > 0)
       .sort((a, b) => depthOf[b] - depthOf[a]);
     for (const i of order) {
       const n = nodes[i];
-      // Fog blends the color toward the background so spheres stay opaque in front of
-      // the links behind them; only de-emphasized notes become translucent.
       const tone = color.get(n.id) ?? 0;
-      const fill = colors.fogged[tone][Math.round(fog[i] * (FOG_LEVELS - 1))];
-      const alpha = emphasis(n);
-      const glowAlpha = alpha * (1 - 0.6 * fog[i]);
-      const central = n.role === 'core' || n.role === 'hub' || n.id === focusId;
-      const r = sr[i];
-      if ((central || n.id === hoveredId) && alpha > 0.2) {
-        const glow = ctx.createRadialGradient(sx[i], sy[i], r * 0.6, sx[i], sy[i], r * 3.4);
-        glow.addColorStop(0, withAlpha(colors.nodes[tone], 0.42 * glowAlpha));
-        glow.addColorStop(1, withAlpha(colors.nodes[tone], 0));
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(sx[i], sy[i], r * 3.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = alpha;
-      if (r >= 3.5) {
-        // A soft highlight makes each note read as a sphere rather than a disc.
-        const shade = ctx.createRadialGradient(
-          sx[i] - r * 0.35,
-          sy[i] - r * 0.4,
-          r * 0.1,
-          sx[i],
-          sy[i],
-          r,
-        );
-        shade.addColorStop(0, withAlpha('#ffffff', 0.85 * (1 - 0.7 * fog[i])));
-        shade.addColorStop(0.35, fill);
-        shade.addColorStop(1, fill);
-        ctx.fillStyle = shade;
-      } else ctx.fillStyle = fill;
+      ctx.globalAlpha = emphasis(n);
+      ctx.fillStyle = colors.fogged[tone][Math.round(fog[i] * (FOG_LEVELS - 1))];
       ctx.beginPath();
-      ctx.arc(sx[i], sy[i], r, 0, Math.PI * 2);
+      ctx.arc(sx[i], sy[i], sr[i], 0, Math.PI * 2);
       ctx.fill();
       if (n.id === hoveredId || n.id === focusId) {
         ctx.lineWidth = 1.6;
