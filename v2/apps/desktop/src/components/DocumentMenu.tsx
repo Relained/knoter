@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Network,
   PencilLine,
+  Scale,
   Star,
   Trash2,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { Button } from './ui/button';
 type DocumentActions = {
   open: (id: string) => void;
   edit: (id: string) => void;
+  rewrite: (id: string) => void;
   favorite: (id: string) => void;
   graph: (id: string) => void;
   copyLink: (id: string) => void;
@@ -41,6 +43,7 @@ function MenuItems({ doc, kind }: { doc: WikiDocument; kind: 'context' | 'dropdo
   const items = [
     { label: 'Open note', icon: BookOpen, run: () => actions.open(doc.id) },
     { label: 'Edit note', icon: PencilLine, run: () => actions.edit(doc.id) },
+    { label: 'Rewrite with a ratio…', icon: Scale, run: () => actions.rewrite(doc.id) },
     {
       label: doc.favorite ? 'Remove from favorites' : 'Add to favorites',
       icon: Star,
@@ -135,7 +138,7 @@ export function DocumentMenuButton({
         <Button
           className="document-more"
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           disabled={disabled}
           aria-label={`Actions for ${doc.title}`}
           title="Note actions"

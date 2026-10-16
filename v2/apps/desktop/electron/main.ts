@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, powerMonitor, shell, Menu } from 'electron';
-import { readFileSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, dialog, powerMonitor, shell, Menu, session } from 'electron';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -8,8 +8,12 @@ import {
   commands,
   rendererCommands,
   desktopActions,
+  windowCommand,
+  windowFrames,
   type Command,
   type DesktopAction,
+  type WindowFrame,
+  type WindowState,
 } from '@knoter/contracts/native';
 import { defaultDataDir, socketFor } from '../../../packages/service/src/common.js';
 import { request } from '../../../packages/service/src/transport.js';
@@ -25,6 +29,16 @@ const send = (command: string, payload: unknown) =>
   );
 const watcher = new SourceWatcher(send);
 let window: BrowserWindow | null = null;
+// Main owns the decoration preference: it must be known before a window exists.
+const windowPreferences = () => join(app.getPath('userData'), 'window-preferences.json');
+function savedFrame(): WindowFrame {
+  try {
+    return windowFrames.parse(JSON.parse(readFileSync(windowPreferences(), 'utf8')).frame);
+  } catch {
+    return 'custom';
+  }
+}
+let frame: WindowFrame = 'custom';
 let registration = 'not_registered';
 async function serviceControl(action: string) {
   if (!app.isPackaged) {
@@ -129,6 +143,51 @@ async function desktop(action: DesktopAction) {
   }
   return path;
 }
+function windowState(target: BrowserWindow): WindowState {
+  return {
+    platform: process.platform,
+    frame,
+    maximized: target.isMaximized(),
+    fullscreen: target.isFullScreen(),
+  };
+}
+async function createWindow(previous?: BrowserWindow) {
+  const next = new BrowserWindow({
+    ...(previous ? previous.getNormalBounds() : { width: 1440, height: 940 }),
+    minWidth: 780,
+    minHeight: 580,
+    title: 'Knoter Wiki Demo',
+    backgroundColor: '#f8f7f4',
+    // The renderer draws the title bar; macOS keeps its traffic lights inside it.
+    ...(frame === 'custom'
+      ? process.platform === 'darwin'
+        ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 13, y: 13 } }
+        : { frame: false }
+      : {}),
+    webPreferences: {
+      preload: join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+  next.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  next.webContents.on('will-navigate', (event) => event.preventDefault());
+  next.on('closed', () => {
+    if (window === next) window = null;
+  });
+  const maximized = previous?.isMaximized();
+  previous?.hide();
+  window = next;
+  await next.loadFile(join(__dirname, 'renderer', 'index.html'));
+  if (maximized) next.maximize();
+  // The replaced window closes only after its successor has loaded.
+  previous?.destroy();
+}
 app.setName('Knoter Wiki Demo');
 if (!app.requestSingleInstanceLock()) app.quit();
 else
@@ -150,27 +209,27 @@ else
       trusted(event);
       return desktop(desktopActions.parse(action));
     });
-    window = new BrowserWindow({
-      width: 1440,
-      height: 940,
-      minWidth: 780,
-      minHeight: 580,
-      title: 'Knoter Wiki Demo',
-      backgroundColor: '#f8f7f4',
-      webPreferences: {
-        preload: join(__dirname, 'preload.cjs'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
+    ipcMain.handle('knoter:window', async (event, payload: unknown) => {
+      trusted(event);
+      const command = windowCommand.parse(payload);
+      const target = window!;
+      if (command.action === 'minimize') target.minimize();
+      if (command.action === 'toggleMaximize') {
+        if (target.isMaximized()) target.unmaximize();
+        else target.maximize();
+      }
+      if (command.action === 'close') target.close();
+      if (command.action === 'setFrame' && command.frame !== frame) {
+        writeFileSync(windowPreferences(), JSON.stringify({ frame: command.frame }), {
+          mode: 0o600,
+        });
+        frame = command.frame;
+        // A frame cannot change on a live window: replace it after this reply is sent.
+        setImmediate(() => void createWindow(target));
+      }
+      return windowState(target);
     });
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//.test(url)) void shell.openExternal(url);
-      return { action: 'deny' };
-    });
-    window.webContents.on('will-navigate', (event) => event.preventDefault());
-    window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
       callback(false),
     );
     Menu.setApplicationMenu(
@@ -181,7 +240,8 @@ else
         { role: 'windowMenu' },
       ]),
     );
-    await window.loadFile(join(__dirname, 'renderer', 'index.html'));
+    frame = savedFrame();
+    await createWindow();
     void serviceControl('status').catch(() => {
       registration = 'error';
     });

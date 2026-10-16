@@ -44,6 +44,14 @@ outside this demo. The connected side chat follows D22 in that plan.
   and never enqueues background work. Keep stopped, failed, and restarted
   replies visibly incomplete and unapplied.
 
+- Declare keyboard shortcuts in the shell's shortcut registry so Settings and the
+  search palette list them. The global handler ignores keys an editor or field has
+  already handled (`defaultPrevented`); bindings need ⌘/Ctrl or Alt. Window chrome
+  goes through `KnoterClient.window` and the validated window IPC; Electron main owns
+  the decoration preference, outside the workspace.
+- The supplement ratio (D23) is a writing preference passed in job and chat-turn
+  data. Do not have the service measure or reject pages by it without a decision.
+
 Use npm. Follow [README.md](README.md) for setup/check commands and browser-preview
 failure evidence. Keep native failures in the shared
 [wiki-worker record](../docs/lessons/wiki-worker-demo.md). Manually exercise

@@ -46,6 +46,13 @@ interface Attachment {
   text: string;
   size: number;
 }
+/** A message sent on the user's behalf, such as a rewrite request from a note. */
+export interface ChatRequest {
+  id: number;
+  text: string;
+  documentIds: string[];
+  supplementRatio?: number;
+}
 interface MentionQuery {
   start: number;
   end: number;
@@ -75,6 +82,8 @@ export function ChatPanel({
   run,
   onSource,
   onOpen,
+  request,
+  onRequestHandled,
 }: {
   snapshot: WorkspaceSnapshot;
   doc?: WikiDocument;
@@ -82,6 +91,8 @@ export function ChatPanel({
   run: RunAction;
   onSource: (id: string) => void;
   onOpen: (id: string) => void;
+  request?: ChatRequest | null;
+  onRequestHandled?: (id: number) => void;
 }) {
   const [text, setText] = useState('');
   const [mentions, setMentions] = useState<{ id: string; title: string }[]>([]);
@@ -185,6 +196,45 @@ export function ChatPanel({
       setAttachments((current) => [...current, ...read]);
     });
 
+  const submit = async (input: {
+    text: string;
+    documentIds: string[];
+    attachments: { filename: string; text: string }[];
+    supplementRatio?: number;
+  }) => {
+    const next = new AbortController();
+    controller.current = next;
+    setSubmitting(true);
+    const sent = await run(() =>
+      client.sendMessage({ ...input, choice: choice ?? undefined, signal: next.signal }),
+    );
+    setSubmitting(false);
+    controller.current = null;
+    return sent;
+  };
+  const handled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!request || handled.current === request.id) return;
+    handled.current = request.id;
+    onRequestHandled?.(request.id);
+    if (busy || unavailable) {
+      void run(async () => {
+        throw new Error(
+          busy
+            ? 'Wait for the current reply, or stop it, before requesting a rewrite.'
+            : 'Connect a worker CLI in Agent before requesting a rewrite.',
+        );
+      });
+      return;
+    }
+    void submit({
+      text: request.text,
+      documentIds: request.documentIds,
+      attachments: [],
+      supplementRatio: request.supplementRatio,
+    });
+    // Each request is sent once; the panel's current state decides whether it can be.
+  }, [request]);
   const send = async (value = text) => {
     if (busy || unavailable || (!value.trim() && !attachments.length)) return;
     // Replace each typed @mention with a stable ID link; longer titles first.
@@ -197,20 +247,11 @@ export function ChatPanel({
     const documentIds = [
       ...new Set([...(doc && scoped ? [doc.id] : []), ...used.map((m) => m.id)]),
     ];
-    const next = new AbortController();
-    controller.current = next;
-    setSubmitting(true);
-    const sent = await run(() =>
-      client.sendMessage({
-        text: body,
-        documentIds,
-        attachments: attachments.map(({ filename, text }) => ({ filename, text })),
-        choice: choice ?? undefined,
-        signal: next.signal,
-      }),
-    );
-    setSubmitting(false);
-    controller.current = null;
+    const sent = await submit({
+      text: body,
+      documentIds,
+      attachments: attachments.map(({ filename, text }) => ({ filename, text })),
+    });
     // A rejected request keeps the draft for another attempt.
     if (sent && value === text) {
       setText('');
@@ -255,9 +296,9 @@ export function ChatPanel({
   const disclaimer = simulated
     ? 'Simulated answers. No model connected and no notes change.'
     : !snapshot.worker?.connected
-      ? 'Enable the background service in Sources to chat.'
+      ? 'Enable the background service in Agent to chat.'
       : !models.length
-        ? 'Connect Codex CLI or Claude Code in Sources to chat.'
+        ? 'Connect Codex CLI or Claude Code in Agent to chat.'
         : `Requested changes apply as revisions you can restore · ${chat?.callsToday ?? 0}/${chat?.dailyLimit ?? 0} replies today`;
 
   return (

@@ -381,6 +381,27 @@ started without the stale-lock failure, migrated the live workspace to schema 3 
 the same counts, kept the worker paused, and listed the Claude Code chat models. The
 app UI and a chat reply on the live workspace were not exercised.
 
+## Workspace UI rewrite and supplement ratio (D23)
+
+### 2026-10-16 — Scope of the UI-rewrite verification
+
+Electron 44.4.1 ran from `npm run check` output on Linux under Xvfb with openbox,
+against a development service with a disposable workspace and Markdown folder; it
+was not the packaged macOS app. The frameless window, knoter's window controls,
+maximize/restore, rejection of an invalid window command, and switching between
+knoter's and the system title bar (the window is replaced and the preference
+persists) behaved as intended. Bare Xvfb ignored maximize until a window manager
+ran: maximize is a window-manager request, so a missing one looks like a broken
+button. The Sources and Agent windows showed the real watch, queued sources, and
+service state. macOS traffic-light placement and Windows were not exercised.
+
+No worker CLI was available, so no worker job or chat turn ran. The supplement
+ratio reaching the job and turn data, and the skill's balance rule, were checked by
+reading the code and building, not by an attempt; whether pages follow the ratio
+is unmeasured. A rewrite re-cites the notes behind a page, so it depends on the
+chat reading those versions; a page whose notes were all removed cannot be
+rewritten with citations.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch

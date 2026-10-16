@@ -1,14 +1,15 @@
 import { BookOpen, Undo2 } from 'lucide-react';
-import { useMatches, useOutletContext, useParams, useSearchParams } from 'react-router';
+import { Navigate, useMatches, useOutletContext, useParams, useSearchParams } from 'react-router';
 import type { KnoterClient, View, WorkspaceSnapshot } from '@knoter/contracts';
+import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { WikiDocumentView, WikiLibrary, type RunAction } from '../views/WikiView';
-import { SourcesView } from '../views/SourcesView';
 import { TasksView } from '../views/TasksView';
 import { CalendarView } from '../views/CalendarView';
 import { GraphView } from '../views/GraphView';
+import { HomeView } from '../views/HomeView';
 import type { WikiLinks } from '../wiki/links';
-import type { WorkspaceRoute } from './paths';
+import { paths, type WorkspaceRoute } from './paths';
 
 export interface WorkspaceContext {
   snapshot: WorkspaceSnapshot;
@@ -23,11 +24,14 @@ export interface WorkspaceContext {
   onGraph: (id: string) => void;
   onView: (view: View) => void;
   onAsk: () => void;
+  onRewrite: (id: string) => void;
   onNew: () => void;
   onTrash: () => void;
   onImport: () => void;
   onRestore: (id: string) => Promise<void>;
+  onForces: (forces: GraphForces) => void;
   documentPending: boolean;
+  rewriteBinding: string;
 }
 
 export function useWorkspaceRoute(): WorkspaceRoute {
@@ -41,6 +45,21 @@ export function useWorkspaceRoute(): WorkspaceRoute {
     tag: view === 'wiki' ? params.get('tag') || undefined : undefined,
     focusId: view === 'graph' ? params.get('focus') || undefined : undefined,
   };
+}
+
+export function HomeRoute() {
+  const context = useOutletContext<WorkspaceContext>();
+  return (
+    <HomeView
+      documents={context.snapshot.documents}
+      links={context.links}
+      forces={context.snapshot.settings.graph}
+      onForces={context.onForces}
+      onOpen={context.onOpen}
+      onNew={context.onNew}
+      onLibrary={() => context.onView('wiki')}
+    />
+  );
 }
 
 export function WikiRoute() {
@@ -73,6 +92,8 @@ export function WikiRoute() {
         links={context.links}
         onGraph={() => onGraph(doc.id)}
         onAsk={onAsk}
+        onRewrite={() => context.onRewrite(doc.id)}
+        rewriteBinding={context.rewriteBinding}
         editing={context.editing}
         onEditing={onEditing}
         onDirtyCheck={onDirtyCheck}
@@ -95,21 +116,6 @@ export function WikiRoute() {
       )}
       <Button onClick={() => context.onView('wiki')}>Browse the wiki</Button>
     </div>
-  );
-}
-
-export function SourcesRoute() {
-  const { snapshot, client, run, onImport, onSource, onOpen } =
-    useOutletContext<WorkspaceContext>();
-  return (
-    <SourcesView
-      snapshot={snapshot}
-      client={client}
-      run={run}
-      onImport={onImport}
-      onSource={onSource}
-      onOpen={onOpen}
-    />
   );
 }
 
@@ -140,15 +146,19 @@ export function CalendarRoute() {
 export function GraphRoute() {
   const context = useOutletContext<WorkspaceContext>();
   const [params] = useSearchParams();
-  const focusId = params.get('focus') || undefined;
+  const focus = context.snapshot.documents.find((d) => d.id === params.get('focus'));
+  // The whole-wiki graph lives on the home page.
+  if (!focus) return <Navigate to={paths.home} replace />;
   return (
     <GraphView
-      key={focusId || 'all'}
+      key={focus.id}
       documents={context.snapshot.documents}
       links={context.links}
-      focusId={focusId}
+      focus={focus}
+      forces={context.snapshot.settings.graph}
+      onForces={context.onForces}
       onOpen={context.onOpen}
-      onGlobal={() => context.onView('graph')}
+      onGlobal={() => context.onView('home')}
     />
   );
 }

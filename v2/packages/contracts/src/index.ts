@@ -1,4 +1,4 @@
-export type View = 'wiki' | 'sources' | 'tasks' | 'calendar' | 'graph';
+export type View = 'home' | 'wiki' | 'sources' | 'tasks' | 'calendar' | 'graph';
 export type SourceStatus = 'queued' | 'extracting' | 'ready' | 'failed';
 export interface WikiDocument {
   references?: import('./native').ReferenceUse[];
@@ -127,6 +127,8 @@ export interface ChatSendInput {
   documentIds: string[];
   attachments: { filename: string; text: string }[];
   choice?: import('./native').ChatChoice;
+  /** Target share of marked supplements, in percent, for pages this turn writes. */
+  supplementRatio?: number;
   signal: AbortSignal;
 }
 export interface WorkspaceSnapshot {
@@ -150,6 +152,11 @@ export interface WorkspaceSnapshot {
     leftSidebarCollapsed?: boolean;
     rightSidebarCollapsed?: boolean;
     chat?: import('./native').ChatChoice;
+    /** Target share of marked supplements in written pages, in percent (default 30). */
+    supplementRatio?: number;
+    /** Shortcut overrides by command ID; absent commands use their default binding. */
+    shortcuts?: Record<string, string>;
+    graph?: import('./native').GraphForces;
   };
 }
 export interface SourceImport {
@@ -160,6 +167,8 @@ export interface SourceImport {
 export interface KnoterClient {
   readonly mode: 'demo' | 'connected';
   desktop?(action: import('./native').DesktopAction): Promise<unknown>;
+  /** Present only in the desktop app: window chrome state and controls. */
+  window?(command: import('./native').WindowCommand): Promise<import('./native').WindowState>;
   runWorker?(): Promise<void>;
   cancelJob?(id: string): Promise<void>;
   resolveProposal?(id: string, accept: boolean): Promise<void>;
