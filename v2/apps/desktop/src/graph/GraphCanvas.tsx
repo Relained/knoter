@@ -8,52 +8,29 @@ import {
   useState,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from 'react';
-import { Focus, Minus, Plus, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import { Focus, Minus, Plus, SlidersHorizontal } from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
 import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { DocumentContextMenu } from '../components/DocumentMenu';
 import { documentHref, type WikiEdge } from '../wiki/links';
 import { defaultForces, ForceSimulation } from './simulation';
+import {
+  ForcesPanel,
+  GraphLegend,
+  PALETTE_SIZE,
+  pairKey,
+  useGraphData,
+  useGraphForces,
+} from './shared';
 
 type Camera = { x: number; y: number; k: number };
 const MIN_ZOOM = 0.06;
 const MAX_ZOOM = 4;
 const LABEL_ZOOM = 0.55;
-const PALETTE_SIZE = 8;
 const clampZoom = (k: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));
-const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
-
-/** Notes within `depth` links of the focus, or every note without a focus. */
-function neighborhood(ids: string[], edges: WikiEdge[], focusId?: string, depth = 1) {
-  if (!focusId || !ids.includes(focusId)) return new Set(ids);
-  const adjacent = new Map<string, string[]>();
-  for (const e of edges) {
-    adjacent.set(e.source, [...(adjacent.get(e.source) ?? []), e.target]);
-    adjacent.set(e.target, [...(adjacent.get(e.target) ?? []), e.source]);
-  }
-  const seen = new Set([focusId]);
-  let frontier = [focusId];
-  for (let level = 0; level < depth; level++) {
-    const next: string[] = [];
-    for (const id of frontier)
-      for (const other of adjacent.get(id) ?? [])
-        if (!seen.has(other)) {
-          seen.add(other);
-          next.push(other);
-        }
-    frontier = next;
-  }
-  return seen;
-}
-
-const forceLabels: { key: keyof GraphForces; label: string; min: number; max: number }[] = [
-  { key: 'center', label: 'Center force', min: 0, max: 3 },
-  { key: 'repel', label: 'Repel force', min: 0, max: 3 },
-  { key: 'link', label: 'Link force', min: 0, max: 3 },
-  { key: 'distance', label: 'Link distance', min: 0.3, max: 3 },
-];
 
 interface NodeProps {
   doc: WikiDocument;
@@ -129,6 +106,7 @@ export function GraphCanvas({
   onOpen,
   className = '',
   insetTop = 0,
+  modeToggle,
 }: {
   documents: WikiDocument[];
   edges: WikiEdge[];
@@ -141,6 +119,8 @@ export function GraphCanvas({
   className?: string;
   /** Height covered by an overlay at the top, such as the home search field. */
   insetTop?: number;
+  /** Switches to the 3D view; shown with the zoom controls. */
+  modeToggle?: ReactNode;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -162,40 +142,16 @@ export function GraphCanvas({
   const [zoom, setZoom] = useState(1);
   const [hovered, setHovered] = useState<string | null>(null);
   const [panel, setPanel] = useState(false);
-  const [localForces, setLocalForces] = useState(forces);
+  const [localForces, updateForces] = useGraphForces(forces, onForces);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const appliedForces = useRef(JSON.stringify(forces));
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Snapshots arrive as new objects; only a changed value replaces the local forces.
-  const forcesKey = JSON.stringify(forces);
-  useEffect(() => setLocalForces(JSON.parse(forcesKey)), [forcesKey]);
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    },
-    [],
+  const { visible, edges, structure, categories, matches, searching } = useGraphData(
+    documents,
+    allEdges,
+    focusId,
+    depth,
+    query,
   );
-
-  const ids = useMemo(() => documents.map((d) => d.id), [documents]);
-  const visibleIds = useMemo(
-    () => neighborhood(ids, allEdges, focusId, depth),
-    [ids, allEdges, focusId, depth],
-  );
-  const visible = useMemo(
-    () => documents.filter((d) => visibleIds.has(d.id)),
-    [documents, visibleIds],
-  );
-  // One line per pair of notes; a body link wins over a related-note hint.
-  const edges = useMemo(() => {
-    const paired = new Map<string, WikiEdge>();
-    for (const e of allEdges) {
-      if (!visibleIds.has(e.source) || !visibleIds.has(e.target)) continue;
-      const key = pairKey(e.source, e.target);
-      if (!paired.has(key) || e.kind === 'link') paired.set(key, e);
-    }
-    return [...paired.values()];
-  }, [allEdges, visibleIds]);
-  const structure = `${visible.map((d) => d.id).join(',')}|${edges.map((e) => pairKey(e.source, e.target)).join(',')}`;
 
   const simulation = useMemo(() => {
     const known = positions.current;
@@ -404,26 +360,6 @@ export function GraphCanvas({
     }
     return map;
   }, [edges]);
-  const categories = useMemo(
-    () => [...new Set(documents.map((d) => d.category))].sort((a, b) => a.localeCompare(b)),
-    [documents],
-  );
-  const needle = query.trim().toLocaleLowerCase();
-  const matches = useMemo(
-    () =>
-      new Set(
-        needle
-          ? visible
-              .filter((d) =>
-                `${d.title} ${d.category} ${(d.tags ?? []).join(' ')}`
-                  .toLocaleLowerCase()
-                  .includes(needle),
-              )
-              .map((d) => d.id)
-          : [],
-      ),
-    [visible, needle],
-  );
   // The best-connected notes keep their labels when zoomed out, like map capitals.
   const hubs = useMemo(() => {
     const ranked = simulation.nodes.filter((n) => n.degree > 1).sort((a, b) => b.degree - a.degree);
@@ -432,12 +368,6 @@ export function GraphCanvas({
     );
   }, [simulation]);
   const near = hovered ? (neighbors.get(hovered) ?? new Set<string>()) : null;
-
-  const updateForces = (next: GraphForces) => {
-    setLocalForces(next);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => onForces?.(next), 400);
-  };
 
   return (
     <div className={`graph-canvas ${className}`} ref={container}>
@@ -531,7 +461,7 @@ export function GraphCanvas({
                 : near?.has(doc.id)
                   ? 'near'
                   : 'dimmed'
-              : needle
+              : searching
                 ? isMatch
                   ? 'active'
                   : 'dimmed'
@@ -560,17 +490,7 @@ export function GraphCanvas({
         </g>
       </svg>
       {!visible.length && <div className="graph-empty">Create a note to start your graph.</div>}
-      {categories.length > 0 && (
-        <div className="graph-legend" aria-label="Collections">
-          {categories.slice(0, PALETTE_SIZE).map((category, i) => (
-            <span key={category}>
-              <b className={`graph-color-${i}`} />
-              {category}
-            </span>
-          ))}
-          {categories.length > PALETTE_SIZE && <span>+{categories.length - PALETTE_SIZE}</span>}
-        </div>
-      )}
+      <GraphLegend categories={categories} />
       <div className="graph-controls">
         <Button
           variant="ghost"
@@ -607,56 +527,19 @@ export function GraphCanvas({
         >
           <SlidersHorizontal />
         </Button>
+        {modeToggle}
       </div>
       {panel && (
-        <div className="graph-forces" role="group" aria-label="Graph forces">
-          <div className="graph-forces-heading">
-            <strong>Forces</strong>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Close forces"
-              onClick={() => setPanel(false)}
-            >
-              <X />
-            </Button>
-          </div>
-          {forceLabels.map((item) => (
-            <label key={item.key}>
-              <span>
-                {item.label}
-                <small>{localForces[item.key].toFixed(2)}</small>
-              </span>
-              <input
-                type="range"
-                min={item.min}
-                max={item.max}
-                step={0.05}
-                value={localForces[item.key]}
-                onChange={(e) =>
-                  updateForces({ ...localForces, [item.key]: Number(e.target.value) })
-                }
-              />
-            </label>
-          ))}
-          <div className="graph-forces-actions">
-            <Button variant="ghost" size="xs" onClick={() => updateForces(defaultForces)}>
-              Reset forces
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => {
-                positions.current.clear();
-                userMoved.current = false;
-                setLayoutVersion((v) => v + 1);
-              }}
-            >
-              <RotateCcw />
-              Re-layout
-            </Button>
-          </div>
-        </div>
+        <ForcesPanel
+          forces={localForces}
+          onChange={updateForces}
+          onClose={() => setPanel(false)}
+          onRelayout={() => {
+            positions.current.clear();
+            userMoved.current = false;
+            setLayoutVersion((v) => v + 1);
+          }}
+        />
       )}
       <div className="graph-hint">Drag to pan · scroll to zoom · drag a note to arrange</div>
     </div>
