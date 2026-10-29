@@ -1449,6 +1449,29 @@ kbd {
 .labels-hidden .graph-node:not(.pinned) text {
   opacity: 0;
 }
+/* A new layout: notes appear from the central ones outward, then their links. */
+.graph-entering .graph-node {
+  animation: graph-enter 0.42s ease-out backwards;
+  animation-delay: var(--enter, 0ms);
+}
+.graph-entering .graph-node .node-dot {
+  animation: graph-node-grow 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) backwards;
+  animation-delay: var(--enter, 0ms);
+}
+.graph-entering .graph-edge {
+  animation: graph-enter 0.5s ease-out backwards;
+  animation-delay: var(--enter, 0ms);
+}
+@keyframes graph-enter {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes graph-node-grow {
+  from {
+    r: 0;
+  }
+}
 .labels-hidden .graph-node.pinned text {
   font-size: var(--label-size, 11px);
   stroke-width: calc(var(--label-size, 11px) * 0.3);

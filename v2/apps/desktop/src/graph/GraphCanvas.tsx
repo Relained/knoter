@@ -16,7 +16,7 @@ import type { GraphForces } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { DocumentContextMenu } from '../components/DocumentMenu';
 import { documentHref, type WikiEdge } from '../wiki/links';
-import { defaultForces, ForceSimulation } from './simulation';
+import { defaultForces, ForceSimulation, type SimNode } from './simulation';
 import {
   CentralNotes,
   ForcesPanel,
@@ -31,13 +31,46 @@ type Camera = { x: number; y: number; k: number };
 const MIN_ZOOM = 0.06;
 const MAX_ZOOM = 4;
 const LABEL_ZOOM = 0.55;
+/** A new layout unfolds from this share of its size to full size over `UNFOLD_MS`. */
+const UNFOLD_FROM = 0.2;
+const UNFOLD_MS = 1100;
+/** A new layout counts as built, and the camera frames it, once it has cooled this far. */
+const BUILT_ALPHA = 0.04;
 const clampZoom = (k: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** When a note appears in a new layout: the central notes first, then ring by ring. */
+function enterDelay(node: SimNode) {
+  if (node.role === 'core') return 0;
+  if (node.role === 'hub') return 90;
+  if (node.role === 'member') return Math.min(560, 90 + node.hops * 120);
+  return 660;
+}
+
+/**
+ * Layouts and cameras outlive the view, so a graph the user returns to is shown as it was
+ * left instead of being built again: one entry for the whole wiki and one per focus note.
+ */
+interface SavedLayout {
+  positions: Map<string, { x: number; y: number }>;
+  camera: Camera;
+  userMoved: boolean;
+  /** The structure the positions settled for, if they did. */
+  settled: string | null;
+  /** Notes that joined and were still settling in, which a remount keeps settling. */
+  settling: string[];
+}
+const savedLayouts = new Map<string, SavedLayout>();
+const MAX_SAVED_LAYOUTS = 12;
 
 interface NodeProps {
   doc: WikiDocument;
   color: number;
   radius: number;
   degree: number;
+  /** Delay before the note appears while a new layout is built, in milliseconds. */
+  enter: number;
   state: '' | 'dimmed' | 'near' | 'active';
   focused: boolean;
   pinned: boolean;
@@ -53,6 +86,7 @@ const GraphNode = memo(function GraphNode({
   color,
   radius,
   degree,
+  enter,
   state,
   focused,
   pinned,
@@ -69,6 +103,7 @@ const GraphNode = memo(function GraphNode({
       ref={(element) => register(doc.id, element)}
       transform={`translate(${x} ${y})`}
       className={`graph-node graph-color-${color} ${state} ${focused ? 'focused' : ''} ${pinned ? 'pinned' : ''}`}
+      style={{ '--enter': `${enter}ms` } as CSSProperties}
     >
       <DocumentContextMenu doc={doc}>
         <a
@@ -135,10 +170,20 @@ export function GraphCanvas({
   const world = useRef<SVGGElement>(null);
   const nodeElements = useRef(new Map<string, SVGGElement>());
   const edgeElements = useRef(new Map<string, SVGLineElement>());
-  const positions = useRef(new Map<string, { x: number; y: number }>());
-  const camera = useRef<Camera>({ x: 0, y: 0, k: 1 });
-  const userMoved = useRef(false);
+  const layoutKey = focusId ?? '';
+  const [saved] = useState(() => savedLayouts.get(layoutKey));
+  const positions = useRef(saved?.positions ?? new Map<string, { x: number; y: number }>());
+  const camera = useRef<Camera>(saved?.camera ?? { x: 0, y: 0, k: 1 });
+  const userMoved = useRef(saved?.userMoved ?? false);
+  const settledFor = useRef(saved?.settled ?? null);
+  const settling = useRef(saved?.settling ?? []);
   const frame = useRef<number | null>(null);
+  /** Drawn size of the layout while a new one unfolds (1 otherwise), and when it began. */
+  const spread = useRef(1);
+  const unfoldStart = useRef<number | null>(null);
+  /** A new layout is still forming; the camera frames it once it has. */
+  const building = useRef(false);
+  const [entering, setEntering] = useState(false);
   const drag = useRef<{
     id?: string;
     pointerX: number;
@@ -161,7 +206,11 @@ export function GraphCanvas({
     query,
   );
 
-  const simulation = useMemo(() => {
+  /**
+   * `build` lays out a new graph, `update` adjusts a known one to added or removed notes,
+   * and `restore` shows a graph as it was when the view was left.
+   */
+  const layout = useMemo(() => {
     const known = positions.current;
     const sim = ForceSimulation.create(
       visible.map((d) => d.id),
@@ -172,11 +221,26 @@ export function GraphCanvas({
       focusId,
     );
     const reused = sim.nodes.filter((n) => known.has(n.id)).length;
-    if (reused > sim.nodes.length * 0.8) sim.alpha = 0.3;
-    else sim.warm(400, Math.min(160, 30 + sim.nodes.length / 4));
-    return sim;
+    if (sim.nodes.length && reused === sim.nodes.length && settledFor.current === structure) {
+      sim.alpha = 0;
+      return { simulation: sim, mode: 'restore' as const };
+    }
+    if (reused > sim.nodes.length * 0.8) {
+      sim.alpha = 0.3;
+      // New notes settle in around their links; other changes let the whole layout adjust.
+      const added = sim.nodes.filter((n) => !known.has(n.id) || settling.current.includes(n.id));
+      if (added.length) sim.settleAround(added);
+      return { simulation: sim, mode: 'update' as const, settling: added.map((n) => n.id) };
+    }
+    // Without motion the layout is computed before it is shown, as one still picture.
+    // Otherwise a few unseen ticks grow the seed to about its final size, so the frame
+    // chosen before the layout unfolds already fits it closely.
+    if (reducedMotion()) sim.warm(400, Math.min(160, 30 + sim.nodes.length / 4));
+    else sim.warm(30, 40);
+    return { simulation: sim, mode: 'build' as const };
     // localForces apply through setForces below; a rebuild is only for structure.
   }, [structure, focusId, layoutVersion]);
+  const simulation = layout.simulation;
 
   const applyCamera = useCallback((animate = false) => {
     const { x, y, k } = camera.current;
@@ -193,33 +257,39 @@ export function GraphCanvas({
   }, []);
 
   const paint = useCallback(() => {
+    const s = spread.current;
     for (const n of simulation.nodes) {
       positions.current.set(n.id, { x: n.x, y: n.y });
-      nodeElements.current.get(n.id)?.setAttribute('transform', `translate(${n.x} ${n.y})`);
+      nodeElements.current.get(n.id)?.setAttribute('transform', `translate(${n.x * s} ${n.y * s})`);
     }
     for (const link of simulation.links) {
       const line = edgeElements.current.get(pairKey(link.source.id, link.target.id));
       if (!line) continue;
-      line.setAttribute('x1', String(link.source.x));
-      line.setAttribute('y1', String(link.source.y));
-      line.setAttribute('x2', String(link.target.x));
-      line.setAttribute('y2', String(link.target.y));
+      line.setAttribute('x1', String(link.source.x * s));
+      line.setAttribute('y1', String(link.source.y * s));
+      line.setAttribute('x2', String(link.target.x * s));
+      line.setAttribute('y2', String(link.target.y * s));
     }
   }, [simulation]);
 
+  /**
+   * Frame the layout as drawn. With `onlyIfChanged`, a camera already close to the frame
+   * stays, so a layout that only settled a little further does not nudge the view.
+   */
   const fit = useCallback(
-    (animate = false) => {
+    (animate = false, onlyIfChanged = false) => {
       const box = container.current;
       if (!box || !simulation.nodes.length) return;
+      const s = spread.current;
       let x0 = Infinity;
       let y0 = Infinity;
       let x1 = -Infinity;
       let y1 = -Infinity;
       for (const n of simulation.nodes) {
-        x0 = Math.min(x0, n.x - n.radius);
-        x1 = Math.max(x1, n.x + n.radius);
-        y0 = Math.min(y0, n.y - n.radius);
-        y1 = Math.max(y1, n.y + n.radius + 22);
+        x0 = Math.min(x0, n.x * s - n.radius);
+        x1 = Math.max(x1, n.x * s + n.radius);
+        y0 = Math.min(y0, n.y * s - n.radius);
+        y1 = Math.max(y1, n.y * s + n.radius + 22);
       }
       const width = box.clientWidth;
       const height = box.clientHeight - insetTop;
@@ -231,42 +301,98 @@ export function GraphCanvas({
           (height - margin * 2) / Math.max(1, y1 - y0),
         ),
       );
-      camera.current = {
+      const next = {
         k,
         x: width / 2 - ((x0 + x1) / 2) * k,
         y: insetTop + height / 2 - ((y0 + y1) / 2) * k,
       };
+      const current = camera.current;
+      if (
+        onlyIfChanged &&
+        Math.abs(next.k / current.k - 1) < 0.06 &&
+        Math.hypot(next.x - current.x, next.y - current.y) < Math.min(width, height) * 0.04
+      )
+        return;
+      camera.current = next;
       applyCamera(animate);
     },
     [simulation, applyCamera, insetTop],
   );
 
+  const finishBuild = useCallback(() => {
+    if (!building.current) return;
+    building.current = false;
+    setEntering(false);
+  }, []);
+
   const run = useCallback(() => {
     if (frame.current !== null) return;
-    const step = () => {
+    const step = (now: number) => {
       // Two ticks per frame keep large graphs moving without long frames.
       simulation.tick();
       if (!simulation.settled) simulation.tick();
+      if (unfoldStart.current !== null) {
+        const t = Math.min(1, (now - unfoldStart.current) / UNFOLD_MS);
+        spread.current = UNFOLD_FROM + (1 - UNFOLD_FROM) * easeOut(t);
+        if (t === 1) unfoldStart.current = null;
+      }
       paint();
-      if (simulation.settled) {
-        frame.current = null;
+      // Build the graph first, then set the view: the camera frames a new layout only
+      // once it has unfolded and cooled, not while its notes are still finding places.
+      const unfolding = unfoldStart.current !== null;
+      if (building.current && !unfolding && simulation.alpha < BUILT_ALPHA) {
+        finishBuild();
         if (!userMoved.current) fit(true);
+      }
+      if (simulation.settled && !unfolding) {
+        frame.current = null;
+        finishBuild();
+        settledFor.current = structure;
+        settling.current = [];
+        if (!userMoved.current) fit(true, true);
         return;
       }
       frame.current = requestAnimationFrame(step);
     };
     frame.current = requestAnimationFrame(step);
-  }, [simulation, paint, fit]);
+  }, [simulation, paint, fit, finishBuild, structure]);
 
   useLayoutEffect(() => {
+    const unfold = layout.mode === 'build' && simulation.nodes.length > 1 && !reducedMotion();
+    building.current = layout.mode === 'build';
+    settledFor.current = layout.mode === 'restore' ? structure : null;
+    settling.current = layout.mode === 'update' ? layout.settling : [];
+    // A new layout is framed as seeded, at full size, and then unfolds into that frame;
+    // a known one keeps the camera it had.
+    spread.current = 1;
+    if (layout.mode === 'build' && !userMoved.current) fit();
+    else applyCamera();
+    spread.current = unfold ? UNFOLD_FROM : 1;
+    unfoldStart.current = unfold ? performance.now() : null;
+    setEntering(unfold);
     paint();
-    if (!userMoved.current) fit();
-    if (!simulation.settled) run();
+    if (!simulation.settled || unfold) run();
     return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
     };
-  }, [simulation, paint, fit, run]);
+  }, [layout]);
+
+  useEffect(
+    () => () => {
+      savedLayouts.delete(layoutKey);
+      savedLayouts.set(layoutKey, {
+        positions: positions.current,
+        camera: camera.current,
+        userMoved: userMoved.current,
+        settled: settledFor.current,
+        settling: settling.current,
+      });
+      if (savedLayouts.size > MAX_SAVED_LAYOUTS)
+        savedLayouts.delete(savedLayouts.keys().next().value!);
+    },
+    [layoutKey],
+  );
 
   useEffect(() => {
     const key = JSON.stringify(localForces);
@@ -280,8 +406,14 @@ export function GraphCanvas({
   useEffect(() => {
     const element = container.current;
     if (!element) return;
+    // Refit when the canvas changes size, not on the observer's first call, and not while a
+    // new layout forms: it is framed once built.
+    let size = `${element.clientWidth}x${element.clientHeight}`;
     const observer = new ResizeObserver(() => {
-      if (!userMoved.current) fit();
+      const next = `${element.clientWidth}x${element.clientHeight}`;
+      if (next === size) return;
+      size = next;
+      if (!userMoved.current && !building.current) fit();
     });
     observer.observe(element);
     // Own wheel events across the canvas and its overlays: React's delegated wheel
@@ -318,10 +450,12 @@ export function GraphCanvas({
     userMoved.current = true;
     applyCamera(true);
   };
+  /** The layout point under the pointer, allowing for a layout that is still unfolding. */
   const worldPoint = (clientX: number, clientY: number) => {
     const bounds = container.current!.getBoundingClientRect();
     const { x, y, k } = camera.current;
-    return { x: (clientX - bounds.left - x) / k, y: (clientY - bounds.top - y) / k };
+    const s = spread.current;
+    return { x: (clientX - bounds.left - x) / k / s, y: (clientY - bounds.top - y) / k / s };
   };
 
   const register = useCallback((id: string, element: SVGGElement | null) => {
@@ -359,6 +493,13 @@ export function GraphCanvas({
   const onHover = useCallback((id: string | null) => {
     if (!drag.current?.id) setHovered(id);
   }, []);
+  /** Let go of a dragged note; the focus of a local graph stays where it was dropped. */
+  const endDrag = () => {
+    const d = drag.current;
+    drag.current = null;
+    const node = d?.id && d.moved ? simulation.byId.get(d.id) : undefined;
+    if (node) simulation.drop(node, node.id === focusId);
+  };
 
   const neighbors = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -374,9 +515,14 @@ export function GraphCanvas({
     .map((id) => visible.find((d) => d.id === id))
     .filter((d): d is WikiDocument => !!d);
   const near = hovered ? (neighbors.get(hovered) ?? new Set<string>()) : null;
+  // Rendering draws the layout as currently scaled; animation frames update it directly.
+  const s = spread.current;
 
   return (
-    <div className={`graph-canvas ${className}`} ref={container}>
+    <div
+      className={`graph-canvas ${entering ? 'graph-entering' : ''} ${className}`}
+      ref={container}
+    >
       <svg
         ref={svg}
         role="group"
@@ -399,19 +545,19 @@ export function GraphCanvas({
           const dy = e.clientY - d.pointerY;
           if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) {
             d.moved = true;
+            // Arranging notes makes the view the user's: no automatic framing after it.
             if (d.id) {
-              simulation.alphaTarget = 0.25;
-              simulation.reheat(0.25);
-              run();
+              userMoved.current = true;
+              finishBuild();
             }
           }
           if (!d.moved) return;
           if (d.id) {
             const node = simulation.byId.get(d.id);
-            if (node && node.id !== focusId) {
+            if (node) {
               const p = worldPoint(e.clientX, e.clientY);
-              node.fx = p.x;
-              node.fy = p.y;
+              simulation.grab(node, p.x, p.y);
+              run();
             }
           } else {
             userMoved.current = true;
@@ -421,20 +567,16 @@ export function GraphCanvas({
         }}
         onPointerUp={(e) => {
           const d = drag.current;
-          suppressClick.current = d?.moved ?? false;
-          if (d?.id && d.id !== focusId) {
-            const node = simulation.byId.get(d.id);
-            if (node) node.fx = node.fy = null;
-            simulation.alphaTarget = 0;
-          }
-          drag.current = null;
+          endDrag();
           if (e.currentTarget.hasPointerCapture(e.pointerId))
             e.currentTarget.releasePointerCapture(e.pointerId);
+          // Only a dragged note swallows the click that follows; a pan lands on the canvas.
+          suppressClick.current = !!(d?.id && d.moved);
         }}
         onPointerCancel={() => {
-          if (drag.current?.id) simulation.alphaTarget = 0;
-          drag.current = null;
-          suppressClick.current = true;
+          const d = drag.current;
+          endDrag();
+          suppressClick.current = !!(d?.id && d.moved);
         }}
       >
         <g ref={world} className="graph-world">
@@ -446,15 +588,19 @@ export function GraphCanvas({
             return (
               <line
                 key={key}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
+                x1={a.x * s}
+                y1={a.y * s}
+                x2={b.x * s}
+                y2={b.y * s}
                 ref={(element) => {
                   if (element) edgeElements.current.set(key, element);
                   else edgeElements.current.delete(key);
                 }}
                 className={`graph-edge ${edge.kind} ${active ? 'highlighted' : hovered ? 'faded' : ''}`}
+                // A link appears once both of its notes have.
+                style={
+                  { '--enter': `${Math.max(enterDelay(a), enterDelay(b)) + 80}ms` } as CSSProperties
+                }
               />
             );
           })}
@@ -479,8 +625,9 @@ export function GraphCanvas({
                 color={Math.max(0, categories.indexOf(doc.category)) % PALETTE_SIZE}
                 radius={node.radius}
                 degree={node.degree}
-                x={node.x}
-                y={node.y}
+                enter={enterDelay(node)}
+                x={node.x * s}
+                y={node.y * s}
                 state={state}
                 focused={doc.id === focusId}
                 pinned={
@@ -549,6 +696,7 @@ export function GraphCanvas({
           onRelayout={() => {
             positions.current.clear();
             userMoved.current = false;
+            settledFor.current = null;
             setLayoutVersion((v) => v + 1);
           }}
         />
