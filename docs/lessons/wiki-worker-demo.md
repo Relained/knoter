@@ -437,6 +437,22 @@ appeared over 0.9 s and refit once. Node runs on 66–350-note graphs gave the s
 ordering. Not exercised: a visible window at display frame rate, the reduced-motion
 path, connected mode with the real workspace, the packaged app, and Windows.
 
+### 2026-10-30 — Links to titles with spaces or Korean text never resolved
+
+Since the 2026-09-17 React Router refactor, `routePath` encoded a note id before
+`generatePath` encoded it again. Link resolution decodes once, so `[[Smoke A]]` or
+`[[한글 노트]]` looked up `Smoke%20A` and matched no note: the graph drew no line and
+the reader marked the link unresolved. `[[uuid|label]]` links, which the worker and
+Chat write, were unaffected because UUIDs need no encoding. A packaged-build smoke
+test with hand-written title links showed 0 connections. `generatePath` now does the
+only encoding.
+
+Measured in the packaged build, with its bundled service on a disposable
+`KNOTER_DATA_DIR` and nine notes linked by title. Before: 0 graph lines and 7 of 7
+reader links unresolved. After: 8 lines, all 7 links resolved, and the Korean link
+opened its note. The same runs showed the packaged graph unfolding before its single
+fit. Not exercised: the user's workspace, its existing title links, and Windows.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch
