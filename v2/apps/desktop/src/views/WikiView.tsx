@@ -12,6 +12,7 @@ import {
   Loader2,
   PencilLine,
   Plus,
+  Scale,
   Search,
   ShieldCheck,
   Sparkles,
@@ -29,6 +30,7 @@ import { documentSections } from '../wiki/structure';
 import { routeHref } from '../routing/paths';
 import { OfficialReferences } from '../components/OfficialReferences';
 import { DocumentContextMenu, DocumentMenuButton } from '../components/DocumentMenu';
+import { withShortcut } from '../shell/shortcuts';
 
 const Editor = lazy(() => import('../components/Editor'));
 export type RunAction = (action: () => Promise<unknown>, message?: string) => Promise<boolean>;
@@ -162,6 +164,8 @@ export function WikiDocumentView({
   onSource,
   onOpen,
   onAsk,
+  onRewrite,
+  rewriteBinding,
   editing,
   onEditing,
   onDirtyCheck,
@@ -175,6 +179,8 @@ export function WikiDocumentView({
   onSource: (id: string) => void;
   onOpen: (id: string) => void;
   onAsk: () => void;
+  onRewrite: () => void;
+  rewriteBinding: string;
   editing: boolean;
   onEditing: (value: boolean) => void;
   onDirtyCheck: (check: (() => boolean) | null) => void;
@@ -259,11 +265,11 @@ export function WikiDocumentView({
                 </a>
               ))}
             </span>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
               {!editing && (
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-sm"
                   aria-label="View this note in graph"
                   title="View connected graph"
                   onClick={onGraph}
@@ -271,9 +277,23 @@ export function WikiDocumentView({
                   <Network />
                 </Button>
               )}
+              {!editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Rewrite with a supplement ratio"
+                  title={withShortcut(
+                    'Rewrite with a different balance of your notes and supplements',
+                    rewriteBinding,
+                  )}
+                  onClick={onRewrite}
+                >
+                  <Scale /> <span className="button-label">Rewrite</span>
+                </Button>
+              )}
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 onClick={() => void run(() => client.toggleFavorite(doc.id))}
                 aria-label={doc.favorite ? 'Remove from favorites' : 'Add to favorites'}
               >
@@ -294,8 +314,8 @@ export function WikiDocumentView({
                   </Button>
                 </>
               ) : (
-                <Button variant="outline" size="sm" onClick={begin}>
-                  <PencilLine /> Edit note
+                <Button variant="outline" size="sm" onClick={begin} aria-label="Edit note">
+                  <PencilLine /> <span className="button-label">Edit note</span>
                 </Button>
               )}
               <DocumentMenuButton doc={doc} disabled={saving} />
@@ -436,7 +456,7 @@ export function WikiDocumentView({
               <section className="wiki-connections">
                 <div className="section-heading">
                   <h2>Connected knowledge</h2>
-                  <Button variant="ghost" size="sm" onClick={onGraph}>
+                  <Button variant="ghost" size="xs" onClick={onGraph}>
                     <Network />
                     Explore graph
                   </Button>

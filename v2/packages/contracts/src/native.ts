@@ -75,6 +75,26 @@ export const chatChoice = z
   })
   .strict();
 export type ChatChoice = z.infer<typeof chatChoice>;
+/** Share of marked supplements a written page aims for, in percent (D23). */
+export const DEFAULT_SUPPLEMENT_RATIO = 30;
+export const supplementRatio = z.number().int().min(0).max(90);
+/** Force strengths for the wiki graph layout; 1 is the default for each. */
+export const graphForces = z
+  .object({
+    center: z.number().min(0).max(3),
+    repel: z.number().min(0).max(3),
+    link: z.number().min(0).max(3),
+    distance: z.number().min(0.3).max(3),
+  })
+  .strict();
+export type GraphForces = z.infer<typeof graphForces>;
+/** Shortcut overrides: command ID → binding such as `Mod+Shift+K`, or '' to unbind. */
+export const shortcutMap = z
+  .record(
+    z.string().regex(/^[a-zA-Z][\w.-]{0,39}$/),
+    z.string().regex(/^((Mod|Ctrl|Alt|Shift|Meta)\+){0,4}[^+\s]{1,12}$|^$/),
+  )
+  .refine((map) => Object.keys(map).length <= 80, 'Too many shortcut overrides.');
 export const settingsPatch = z
   .object({
     theme: z.enum(['light', 'dark']).optional(),
@@ -85,6 +105,9 @@ export const settingsPatch = z
     leftSidebarCollapsed: z.boolean().optional(),
     rightSidebarCollapsed: z.boolean().optional(),
     chat: chatChoice.optional(),
+    supplementRatio: supplementRatio.optional(),
+    shortcuts: shortcutMap.optional(),
+    graph: graphForces.optional(),
   })
   .strict();
 export const commands = {
@@ -145,6 +168,7 @@ export const commands = {
         )
         .max(MAX_CHAT_ATTACHMENTS),
       choice: chatChoice,
+      supplementRatio: supplementRatio.optional(),
     })
     .strict(),
   chatCancel: nil,
@@ -187,9 +211,24 @@ export const desktopActions = z.enum([
   'exportWiki',
 ]);
 export type DesktopAction = z.infer<typeof desktopActions>;
+/** Window decoration: drawn by the app (`custom`) or by the operating system (`native`). */
+export const windowFrames = z.enum(['custom', 'native']);
+export type WindowFrame = z.infer<typeof windowFrames>;
+export const windowCommand = z.discriminatedUnion('action', [
+  z.object({ action: z.enum(['state', 'minimize', 'toggleMaximize', 'close']) }).strict(),
+  z.object({ action: z.literal('setFrame'), frame: windowFrames }).strict(),
+]);
+export type WindowCommand = z.infer<typeof windowCommand>;
+export interface WindowState {
+  platform: string;
+  frame: WindowFrame;
+  maximized: boolean;
+  fullscreen: boolean;
+}
 export interface NativeBridge {
   request(command: Command, payload: unknown): Promise<unknown>;
   desktop(action: DesktopAction): Promise<unknown>;
+  window(command: WindowCommand): Promise<WindowState>;
 }
 export const requestSchema = z
   .object({

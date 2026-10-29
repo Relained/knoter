@@ -2,6 +2,7 @@ import { generatePath } from 'react-router';
 import type { View } from '@knoter/contracts';
 
 export const paths = {
+  home: '/',
   wiki: '/wiki',
   document: '/wiki/:documentId',
   sources: '/sources',

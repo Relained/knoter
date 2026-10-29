@@ -325,6 +325,28 @@ User refinements from 2026-09-17 remain requirements:
   documents' Markdown intact. Backend retention/permanent-deletion policy needs
   a separate decision; browser mock deletion does not define filesystem deletion.
 
+User refinements from 2026-10-16 replace parts of the layout above:
+
+- The wiki is the main view. Home is a search field over the whole-wiki graph;
+  Sources and the agent (service, worker CLI, queue, backups) open as movable,
+  maximizable windows inside the app instead of navigation pages.
+- The assistant panel holds Chat and Changes. Changes gathers review proposals,
+  notes that did not reach the wiki, and revision history across the workspace.
+- A slim status bar at the bottom replaces the top bar and toggles the panels and
+  windows, as in Zed. The window title bar is drawn by the app by default (search
+  and window controls; macOS keeps its traffic lights), with the system title bar
+  selectable in Settings.
+- Every main action has a keyboard shortcut; shortcuts are customizable, and keys an
+  editor or field already handles stay there.
+- The graph follows Obsidian's force layout on an unbounded canvas: link distance is
+  computed from connection counts and label width, and the view is fitted, not the
+  layout clamped to the viewport.
+- The graph is arranged around central notes chosen automatically: the most central
+  in the middle, the others on a ring around it, the rest radiating outward from their
+  nearest central note one ring per link, and notes without links on the outer ring.
+  A 3D sphere view with the same arrangement was built and then removed the same day
+  at the user's request as unnecessary; the 2D graph is the only graph view.
+
 Use React Router's hash-based Data Mode to preserve shared `#/wiki/:id` links
 and support navigation blockers without server rewrite rules. Keep services
 behind `KnoterClient`; adopting Data Mode does not move persistence into route

@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
-import { ChevronRight, History, Link2, MessageSquare, RotateCcw, Sparkles, X } from 'lucide-react';
+import { GitPullRequestArrow, MessageSquare, X } from 'lucide-react';
 import type { KnoterClient, WikiDocument, WorkspaceSnapshot } from '@knoter/contracts';
 import { Button } from './ui/button';
-import { ChatPanel } from './ChatPanel';
-import { SourceIcon, relativeTime } from './helpers';
+import { ChatPanel, type ChatRequest } from './ChatPanel';
+import { ChangesPanel, reviewCount } from './ChangesPanel';
 import type { RunAction } from '../views/WikiView';
 
-export type PanelTab = 'chat' | 'sources' | 'changes';
+export type PanelTab = 'chat' | 'changes';
 export function ContextPanel({
   snapshot,
   doc,
@@ -18,6 +18,9 @@ export function ContextPanel({
   tab,
   setTab,
   resizeHandle,
+  chatRequest,
+  onChatRequestHandled,
+  titles,
 }: {
   snapshot: WorkspaceSnapshot;
   doc?: WikiDocument;
@@ -29,41 +32,41 @@ export function ContextPanel({
   tab: PanelTab;
   setTab: (tab: PanelTab) => void;
   resizeHandle?: ReactNode;
+  chatRequest?: ChatRequest | null;
+  onChatRequestHandled?: (id: number) => void;
+  titles: Record<PanelTab, string>;
 }) {
-  const sources = snapshot.sources.filter((s) => !doc || doc.sourceIds.includes(s.id));
-  const revisions = snapshot.revisions.filter((r) => !doc || r.documentId === doc.id);
+  const pending = reviewCount(snapshot);
   return (
-    <aside className="context-panel">
+    <aside className="context-panel" aria-label="Side panel">
       {resizeHandle}
       <div className="panel-heading">
-        <span>
-          <Sparkles size={16} /> A little perspective
-        </span>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close side panel">
-          <X size={16} />
+        <div className="panel-tabs" role="tablist" aria-label="Side panel">
+          {(
+            [
+              { id: 'chat', label: 'Chat', icon: MessageSquare, count: 0 },
+              { id: 'changes', label: 'Changes', icon: GitPullRequestArrow, count: pending },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              role="tab"
+              aria-selected={tab === item.id}
+              className={tab === item.id ? 'active' : ''}
+              title={titles[item.id]}
+              onClick={() => setTab(item.id)}
+            >
+              <item.icon size={13} />
+              {item.label}
+              {item.count > 0 && <span className="count-pill">{item.count}</span>}
+            </button>
+          ))}
+        </div>
+        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close side panel">
+          <X />
         </Button>
       </div>
-      <div className="panel-tabs" role="tablist" aria-label="Context panel">
-        {(
-          [
-            { id: 'chat', label: 'Chat', icon: MessageSquare },
-            { id: 'sources', label: 'Sources', icon: Link2 },
-            { id: 'changes', label: 'Changes', icon: History },
-          ] as const
-        ).map((item) => (
-          <button
-            key={item.id}
-            role="tab"
-            aria-selected={tab === item.id}
-            className={tab === item.id ? 'active' : ''}
-            onClick={() => setTab(item.id)}
-          >
-            <item.icon size={13} />
-            {item.label}
-          </button>
-        ))}
-      </div>
-      {/* Stays mounted on other tabs so a draft and its attachments survive. */}
+      {/* Stays mounted on the Changes tab so a draft and its attachments survive. */}
       <div className={`chat-pane ${tab === 'chat' ? '' : 'chat-pane-hidden'}`}>
         <ChatPanel
           snapshot={snapshot}
@@ -72,70 +75,19 @@ export function ContextPanel({
           run={run}
           onSource={onSource}
           onOpen={onOpen}
+          request={chatRequest}
+          onRequestHandled={onChatRequestHandled}
         />
       </div>
-      {tab === 'chat' ? null : tab === 'sources' ? (
-        <div className="panel-scroll">
-          <div className="panel-intro">
-            <h3>Every idea starts somewhere.</h3>
-            <p>{doc ? `The evidence connected to this note.` : 'The sources in your workspace.'}</p>
-          </div>
-          {sources.map((source) => (
-            <button className="panel-source" onClick={() => onSource(source.id)} key={source.id}>
-              <SourceIcon type={source.type} />
-              <div>
-                <strong>{source.title}</strong>
-                <span>
-                  {source.type.toUpperCase()} · {source.pages ? `${source.pages} pages` : 'Note'}
-                </span>
-              </div>
-              <ChevronRight size={13} />
-            </button>
-          ))}
-          {!sources.length && (
-            <p className="panel-empty">No sources are connected to this note yet.</p>
-          )}
-        </div>
-      ) : (
-        <div className="panel-scroll">
-          <div className="panel-intro">
-            <h3>A note with a memory.</h3>
-            <p>Follow how your knowledge has changed.</p>
-          </div>
-          <div className="revision-list">
-            {revisions.map((revision) => (
-              <div className="revision-item" key={revision.id}>
-                <span className="revision-dot" />
-                <div className="revision-meta">
-                  <strong>{revision.author}</strong>
-                  <span>{relativeTime(revision.createdAt)}</span>
-                </div>
-                <p>{revision.summary}</p>
-                <div className="revision-bottom">
-                  <span>Revision {revision.revision}</span>
-                  {doc && revision.revision !== doc.revision && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        void run(
-                          () => client.restoreRevision(revision.id),
-                          'Revision restored as a new version.',
-                        )
-                      }
-                    >
-                      <RotateCcw size={12} />
-                      Restore
-                    </Button>
-                  )}
-                  {doc && revision.revision === doc.revision && (
-                    <span className="current-version">Current</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {tab === 'changes' && (
+        <ChangesPanel
+          snapshot={snapshot}
+          doc={doc}
+          client={client}
+          run={run}
+          onOpen={onOpen}
+          onSource={onSource}
+        />
       )}
     </aside>
   );

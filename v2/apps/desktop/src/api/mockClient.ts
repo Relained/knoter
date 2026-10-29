@@ -357,7 +357,14 @@ export function createMockClient(): KnoterClient {
       data.events = data.events.filter((e) => e.id !== id);
       commit();
     },
-    async sendMessage({ text: question, documentIds, attachments, choice, signal }) {
+    async sendMessage({
+      text: question,
+      documentIds,
+      attachments,
+      choice,
+      supplementRatio,
+      signal,
+    }) {
       if (sending) throw new Error('Let the current answer finish first.');
       const documentId = documentIds.find((id) => data.documents.some((d) => d.id === id));
       const model = demoModels.find((m) => m.model === choice?.model);
@@ -393,6 +400,10 @@ export function createMockClient(): KnoterClient {
       const attached = attachments.length
         ? `\n\n*Received ${attachments.map((a) => a.filename).join(', ')}. The preview does not read attachments or change notes.*`
         : '';
+      const balance =
+        supplementRatio === undefined
+          ? ''
+          : `\n\n*Requested balance: ${100 - supplementRatio}% your notes · ${supplementRatio}% supplements. The preview does not rewrite notes.*`;
       const answer = {
         id: uid(),
         role: 'assistant' as const,
@@ -420,7 +431,7 @@ export function createMockClient(): KnoterClient {
       );
       try {
         commit();
-        const reply = text + attached;
+        const reply = text + attached + balance;
         for (let i = 0; i < reply.length; i += 28) {
           if (signal.aborted) break;
           const message = data.messages.find((m) => m.id === answer.id);

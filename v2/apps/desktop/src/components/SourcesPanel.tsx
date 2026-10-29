@@ -3,21 +3,25 @@ import {
   ArrowUpRight,
   Check,
   FileText,
+  FolderPlus,
   Loader2,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Search,
+  Upload,
   UploadCloud,
 } from 'lucide-react';
 import type { KnoterClient, WorkspaceSnapshot } from '@knoter/contracts';
-import { Button } from '../components/ui/button';
-import { SourceIcon, fileSize, relativeTime } from '../components/helpers';
-import type { RunAction } from './WikiView';
-import { WorkerPanel } from '../components/WorkerPanel';
+import { Button } from './ui/button';
+import { SourceIcon, fileSize, relativeTime } from './helpers';
+import type { RunAction } from '../views/WikiView';
 
-export function SourcesView({
+const date = (value: string | null) => (value ? new Date(value).toLocaleString() : '—');
+
+/** The Sources window: watched folders, imports, and every source with its status. */
+export function SourcesPanel({
   snapshot,
   client,
   run,
@@ -66,23 +70,62 @@ export function SourcesView({
       )
       .map((source) => source.id),
   );
+  const worker = snapshot.worker;
+  const offline = client.mode === 'connected' && !worker?.connected;
+  const act = (action: () => Promise<unknown>) => void run(action);
   return (
-    <div className="collection-page page-enter">
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow">WHERE IDEAS BEGIN</div>
-          <h1>Your sources</h1>
-          <p>Papers, notes, and the evidence behind your knowledge.</p>
-        </div>
-        <Button onClick={onImport}>
-          <Plus /> Add sources
-        </Button>
-      </div>
-      {client.mode === 'connected' && <WorkerPanel snapshot={snapshot} client={client} run={run} />}
+    <div className="sources-panel">
+      {client.mode === 'connected' && (
+        <section className="agent-section">
+          <header>
+            <FolderPlus size={15} />
+            <h3>Watched folders</h3>
+            <span className="count-pill">{worker?.watches.length ?? 0}</span>
+          </header>
+          <p>
+            Markdown folders are rescanned while this app is open. Files stay untouched; at most 256
+            KiB per UTF-8 .md file.
+          </p>
+          {worker?.watches.map((w) => (
+            <div className="worker-location" key={w.id}>
+              <strong>{w.path}</strong>
+              <small>
+                Last discovery: {date(w.lastScan)}
+                {w.error ? ` · ${w.error}` : ''}
+              </small>
+            </div>
+          ))}
+          {!!worker?.pendingSources?.length && (
+            <div role="status" className="worker-error">
+              <strong>Registration pending</strong>
+              {worker.pendingSources.map((p) => (
+                <p key={p}>{p}</p>
+              ))}
+            </div>
+          )}
+          <div className="agent-actions">
+            <Button
+              size="sm"
+              disabled={offline}
+              onClick={() => act(() => client.desktop!('chooseFolder'))}
+            >
+              <FolderPlus /> Watch Markdown folder
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={offline}
+              onClick={() => act(() => client.desktop!('importMarkdown'))}
+            >
+              <Upload /> Import snapshot
+            </Button>
+          </div>
+        </section>
+      )}
       {client.mode === 'demo' && (
         <button className="source-drop-zone" onClick={onImport}>
           <span className="upload-symbol">
-            <UploadCloud size={24} />
+            <UploadCloud size={22} />
           </span>
           <div>
             <strong>A new source, a new connection.</strong>
@@ -91,7 +134,7 @@ export function SourcesView({
           <span className="drop-formats">
             PDF <i /> Markdown <i /> Text
           </span>
-          <Plus size={20} />
+          <Plus size={18} />
         </button>
       )}
       {client.mode === 'demo' && (
@@ -102,9 +145,9 @@ export function SourcesView({
             }
           >
             {processing && !snapshot.settings.workerPaused ? (
-              <Loader2 className="spin" size={16} />
+              <Loader2 className="spin" size={15} />
             ) : (
-              <Check size={16} />
+              <Check size={15} />
             )}
           </span>
           <div>
@@ -119,7 +162,7 @@ export function SourcesView({
           </div>
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
             onClick={() =>
               void run(() =>
                 client.updateSettings({ workerPaused: !snapshot.settings.workerPaused }),
@@ -160,6 +203,11 @@ export function SourcesView({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {client.mode === 'demo' && (
+          <Button size="sm" onClick={onImport}>
+            <Plus /> Add sources
+          </Button>
+        )}
       </div>
       <div className="source-table">
         <div className="source-table-head">
@@ -205,8 +253,8 @@ export function SourcesView({
             retryNoChange.has(source.id) ? (
               <Button
                 variant="ghost"
-                size="sm"
-                disabled={client.mode === 'connected' && !snapshot.worker?.connected}
+                size="xs"
+                disabled={offline}
                 onClick={() => void run(() => client.retrySource(source.id))}
               >
                 Retry
