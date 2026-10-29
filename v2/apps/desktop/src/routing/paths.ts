@@ -20,8 +20,10 @@ export interface WorkspaceRoute {
 }
 
 export function routePath(route: WorkspaceRoute): string {
+  // generatePath encodes the id itself; encoding it here too left titles with spaces or
+  // Korean text unresolvable after one decode.
   if (route.view === 'wiki' && route.documentId)
-    return generatePath(paths.document, { documentId: encodeURIComponent(route.documentId) });
+    return generatePath(paths.document, { documentId: route.documentId });
   const params = new URLSearchParams();
   if (route.view === 'wiki' && route.category) params.set('collection', route.category);
   if (route.view === 'wiki' && route.tag) params.set('tag', route.tag);
