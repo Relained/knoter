@@ -346,6 +346,9 @@ User refinements from 2026-10-16 replace parts of the layout above:
   nearest central note one ring per link, and notes without links on the outer ring.
   A 3D sphere view with the same arrangement was built and then removed the same day
   at the user's request as unnecessary; the 2D graph is the only graph view.
+- 2026-10-30: the graph is visibly dynamic. Dragging a note moves the others by rule,
+  as in Obsidian (linked notes follow less with each link, nearby notes are pushed,
+  the rest stay), and a new graph is built first and only then framed by the view.
 
 Use React Router's hash-based Data Mode to preserve shared `#/wiki/:id` links
 and support navigation blockers without server rewrite rules. Keep services

@@ -146,12 +146,24 @@ without links settle on the outer ring. Forces still shape it as in Obsidian's
 graph: notes repel, links pull like springs, labels are kept from overlapping, and
 nothing is clamped to the window.
 
+A new graph is built first and framed after: the layout unfolds from the middle for
+about a second, the central notes appearing first and the rest ring by ring, and only
+once it has formed does the view zoom to fit it. Coming back to a graph shows it as
+you left it, camera included; a note added meanwhile settles in around its links
+while the rest stays put. With reduced motion the layout appears already formed.
+
 - Drag to pan, scroll to zoom, and use **Fit** to see everything again. Click a note
   to open it, drag one to move it, and right-click for its menu. Every note is also a
   keyboard-focusable link.
+- Dragging a note moves the graph around it, as in Obsidian: linked notes are pulled
+  along, a little less with each link between them and the dragged note, notes it
+  passes are pushed aside, and notes that are neither linked within four links nor
+  nearby stay where they are. Released, the note and its neighbors settle back under
+  the forces; the focus of **Graph around this note** stays where it is dropped.
 - Labels hide below 55% zoom, except for the central notes.
 - **Forces** (the sliders button) adjusts the center (shape), repel, link, and
-  distance forces; **Re-layout** starts the arrangement over.
+  distance forces; **Re-layout** builds the arrangement again from the start. Link
+  strength saturates above 1 for single links, so high settings cannot fling the layout.
 - **Graph around this note** (⌘G) shows one to three links around a note, with that
   note in the middle.
 
