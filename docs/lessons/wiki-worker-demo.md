@@ -402,6 +402,41 @@ is unmeasured. A rewrite re-cites the notes behind a page, so it depends on the
 chat reading those versions; a page whose notes were all removed cannot be
 rewritten with citations.
 
+### 2026-10-30 — A drag moved the whole graph, and new layouts appeared already formed
+
+The user asked for Obsidian's drag, where the dragged note's neighborhood follows by
+rule, and for a new graph to be built before the view is set. Causes found:
+- **Inverted link bias.** Each link moved its busier end more, the reverse of d3, so
+  leaves dragged central notes around; central notes settled 1.9–3× off their ring.
+- **Unconverged layouts.** The 300-tick cooling stopped short of equilibrium: reheating
+  a settled 120-note layout with nothing dragged moved notes 93 units on average and
+  turned the disc about 5°. A drag reheated everything, so unrelated notes moved about
+  as far as linked ones (101 vs 80 units for a 300-unit drag).
+- **Built before shown.** Layouts were computed synchronously and then shown, so small
+  graphs had one frame of motion, and the camera was fit to the unfinished layout and
+  again when it settled.
+- **Smaller defects.** A Link slider above about 2.2 made fresh layouts diverge.
+  Dragging the focus of a local graph kept the simulation running forever. Panning
+  swallowed the next keyboard Enter on a note. Reordered notes or links counted as a
+  new structure and restarted the layout.
+
+Remedies: d3's link bias, and link strength capped at 1. During a drag, and while
+added notes settle in, each note's motion is scaled by its link distance from the
+dragged or added notes (1, 0.7, 0.4, 0.2 for one to four links, 0 beyond), or by
+nearness to the drag. A new layout is drawn at a fifth of its size and unfolds over
+1.1 s while notes fade in by ring; the camera is fit once it cools. Layouts, cameras,
+and still-settling notes are kept across remounts; a quick remount after a note was
+added had otherwise reheated the whole graph. The structure key is order-independent.
+
+Measured on a synthetic 120-note demo wiki in offscreen Electron 44.4.1 against the
+Vite preview on macOS, with real mouse events. A 279-unit drag of the core moved notes
+one link away 214 units on average, then 107, 64, and 16 by link distance, and 0 for
+the 23 notes farther away. Adding an unlinked note moved no other note. Returning Home
+moved nothing and kept the camera. A re-layout kept the camera still while 127 notes
+appeared over 0.9 s and refit once. Node runs on 66–350-note graphs gave the same
+ordering. Not exercised: a visible window at display frame rate, the reduced-motion
+path, connected mode with the real workspace, the packaged app, and Windows.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch

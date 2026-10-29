@@ -62,7 +62,19 @@ export function useGraphData(
     }
     return [...paired.values()];
   }, [allEdges, visibleIds]);
-  const structure = `${visible.map((d) => d.id).join(',')}|${edges.map((e) => pairKey(e.source, e.target)).join(',')}`;
+  // Sorted, so notes or links that merely changed order (a note saved moves up the list)
+  // do not count as a new structure and restart the layout.
+  const structure = useMemo(
+    () =>
+      `${visible
+        .map((d) => d.id)
+        .sort()
+        .join(',')}|${edges
+        .map((e) => pairKey(e.source, e.target))
+        .sort()
+        .join(',')}`,
+    [visible, edges],
+  );
   const categories = useMemo(
     () => [...new Set(documents.map((d) => d.category))].sort((a, b) => a.localeCompare(b)),
     [documents],

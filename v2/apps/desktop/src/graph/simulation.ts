@@ -34,6 +34,8 @@ export interface SimNode {
   /** The central note this note radiates from, if any. */
   hub: SimNode | null;
   hops: number;
+  /** Share of its motion a note takes: 1, or less around a drag (see `grab`). */
+  mobility: number;
 }
 export interface SimLink {
   source: SimNode;
@@ -49,6 +51,13 @@ const REPULSION = 260;
 const GRAVITY = 0.006;
 const THETA2 = 0.81;
 const LABEL_GAP = 46;
+/** Heat held while a note is dragged, as in d3's and Obsidian's drag. */
+const DRAG_HEAT = 0.3;
+/** How freely notes 1, 2, 3, and 4 links from a dragged note follow it; farther ones stay. */
+const FOLLOW = [1, 1, 0.7, 0.4, 0.2];
+/** Notes nearer the dragged one than this move freely, fading out at `PUSH_FAR`. */
+const PUSH_NEAR = 120;
+const PUSH_FAR = 320;
 
 /**
  * Approximate half-width of a label in layout units (11px text; CJK glyphs are wider),
@@ -177,6 +186,14 @@ export class ForceSimulation {
   shell: number;
   private forces: GraphForces;
   private ticks = 0;
+  private readonly adjacent = new Map<SimNode, SimNode[]>();
+  /**
+   * The note last dragged, whether the pointer still holds it, and how freely each note
+   * follows it by link distance, kept until the layout settles after the drop.
+   */
+  private dragged: SimNode | null = null;
+  private holding = false;
+  private follow: Map<SimNode, number> | null = null;
   /** Radial spacing between link rings. */
   private get layer() {
     return 74 * this.forces.distance;
@@ -197,6 +214,8 @@ export class ForceSimulation {
       const target = this.byId.get(edge.target);
       if (!source || !target || source === target) continue;
       this.links.push({ source, target, distance: 0, strength: 0, bias: 0.5 });
+      this.adjacent.set(source, [...(this.adjacent.get(source) ?? []), target]);
+      this.adjacent.set(target, [...(this.adjacent.get(target) ?? []), source]);
     }
     this.setForces(forces);
   }
@@ -231,6 +250,7 @@ export class ForceSimulation {
         role,
         hub: null,
         hops: structure.hops.get(id)!,
+        mobility: 1,
       };
     });
     const sim = new ForceSimulation(nodes, edges, structure, forces);
@@ -287,17 +307,79 @@ export class ForceSimulation {
       const { source, target } = link;
       link.distance = linkDistance(source, target, forces.distance);
       // d3's default: a link to a hub pulls less, so hubs do not collapse their ring.
-      link.strength = forces.link / Math.max(1, Math.min(source.degree, target.degree));
+      // Above 1 a spring overshoots further each tick, so stronger settings saturate there.
+      link.strength = Math.min(
+        1,
+        forces.link / Math.max(1, Math.min(source.degree, target.degree)),
+      );
+      // The less connected end moves more, so a hub carries its notes along.
       link.bias = source.degree / Math.max(1, source.degree + target.degree);
     }
   }
 
+  /** Wake every note, as a change to the forces or the notes does. */
   reheat(alpha = 0.6) {
     this.alpha = Math.max(this.alpha, alpha);
+    this.release();
   }
 
   get settled() {
     return this.alpha < this.alphaMin && this.alphaTarget === 0;
+  }
+
+  /**
+   * Hold a note at a point while the user drags it. As in Obsidian, the layout stays warm
+   * and the rest answers through the forces: linked notes are pulled along, less with each
+   * link between them and the dragged note, and notes it passes are pushed aside. Notes
+   * that are neither linked nor near keep still, so one drag does not shift the whole wiki.
+   */
+  grab(node: SimNode, x: number, y: number) {
+    if (!this.holding || this.dragged !== node) {
+      this.localize([node]);
+      this.dragged = node;
+      this.holding = true;
+      this.alphaTarget = DRAG_HEAT;
+      this.alpha = Math.max(this.alpha, DRAG_HEAT);
+    }
+    node.fx = x;
+    node.fy = y;
+  }
+
+  /**
+   * Fit notes that just joined a known layout: they and the notes around them settle by
+   * the same rule as a drag, while the rest of the wiki stays where it was.
+   */
+  settleAround(added: SimNode[], alpha = 0.3) {
+    this.localize(added);
+    this.alpha = Math.max(this.alpha, alpha);
+  }
+
+  /** Mobility by link distance from `origins`, until the layout next settles. */
+  private localize(origins: SimNode[]) {
+    this.release();
+    this.follow = new Map(origins.map((n) => [n, 1]));
+    let frontier = origins;
+    for (let hops = 1; hops < FOLLOW.length && frontier.length; hops++) {
+      const next: SimNode[] = [];
+      for (const n of frontier)
+        for (const other of this.adjacent.get(n) ?? [])
+          if (!this.follow.has(other)) {
+            this.follow.set(other, FOLLOW[hops]);
+            next.push(other);
+          }
+      frontier = next;
+    }
+    for (const n of this.nodes) n.mobility = this.follow.get(n) ?? 0;
+  }
+
+  /**
+   * Let go of a dragged note. It stays where it was dropped when `pin` is set (the focus of
+   * a local graph); otherwise the forces take it back. The neighborhood settles as it moved.
+   */
+  drop(node: SimNode, pin = false) {
+    if (this.dragged === node) this.holding = false;
+    if (!pin) node.fx = node.fy = null;
+    this.alphaTarget = 0;
   }
 
   tick() {
@@ -308,16 +390,42 @@ export class ForceSimulation {
     this.applyRepulsion(alpha);
     this.applyShape(alpha);
     this.applyCollision();
+    if (this.follow) this.measureMobility();
     for (const n of this.nodes) {
+      const decay = this.velocityDecay * n.mobility;
       if (n.fx !== null) {
         n.x = n.fx;
         n.vx = 0;
-      } else n.x += n.vx *= this.velocityDecay;
+      } else n.x += n.vx *= decay;
       if (n.fy !== null) {
         n.y = n.fy;
         n.vy = 0;
-      } else n.y += n.vy *= this.velocityDecay;
+      } else n.y += n.vy *= decay;
     }
+    // Once a drag has settled, every note is free again for the next change.
+    if (this.follow && !this.holding && this.settled) this.release();
+  }
+
+  /** How freely each note moves this tick: by link distance or nearness to the drag. */
+  private measureMobility() {
+    const follow = this.follow!;
+    const center = this.dragged;
+    for (const n of this.nodes) {
+      let mobility = follow.get(n) ?? 0;
+      if (center && mobility < 1) {
+        const d = Math.hypot(n.x - center.x, n.y - center.y);
+        mobility = Math.max(mobility, Math.min(1, (PUSH_FAR - d) / (PUSH_FAR - PUSH_NEAR)));
+      }
+      n.mobility = mobility;
+    }
+  }
+
+  private release() {
+    if (!this.follow) return;
+    this.follow = null;
+    this.dragged = null;
+    this.holding = false;
+    for (const n of this.nodes) n.mobility = 1;
   }
 
   /** Run synchronously until settled, the tick limit, or the time budget. */
@@ -338,10 +446,10 @@ export class ForceSimulation {
       l = ((l - link.distance) / l) * alpha * link.strength;
       dx *= l;
       dy *= l;
-      target.vx -= dx * (1 - link.bias);
-      target.vy -= dy * (1 - link.bias);
-      source.vx += dx * link.bias;
-      source.vy += dy * link.bias;
+      target.vx -= dx * link.bias;
+      target.vy -= dy * link.bias;
+      source.vx += dx * (1 - link.bias);
+      source.vy += dy * (1 - link.bias);
     }
   }
 
