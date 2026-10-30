@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AppWindow,
   Check,
+  Cpu,
   Keyboard,
   Moon,
   Network,
@@ -12,9 +13,14 @@ import {
   Sun,
 } from 'lucide-react';
 import type { KnoterClient, WorkspaceSnapshot } from '@knoter/contracts';
-import { DEFAULT_SUPPLEMENT_RATIO, type WindowFrame } from '@knoter/contracts/native';
+import {
+  DEFAULT_SUPPLEMENT_RATIO,
+  type WindowFrame,
+  type WindowState,
+} from '@knoter/contracts/native';
 import { Button } from './ui/button';
 import { PopupWindow } from './ui/popup-window';
+import { Switch } from './ui/switch';
 import { RatioField } from './RewriteDialog';
 import {
   conflicts,
@@ -44,8 +50,9 @@ export function SettingsWindow({
   snapshot,
   client,
   run,
-  frame,
+  windowState,
   onFrame,
+  onHardwareAcceleration,
 }: {
   open: boolean;
   section: SettingsSection;
@@ -54,10 +61,12 @@ export function SettingsWindow({
   snapshot: WorkspaceSnapshot;
   client: KnoterClient;
   run: RunAction;
-  /** The current window decoration, or null outside the desktop app. */
-  frame: WindowFrame | null;
+  /** The desktop window's state, or null outside the desktop app. */
+  windowState: WindowState | null;
   onFrame: (frame: WindowFrame) => void;
+  onHardwareAcceleration: (enabled: boolean) => void;
 }) {
+  const frame = windowState?.frame ?? null;
   return (
     <PopupWindow
       open={open}
@@ -151,10 +160,31 @@ export function SettingsWindow({
                   </button>
                 ))}
               </div>
-              {!frame && (
+              <div className="settings-row settings-toggle">
+                <Cpu size={20} />
+                <div>
+                  <strong id="hardware-acceleration">Hardware acceleration</strong>
+                  <p id="hardware-acceleration-help">
+                    Draws knoter with the graphics card (GPU), so the graph, scrolling, and windows
+                    move smoothly. Turn it off if you see flickering, blank areas, or other drawing
+                    problems; the CPU then draws everything. knoter restarts to apply a change,
+                    after checking for unsaved edits.
+                  </p>
+                  {windowState && <p className="settings-status">{gpuSummary(windowState)}</p>}
+                </div>
+                <Switch
+                  aria-labelledby="hardware-acceleration"
+                  aria-describedby="hardware-acceleration-help"
+                  checked={windowState?.hardwareAcceleration ?? true}
+                  disabled={!windowState}
+                  onCheckedChange={onHardwareAcceleration}
+                />
+              </div>
+              {!windowState && (
                 <p className="settings-help">
-                  Window decoration is available in the desktop app. The browser preview always
-                  shows knoter’s title bar.
+                  Window decoration and hardware acceleration are available in the desktop app. The
+                  browser preview always shows knoter’s title bar and follows the browser’s own
+                  hardware acceleration setting.
                 </p>
               )}
             </section>
@@ -189,6 +219,17 @@ export function SettingsWindow({
       </div>
     </PopupWindow>
   );
+}
+
+/** What Chromium reports drawing with, for the hardware acceleration setting. */
+function gpuSummary({ hardwareAcceleration, gpu }: WindowState) {
+  if (!hardwareAcceleration)
+    return gpu.compositing ? 'Turns off when knoter restarts.' : 'Off: the CPU draws everything.';
+  if (!gpu.compositing)
+    return 'Not in use: Chromium found no GPU it can use (none, or a driver it blocks), so the CPU draws everything.';
+  return gpu.rasterization
+    ? 'In use: the GPU draws and composites this window.'
+    : 'In use for compositing; with this graphics driver Chromium draws content on the CPU.';
 }
 
 function WritingSettings({

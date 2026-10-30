@@ -217,6 +217,7 @@ export type WindowFrame = z.infer<typeof windowFrames>;
 export const windowCommand = z.discriminatedUnion('action', [
   z.object({ action: z.enum(['state', 'minimize', 'toggleMaximize', 'close']) }).strict(),
   z.object({ action: z.literal('setFrame'), frame: windowFrames }).strict(),
+  z.object({ action: z.literal('setHardwareAcceleration'), enabled: z.boolean() }).strict(),
 ]);
 export type WindowCommand = z.infer<typeof windowCommand>;
 export interface WindowState {
@@ -224,6 +225,10 @@ export interface WindowState {
   frame: WindowFrame;
   maximized: boolean;
   fullscreen: boolean;
+  /** The saved preference. Chromium reads it only at startup, so a change relaunches the app. */
+  hardwareAcceleration: boolean;
+  /** Whether Chromium composites and rasterizes on the GPU in this run (chrome://gpu). */
+  gpu: { compositing: boolean; rasterization: boolean };
 }
 export interface NativeBridge {
   request(command: Command, payload: unknown): Promise<unknown>;

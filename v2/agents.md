@@ -48,7 +48,8 @@ outside this demo. The connected side chat follows D22 in that plan.
   search palette list them. The global handler ignores keys an editor or field has
   already handled (`defaultPrevented`); bindings need ⌘/Ctrl or Alt. Window chrome
   goes through `KnoterClient.window` and the validated window IPC; Electron main owns
-  the decoration preference, outside the workspace.
+  the decoration and hardware acceleration preferences, outside the workspace.
+  Hardware acceleration is applied before `ready`, so changing it relaunches the app.
 - The supplement ratio (D23) is a writing preference passed in job and chat-turn
   data. Do not have the service measure or reject pages by it without a decision.
 

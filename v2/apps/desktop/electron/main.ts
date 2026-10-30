@@ -29,16 +29,28 @@ const send = (command: string, payload: unknown) =>
   );
 const watcher = new SourceWatcher(send);
 let window: BrowserWindow | null = null;
-// Main owns the decoration preference: it must be known before a window exists.
+// Main owns the window preferences: the decoration must be known before a window exists,
+// and hardware acceleration before the app is ready.
 const windowPreferences = () => join(app.getPath('userData'), 'window-preferences.json');
-function savedFrame(): WindowFrame {
+function savedPreferences() {
+  let saved: { frame?: unknown; hardwareAcceleration?: unknown } | null = null;
   try {
-    return windowFrames.parse(JSON.parse(readFileSync(windowPreferences(), 'utf8')).frame);
+    saved = JSON.parse(readFileSync(windowPreferences(), 'utf8'));
   } catch {
-    return 'custom';
+    // Defaults apply until a preference is saved.
   }
+  const savedFrame = windowFrames.safeParse(saved?.frame);
+  return {
+    frame: savedFrame.success ? savedFrame.data : ('custom' as WindowFrame),
+    hardwareAcceleration: saved?.hardwareAcceleration !== false,
+  };
 }
+const savePreferences = () =>
+  writeFileSync(windowPreferences(), JSON.stringify({ frame, hardwareAcceleration }), {
+    mode: 0o600,
+  });
 let frame: WindowFrame = 'custom';
+let hardwareAcceleration = true;
 let registration = 'not_registered';
 async function serviceControl(action: string) {
   if (!app.isPackaged) {
@@ -144,11 +156,18 @@ async function desktop(action: DesktopAction) {
   return path;
 }
 function windowState(target: BrowserWindow): WindowState {
+  // chrome://gpu values: `enabled`, `enabled_on`, … use the GPU; `disabled_software` does not.
+  const gpu = app.getGPUFeatureStatus();
   return {
     platform: process.platform,
     frame,
     maximized: target.isMaximized(),
     fullscreen: target.isFullScreen(),
+    hardwareAcceleration,
+    gpu: {
+      compositing: gpu.gpu_compositing.startsWith('enabled'),
+      rasterization: gpu.rasterization.startsWith('enabled'),
+    },
   };
 }
 async function createWindow(previous?: BrowserWindow) {
@@ -189,6 +208,10 @@ async function createWindow(previous?: BrowserWindow) {
   previous?.destroy();
 }
 app.setName('Knoter Wiki Demo');
+// Read after setName, which names the user data folder, and before ready, the only time
+// Chromium accepts a GPU choice. Enabled leaves Chromium's own GPU path and driver checks.
+({ frame, hardwareAcceleration } = savedPreferences());
+if (!hardwareAcceleration) app.disableHardwareAcceleration();
 if (!app.requestSingleInstanceLock()) app.quit();
 else
   app.whenReady().then(async () => {
@@ -220,12 +243,22 @@ else
       }
       if (command.action === 'close') target.close();
       if (command.action === 'setFrame' && command.frame !== frame) {
-        writeFileSync(windowPreferences(), JSON.stringify({ frame: command.frame }), {
-          mode: 0o600,
-        });
         frame = command.frame;
+        savePreferences();
         // A frame cannot change on a live window: replace it after this reply is sent.
         setImmediate(() => void createWindow(target));
+      }
+      if (
+        command.action === 'setHardwareAcceleration' &&
+        command.enabled !== hardwareAcceleration
+      ) {
+        hardwareAcceleration = command.enabled;
+        savePreferences();
+        // Chromium chooses its GPU path once per launch: restart after this reply is sent.
+        setImmediate(() => {
+          app.relaunch();
+          app.quit();
+        });
       }
       return windowState(target);
     });
@@ -240,7 +273,6 @@ else
         { role: 'windowMenu' },
       ]),
     );
-    frame = savedFrame();
     await createWindow();
     void serviceControl('status').catch(() => {
       registration = 'error';
