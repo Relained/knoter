@@ -1379,8 +1379,12 @@ kbd {
 .graph-canvas > svg:active {
   cursor: grabbing;
 }
+/* The camera's own compositor layer: a pan moves it, on the GPU when hardware
+   acceleration is in use, instead of re-rasterizing every note and link. Chromium
+   rasterizes it sharp again once a zoom settles. */
 .graph-world {
   transform-origin: 0 0;
+  will-change: transform;
 }
 .graph-edge {
   stroke: var(--graph-edge);
