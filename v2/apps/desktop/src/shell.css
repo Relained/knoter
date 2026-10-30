@@ -902,6 +902,30 @@ kbd {
   opacity: 0.55;
   cursor: default;
 }
+/* A setting with a switch, set apart from the options above it. */
+.settings-toggle {
+  align-items: flex-start;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.settings-toggle > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.settings-toggle > div {
+  flex: 1;
+  min-width: 0;
+}
+.settings-toggle p {
+  margin: 4px 0 0;
+}
+.settings-toggle .settings-status {
+  color: var(--foreground);
+}
+.settings-toggle + .settings-help {
+  margin-top: 16px;
+}
 .shortcut-group {
   margin-bottom: 18px;
 }

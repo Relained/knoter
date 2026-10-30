@@ -172,6 +172,8 @@ export function App({ client }: { client: KnoterClient }) {
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  // Opening Settings re-reads the state too: Chromium can leave the GPU while the app runs.
+  const settingsOpen = modal === 'settings';
   useEffect(() => {
     if (!client.window) return;
     let active = true;
@@ -185,7 +187,7 @@ export function App({ client }: { client: KnoterClient }) {
       active = false;
       window.removeEventListener('resize', refresh);
     };
-  }, [client]);
+  }, [client, settingsOpen]);
   useEffect(() => {
     let active = true;
     const load = () =>
@@ -340,6 +342,11 @@ export function App({ client }: { client: KnoterClient }) {
     afterDiscard(() => {
       dirtyCheck.current = null;
       void run(() => client.window!({ action: 'setFrame', frame }));
+    });
+  const changeHardwareAcceleration = (enabled: boolean) =>
+    afterDiscard(() => {
+      dirtyCheck.current = null;
+      void run(() => client.window!({ action: 'setHardwareAcceleration', enabled }));
     });
   const windowCommand = (command: WindowCommand) =>
     command.action === 'close'
@@ -899,8 +906,9 @@ export function App({ client }: { client: KnoterClient }) {
         snapshot={snapshot}
         client={client}
         run={run}
-        frame={client.window ? (windowState?.frame ?? null) : null}
+        windowState={client.window ? windowState : null}
         onFrame={changeFrame}
+        onHardwareAcceleration={changeHardwareAcceleration}
       />
 
       <RewriteDialog
