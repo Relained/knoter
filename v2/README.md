@@ -180,6 +180,12 @@ while the rest stays put. With reduced motion the layout appears already formed.
   system title bar. The window reopens to apply it after checking for unsaved edits.
   The choice is stored by the app in `window-preferences.json` in Electron's user
   data folder, not in the workspace.
+- **Hardware acceleration** in the same section (on by default) lets Chromium draw
+  with the GPU. Turn it off when a graphics driver flickers or leaves blank areas;
+  the CPU then draws everything. Chromium reads it only at startup, so knoter
+  restarts to apply it after checking for unsaved edits; it is stored in the same
+  file. The setting also shows whether the GPU is really in use: Chromium still
+  falls back to the CPU when it finds no usable GPU or blocks its driver.
 - **Settings → Shortcuts** lists every command with its shortcut (⌘ on macOS, Ctrl
   elsewhere). Select one and press new keys; shortcuts need ⌘/Ctrl or Alt, and
   conflicts are marked. Keys an editor uses, such as ⌘B for bold while editing,

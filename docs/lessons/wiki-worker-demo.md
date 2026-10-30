@@ -453,6 +453,39 @@ reader links unresolved. After: 8 lines, all 7 links resolved, and the Korean li
 opened its note. The same runs showed the packaged graph unfolding before its single
 fit. Not exercised: the user's workspace, its existing title links, and Windows.
 
+### 2026-10-30 — Hardware acceleration was implicit, and a pan re-rastered the graph
+
+The user asked how hardware acceleration was set up, for it to be used, and for a
+Settings toggle. Main configured nothing: Electron's default (enabled) applied, with
+no way to turn it off for a misbehaving driver and no sign of whether Chromium had
+fallen back to the CPU. In the renderer, the graph camera was a CSS transform on an
+SVG `<g>` with no compositing reason, so every pan frame re-rasterized the page's
+root layer, which held the whole graph, instead of moving it on the compositor.
+
+Remedies: main reads the preference after `setName` (which names the user data
+folder) and before `ready`; disabled calls `disableHardwareAcceleration`, enabled
+leaves Chromium's own GPU path and driver blocklist (no `ignore-gpu-blocklist` or
+forced GPU rasterization). Changing it relaunches the app. Settings shows Chromium's
+compositing and rasterization status, and the camera group has
+`will-change: transform`.
+
+Measured in Electron 44.4.1 on Linux under Xvfb with no GPU, so with software
+compositing, against the built renderer in demo mode with a synthetic 120-note wiki
+and a 90-step pan, three runs each. Raster during the pan fell from 340–412 ms to
+209–268 ms; the busiest layer went from the root layer, 95–176 tiles (77–113 ms), to
+the camera layer rastering only the 18 newly exposed tiles (26–30 ms). At 400% zoom,
+once settled, the image matched the previous build (11 of 769,128 pixels differed).
+Against a development service: turning it off relaunched with the GPU process on
+`--use-gl=disabled` and the status "Off"; turning it on relaunched without that flag;
+an unsaved edit raised the discard prompt, and **Keep editing** kept the draft and
+the setting; a title-bar change kept the setting; an old `{frame}` file and an
+unreadable file both started with acceleration on.
+
+Not exercised: a real GPU, so neither the "In use" status nor the GPU-side gain was
+seen; macOS, the packaged app, and Windows. About seven small layers per pan frame
+(note halos, the graph hint, and the search bar, composited for overlap) were
+re-created and rasterized in both builds; that churn is unexplained and remains.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch
