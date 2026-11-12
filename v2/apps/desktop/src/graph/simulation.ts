@@ -36,6 +36,12 @@ export interface SimNode {
   hops: number;
   /** Share of its motion a note takes: 1, or less around a drag (see `grab`). */
   mobility: number;
+  /**
+   * Where a note belongs in the whole-wiki layout: 0 in the main body, 1 in a smaller
+   * group of linked notes, 2 without links. `slot` is the group, or the row of the ring.
+   */
+  zone: 0 | 1 | 2;
+  slot: number;
 }
 export interface SimLink {
   source: SimNode;
@@ -58,6 +64,28 @@ const FOLLOW = [1, 1, 0.7, 0.4, 0.2];
 /** Notes nearer the dragged one than this move freely, fading out at `PUSH_FAR`. */
 const PUSH_NEAR = 120;
 const PUSH_FAR = 320;
+/**
+ * The whole wiki, laid out as Obsidian lays out a vault: links are springs, every note
+ * repels every other, and gravity gathers the linked body into a round disc. Notes are
+ * small beside the room between them, so a busy note's leaves ring it like a dandelion.
+ */
+const ORGANIC = {
+  /** Rest length of a link beyond the two notes' own sizes, and more around busy notes. */
+  gap: 95,
+  crowd: 7,
+  repulsion: 330,
+  gravity: 0.12,
+  /** Stiffness of links relative to d3's, and how firmly a smaller group holds together. */
+  spring: 0.35,
+  cohesion: 0.12,
+  /** Room between two notes that are not linked. */
+  pad: 6,
+  /** Distance from the body to the ring of unlinked notes, and between notes on it. */
+  ringGap: 160,
+  ringSpacing: 60,
+};
+/** The golden angle: notes seeded by it fill a disc evenly, as seeds in a sunflower do. */
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
 /**
  * Approximate half-width of a label in layout units (11px text; CJK glyphs are wider),
@@ -77,8 +105,10 @@ export const nodeRadius = (degree: number) => Math.min(24, 5 + Math.sqrt(degree)
  * Rest length of a link: room for both nodes and their labels, a little more around
  * busy notes. The rings of the disc, not long spokes, give crowded notes their space.
  */
-export function linkDistance(a: SimNode, b: SimNode, scale = 1) {
+export function linkDistance(a: SimNode, b: SimNode, scale = 1, organic = false) {
   const crowd = Math.max(a.degree, b.degree);
+  if (organic)
+    return (a.radius + b.radius + ORGANIC.gap + Math.sqrt(crowd) * ORGANIC.crowd) * scale;
   return (a.radius + b.radius + LABEL_GAP + Math.sqrt(crowd) * 6) * scale;
 }
 
@@ -184,6 +214,13 @@ export class ForceSimulation {
   hubRing: number;
   /** Radius of the outer ring where notes without links settle. */
   shell: number;
+  /** The whole-wiki layout (see `ORGANIC`); otherwise the rings around central notes. */
+  organic = false;
+  /** Smaller groups of linked notes, and the notes without links, around the body. */
+  private satellites: SimNode[][] = [];
+  private unlinked: SimNode[] = [];
+  /** How far the body reaches, measured every few ticks. */
+  private reach = 0;
   private forces: GraphForces;
   private ticks = 0;
   private readonly adjacent = new Map<SimNode, SimNode[]>();
@@ -251,6 +288,8 @@ export class ForceSimulation {
         hub: null,
         hops: structure.hops.get(id)!,
         mobility: 1,
+        zone: 0,
+        slot: 0,
       };
     });
     const sim = new ForceSimulation(nodes, edges, structure, forces);
@@ -258,6 +297,10 @@ export class ForceSimulation {
     for (const n of nodes) {
       const hub = structure.hubOf.get(n.id);
       n.hub = hub && hub !== n.id ? byId.get(hub)! : null;
+    }
+    if (!focusId) {
+      sim.seedOrganic(previous);
+      return sim;
     }
     // Seed the disc: central notes evenly on their ring, each note out along its central
     // note's direction (around the core, in every direction), unlinked notes outermost.
@@ -305,15 +348,177 @@ export class ForceSimulation {
     this.forces = forces;
     for (const link of this.links) {
       const { source, target } = link;
-      link.distance = linkDistance(source, target, forces.distance);
+      link.distance = linkDistance(source, target, forces.distance, this.organic);
       // d3's default: a link to a hub pulls less, so hubs do not collapse their ring.
       // Above 1 a spring overshoots further each tick, so stronger settings saturate there.
-      link.strength = Math.min(
-        1,
-        forces.link / Math.max(1, Math.min(source.degree, target.degree)),
-      );
+      link.strength =
+        Math.min(1, forces.link / Math.max(1, Math.min(source.degree, target.degree))) *
+        (this.organic ? ORGANIC.spring : 1);
       // The less connected end moves more, so a hub carries its notes along.
       link.bias = source.degree / Math.max(1, source.degree + target.degree);
+    }
+  }
+
+  /**
+   * Seed the whole-wiki layout. The largest group of linked notes is the body, grown
+   * outward from the most central note so linked notes start side by side. Smaller
+   * groups and notes without links start on the ring around it, where `holdRing` keeps
+   * them. Notes seen before keep their place.
+   */
+  private seedOrganic(previous?: Map<string, { x: number; y: number }>) {
+    this.organic = true;
+    this.setForces(this.forces);
+    const seen = new Set<SimNode>();
+    const groups: SimNode[][] = [];
+    for (const start of this.nodes) {
+      if (seen.has(start)) continue;
+      const group = [start];
+      seen.add(start);
+      for (let i = 0; i < group.length; i++)
+        for (const other of this.adjacent.get(group[i]) ?? [])
+          if (!seen.has(other)) {
+            seen.add(other);
+            group.push(other);
+          }
+      groups.push(group);
+    }
+    groups.sort((a, b) => b.length - a.length || (a[0].id < b[0].id ? -1 : 1));
+    // A wiki without any links is all body: the notes spread into an even disc.
+    const linked = groups.length > 0 && groups[0].length > 1;
+    const body = linked ? groups[0] : this.nodes;
+    this.satellites = linked ? groups.slice(1).filter((g) => g.length > 1) : [];
+    this.unlinked = linked ? groups.filter((g) => g.length === 1).map((g) => g[0]) : [];
+    this.satellites.forEach((group, i) => {
+      for (const n of group) Object.assign(n, { zone: 1, slot: i });
+    });
+
+    const known = (n: SimNode) => {
+      const p = previous?.get(n.id);
+      if (p) Object.assign(n, { x: p.x, y: p.y });
+      return !!p;
+    };
+    /** Grow a group from its busiest note: each note's links fan out away from the root. */
+    const grow = (group: SimNode[], cx: number, cy: number) => {
+      const core = this.byId.get(this.structure.hubs[0] ?? '');
+      const root =
+        core && group.includes(core)
+          ? core
+          : group.reduce((best, n) => (n.degree > best.degree ? n : best), group[0]);
+      if (!known(root)) Object.assign(root, { x: cx, y: cy });
+      const heading = new Map<SimNode, number>();
+      const placed = new Set([root]);
+      const queue = [root];
+      for (let i = 0; i < queue.length; i++) {
+        const parent = queue[i];
+        const children = (this.adjacent.get(parent) ?? [])
+          .filter((n) => !placed.has(n))
+          .sort((a, b) => b.degree - a.degree || (a.id < b.id ? -1 : 1));
+        const from = heading.get(parent);
+        // The root's links go all around it; any other note's fan out ahead of it.
+        const spread =
+          from === undefined ? Math.PI * 2 : Math.min(Math.PI * 1.2, 0.5 * children.length);
+        children.forEach((child, j) => {
+          placed.add(child);
+          queue.push(child);
+          const turn =
+            from === undefined
+              ? (j / children.length) * spread + seededRandom(root.id)() * Math.PI * 2
+              : from + ((j + 0.5) / children.length - 0.5) * spread;
+          heading.set(child, turn);
+          if (known(child)) return;
+          const reach = linkDistance(parent, child, this.forces.distance, true) * 0.6;
+          child.x = parent.x + Math.cos(turn) * reach;
+          child.y = parent.y + Math.sin(turn) * reach;
+        });
+      }
+    };
+    if (linked) grow(body, 0, 0);
+    else
+      body.forEach((n, i) => {
+        if (known(n)) return;
+        const r = 26 * this.forces.distance * Math.sqrt(i + 0.5);
+        Object.assign(n, { x: Math.cos(i * GOLDEN) * r, y: Math.sin(i * GOLDEN) * r });
+      });
+
+    this.reach = this.bodyRadius();
+    this.shell = this.reach + ORGANIC.ringGap * this.forces.distance;
+    const perRow = Math.max(1, Math.floor((Math.PI * 2 * this.shell) / ORGANIC.ringSpacing));
+    const rows = Math.ceil(this.unlinked.length / perRow);
+    this.unlinked.forEach((n, i) => {
+      Object.assign(n, { zone: 2, slot: i % Math.max(1, rows) });
+      if (known(n)) return;
+      // Rows are staggered, so the ring reads as one band of evenly spaced notes.
+      const angle = (i / this.unlinked.length) * Math.PI * 2 - Math.PI / 2;
+      const r = this.shell + n.slot * ORGANIC.ringSpacing;
+      Object.assign(n, { x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+    });
+    this.satellites.forEach((group, i) => {
+      const angle = ((i + 0.5) / this.satellites.length) * Math.PI * 2 + Math.PI / 5;
+      grow(group, Math.cos(angle) * this.shell, Math.sin(angle) * this.shell);
+    });
+  }
+
+  /** How far the body reaches from the middle, ignoring a few notes strung far out. */
+  private bodyRadius() {
+    const radii: number[] = [];
+    for (const n of this.nodes)
+      if (n.zone === 0 && n.fx === null) radii.push(Math.hypot(n.x, n.y) + n.radius);
+    if (!radii.length) return 0;
+    radii.sort((a, b) => a - b);
+    return radii[Math.min(radii.length - 1, Math.floor(radii.length * 0.98))];
+  }
+
+  /**
+   * Keep what is not part of the body around it: notes without links on a ring just
+   * outside, evenly spaced by their own repulsion, and each smaller group as a whole at
+   * the ring or as far out as its size needs. They slide along the ring, not across it.
+   */
+  private holdRing() {
+    if (this.ticks % 3 === 0) this.reach = this.bodyRadius();
+    const reach = this.reach;
+    const target = reach + ORGANIC.ringGap * this.forces.distance;
+    this.shell += (target - this.shell) * 0.2;
+    for (const n of this.unlinked) {
+      if (n.fx !== null) continue;
+      const r = Math.hypot(n.x, n.y) || 1;
+      const along = (n.vx * n.x + n.vy * n.y) / (r * r);
+      n.vx -= along * n.x;
+      n.vy -= along * n.y;
+      const scale = 1 + ((this.shell + n.slot * ORGANIC.ringSpacing) / r - 1) * 0.3;
+      n.x *= scale;
+      n.y *= scale;
+    }
+    for (const group of this.satellites) {
+      let cx = 0;
+      let cy = 0;
+      let vx = 0;
+      let vy = 0;
+      for (const n of group) {
+        cx += n.x;
+        cy += n.y;
+        vx += n.vx;
+        vy += n.vy;
+      }
+      cx /= group.length;
+      cy /= group.length;
+      const r = Math.hypot(cx, cy) || 1;
+      let size = 0;
+      for (const n of group) size = Math.max(size, Math.hypot(n.x - cx, n.y - cy) + n.radius);
+      // Small groups sit on the ring; a large one moves out until it clears the body.
+      const want = Math.max(
+        this.shell,
+        reach + size * 0.8 + ORGANIC.ringGap * 0.25 * this.forces.distance,
+      );
+      // The group keeps its shape: all of it moves, and none of it drifts in or out.
+      const along = (vx * cx + vy * cy) / (group.length * r * r);
+      const shift = ((want - r) / r) * 0.3;
+      for (const n of group) {
+        if (n.fx !== null) continue;
+        n.vx -= along * cx;
+        n.vy -= along * cy;
+        n.x += cx * shift;
+        n.y += cy * shift;
+      }
     }
   }
 
@@ -385,10 +590,11 @@ export class ForceSimulation {
   tick() {
     this.alpha += (this.alphaTarget - this.alpha) * this.alphaDecay;
     const alpha = this.alpha;
-    if (this.ticks++ % 15 === 0) this.measureShell();
+    if (this.ticks++ % 15 === 0 && !this.organic) this.measureShell();
     this.applyLinks(alpha);
     this.applyRepulsion(alpha);
-    this.applyShape(alpha);
+    if (this.organic) this.applyGravity(alpha);
+    else this.applyShape(alpha);
     this.applyCollision();
     if (this.follow) this.measureMobility();
     for (const n of this.nodes) {
@@ -402,6 +608,7 @@ export class ForceSimulation {
         n.vy = 0;
       } else n.y += n.vy *= decay;
     }
+    if (this.organic) this.holdRing();
     // Once a drag has settled, every note is free again for the next change.
     if (this.follow && !this.holding && this.settled) this.release();
   }
@@ -468,11 +675,13 @@ export class ForceSimulation {
     const root = quad(x0, y0, Math.max(x1 - x0, y1 - y0, 1) + 1);
     for (const n of this.nodes) insert(root, n);
     // Better-connected nodes push harder so clusters around hubs stay readable.
-    const base = -REPULSION * this.forces.repel;
+    const base = -(this.organic ? ORGANIC.repulsion : REPULSION) * this.forces.repel;
     const strength = (n: SimNode) => base * (1 + Math.sqrt(n.degree) * 0.25);
     accumulate(root, strength);
+    // One stack and no per-leaf arrays: this loop runs for every note on every tick.
+    const stack: Quad[] = [];
     for (const node of this.nodes) {
-      const stack: Quad[] = [root];
+      stack.push(root);
       while (stack.length) {
         const q = stack.pop()!;
         let dx = q.cx - node.x;
@@ -489,7 +698,9 @@ export class ForceSimulation {
           for (const child of q.children) if (child) stack.push(child);
           continue;
         }
-        for (const other of [q.point!, ...(q.extra ?? [])]) {
+        const extra = q.extra;
+        for (let i = -1, count = extra ? extra.length : 0; i < count; i++) {
+          const other = i < 0 ? q.point! : extra![i];
           if (other === node) continue;
           dx = other.x - node.x || jiggle();
           dy = other.y - node.y || jiggle();
@@ -499,6 +710,33 @@ export class ForceSimulation {
           node.vx += (dx * s * alpha) / l;
           node.vy += (dy * s * alpha) / l;
         }
+      }
+    }
+  }
+
+  /** Gather the body into a disc around the middle; the ring is held by `holdRing`. */
+  private applyGravity(alpha: number) {
+    const g = ORGANIC.gravity * this.forces.center * alpha;
+    if (!g) return;
+    for (const n of this.nodes) {
+      if (n.zone !== 0) continue;
+      n.vx -= n.x * g;
+      n.vy -= n.y * g;
+    }
+    // A smaller group gathers around its own middle instead, so a chain curls up.
+    const hold = ORGANIC.cohesion * this.forces.center * alpha;
+    for (const group of this.satellites) {
+      let cx = 0;
+      let cy = 0;
+      for (const n of group) {
+        cx += n.x;
+        cy += n.y;
+      }
+      cx /= group.length;
+      cy /= group.length;
+      for (const n of group) {
+        n.vx -= (n.x - cx) * hold;
+        n.vy -= (n.y - cy) * hold;
       }
     }
   }
@@ -555,9 +793,13 @@ export class ForceSimulation {
    */
   private applyCollision() {
     if (this.nodes.length < 2) return;
+    // A small wiki shows every label, so its notes keep clear of each other's labels; a
+    // large one is read by shape, and only the dots themselves keep apart.
+    const labels = this.organic ? Math.max(0, Math.min(1, (120 - this.nodes.length) / 80)) : 1;
+    if (!labels) return this.applyCircleCollision();
     const pad = 6;
-    const halfWidth = (n: SimNode) => Math.max(n.radius, n.labelHalf);
-    const halfHeight = (n: SimNode) => n.radius + 9;
+    const halfWidth = (n: SimNode) => Math.max(n.radius, n.labelHalf * labels);
+    const halfHeight = (n: SimNode) => n.radius + 9 * labels;
     const cell =
       Math.max(...this.nodes.map((n) => Math.max(halfWidth(n), halfHeight(n)))) * 2 + pad;
     const grid = new Map<string, SimNode[]>();
@@ -592,6 +834,42 @@ export class ForceSimulation {
             }
           }
         }
+    }
+  }
+
+  /** Keep dots from overlapping, pushed apart along the line between them. */
+  private applyCircleCollision() {
+    let largest = 0;
+    for (const n of this.nodes) largest = Math.max(largest, n.radius);
+    const cell = largest * 2 + ORGANIC.pad;
+    const grid = new Map<number, SimNode[]>();
+    const key = (gx: number, gy: number) => gx * 73856093 + gy * 19349663;
+    for (const n of this.nodes) {
+      const k = key(Math.floor(n.x / cell), Math.floor(n.y / cell));
+      const bucket = grid.get(k);
+      if (bucket) bucket.push(n);
+      else grid.set(k, [n]);
+    }
+    for (const a of this.nodes) {
+      const gx = Math.floor(a.x / cell);
+      const gy = Math.floor(a.y / cell);
+      for (let i = -1; i <= 1; i++)
+        for (let j = -1; j <= 1; j++)
+          for (const b of grid.get(key(gx + i, gy + j)) ?? []) {
+            if (b.id <= a.id) continue;
+            const dx = a.x + a.vx - b.x - b.vx || jiggle();
+            const dy = a.y + a.vy - b.y - b.vy || jiggle();
+            const reach = a.radius + b.radius + ORGANIC.pad;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= reach * reach) continue;
+            const d = Math.sqrt(d2);
+            const push = ((reach - d) / d) * 0.5;
+            const share = (b.radius * b.radius) / (a.radius * a.radius + b.radius * b.radius);
+            a.vx += dx * push * share;
+            a.vy += dy * push * share;
+            b.vx -= dx * push * (1 - share);
+            b.vy -= dy * push * (1 - share);
+          }
     }
   }
 }

@@ -2,6 +2,8 @@
    Loaded after styles.css; component styles there are reused inside these regions. */
 
 :root {
+  /* Lightness of the generated colors for collections beyond the eight below. */
+  --graph-extra-l: 0.63;
   --graph-0: #6f9a7a;
   --graph-1: #8c7bb5;
   --graph-2: #bf9550;
@@ -14,6 +16,7 @@
   --danger: #c42b1c;
 }
 :root[data-theme='dark'] {
+  --graph-extra-l: 0.78;
   --graph-0: #8fbc98;
   --graph-1: #ad9bd6;
   --graph-2: #d9b273;
@@ -1369,140 +1372,104 @@ kbd {
   flex: 1;
   min-height: 0;
 }
-.graph-canvas > svg {
-  display: block;
+/* Notes and links are drawn on a WebGL canvas and labels on a 2D canvas above it, so
+   a pan, a zoom, or a moving layout redraws on the GPU instead of restyling an element
+   per note. Without WebGL the 2D canvas draws everything. */
+.graph-surface {
+  position: relative;
   width: 100%;
   height: 100%;
   cursor: grab;
   touch-action: none;
 }
-.graph-canvas > svg:active {
+.graph-surface.over-note {
+  cursor: pointer;
+}
+.graph-surface:active {
   cursor: grabbing;
 }
-/* The camera's own compositor layer: a pan moves it, on the GPU when hardware
-   acceleration is in use, instead of re-rasterizing every note and link. Chromium
-   rasterizes it sharp again once a zoom settles. */
-.graph-world {
-  transform-origin: 0 0;
-  will-change: transform;
+.graph-surface > canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
-.graph-edge {
-  stroke: var(--graph-edge);
-  stroke-width: 1.1;
-  vector-effect: non-scaling-stroke;
-  transition: opacity 0.15s;
-}
-.graph-edge.related {
-  stroke-dasharray: 4 4;
-}
-.graph-edge.highlighted {
-  stroke: var(--primary);
-  stroke-width: 1.8;
-}
-.graph-edge.faded {
-  opacity: 0.25;
-}
-.graph-color-0 {
-  color: var(--graph-0);
-}
-.graph-color-1 {
-  color: var(--graph-1);
-}
-.graph-color-2 {
-  color: var(--graph-2);
-}
-.graph-color-3 {
-  color: var(--graph-3);
-}
-.graph-color-4 {
-  color: var(--graph-4);
-}
-.graph-color-5 {
-  color: var(--graph-5);
-}
-.graph-color-6 {
-  color: var(--graph-6);
-}
-.graph-color-7 {
-  color: var(--graph-7);
-}
-.graph-node {
-  transition: opacity 0.15s;
-}
-.graph-node a {
-  cursor: pointer;
-  outline: none;
-}
-.graph-node .node-dot {
-  r: max(var(--node-r), calc(var(--node-min) / var(--zoom, 1)));
-  fill: currentColor;
-  stroke: var(--panel);
-  stroke-width: 1.5;
-}
-.graph-node .node-halo {
-  fill: currentColor;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.graph-node a:hover .node-halo,
-.graph-node a:focus-visible .node-halo,
-.graph-node.active .node-halo {
-  opacity: 0.22;
-}
-.graph-node.focused .node-dot {
-  stroke: var(--foreground);
-  stroke-width: 2.2;
-}
-.graph-node.focused .node-halo {
-  opacity: 0.18;
-}
-.graph-node text {
-  fill: var(--body-text);
-  font-size: 11px;
-  font-weight: 500;
-  paint-order: stroke;
-  stroke: var(--panel);
-  stroke-width: 3px;
-  stroke-linejoin: round;
+/* Fades the graph out under whatever sits above it, such as the home search. */
+.graph-scrim {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 auto;
+  background: linear-gradient(var(--panel) 62%, transparent);
   pointer-events: none;
-  transition: opacity 0.15s;
 }
-.graph-node.active text {
-  fill: var(--foreground);
+.graph-tooltip {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 280px;
+  padding: 7px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  box-shadow: 0 6px 20px #1a2a1e1f;
+  font-size: 12px;
+  pointer-events: none;
+  animation: graph-tooltip-in 0.12s ease-out;
+}
+.graph-tooltip strong {
+  color: var(--foreground);
   font-weight: 650;
+  overflow-wrap: anywhere;
 }
-.graph-node.dimmed {
-  opacity: 0.16;
+.graph-tooltip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--body-text);
 }
-.labels-hidden .graph-node:not(.pinned) text {
-  opacity: 0;
+.graph-tooltip b {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
 }
-/* A new layout: notes appear from the central ones outward, then their links. */
-.graph-entering .graph-node {
-  animation: graph-enter 0.42s ease-out backwards;
-  animation-delay: var(--enter, 0ms);
+.graph-tooltip small {
+  color: var(--subtle);
+  font-size: 11px;
 }
-.graph-entering .graph-node .node-dot {
-  animation: graph-node-grow 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) backwards;
-  animation-delay: var(--enter, 0ms);
-}
-.graph-entering .graph-edge {
-  animation: graph-enter 0.5s ease-out backwards;
-  animation-delay: var(--enter, 0ms);
-}
-@keyframes graph-enter {
+@keyframes graph-tooltip-in {
   from {
     opacity: 0;
   }
 }
-@keyframes graph-node-grow {
-  from {
-    r: 0;
-  }
+.graph-matches {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--body-text);
+  font-size: 11.5px;
+  pointer-events: none;
 }
-.labels-hidden .graph-node.pinned text {
-  font-size: var(--label-size, 11px);
-  stroke-width: calc(var(--label-size, 11px) * 0.3);
+.graph-fallback {
+  display: inline-flex;
+  padding: 0 5px;
+  color: var(--danger);
+}
+.graph-renderer {
+  margin: 8px 0 0;
+  color: var(--subtle);
+  font-size: 11px;
 }
 .graph-empty {
   position: absolute;
@@ -1615,7 +1582,7 @@ kbd {
 }
 .home-page .graph-hint {
   top: auto;
-  bottom: 54px;
+  bottom: 72px;
 }
 @media (max-width: 760px) {
   .graph-hint {
