@@ -236,10 +236,52 @@ export function proposalSchemaForVersions(versionIds: string[], changedSegmentId
     })
     .omit({ links: true, trash: true });
 }
+const count = (text: string, signs: RegExp[]) => signs.filter((sign) => sign.test(text)).length;
+/**
+ * Guides for the kinds of source a note looks like, by filename and text. The core skill
+ * names every kind, so a missed guess only costs the longer guide; at most two are added.
+ */
+function kindParts(filename: string, text: string) {
+  const kinds: string[] = [];
+  const paper =
+    count(text, [
+      /^#{0,3}\s*(abstract|초록)\b/im,
+      /arxiv\.org|arXiv:\s?\d{4}\.\d{4,5}/i,
+      /doi\.org\/|\bDOI:\s*10\./i,
+      /^#{1,3}\s*(references|bibliography|참고\s?문헌)\s*$/im,
+      /^#{1,3}\s*(\d+\.?\s*)?(introduction|related work|methods?|methodology|experiments?|results|conclusions?|서론|관련 연구|실험|결론)\s*$/im,
+      /\bet al\./,
+    ]) + (/논문|paper/i.test(filename) ? 1 : 0);
+  if (paper >= 2) kinds.push('paper');
+  else if (/^(source|url|출처|원문)\s*[:：]\s*https?:\/\//im.test(text)) kinds.push('article');
+  // A note named for a day is a mix of everything written that day, sorted paragraph by
+  // paragraph; only a file the user calls a diary is one.
+  if (/(^|[^\d])(19|20)\d{2}[-._ ]?(0[1-9]|1[0-2])[-._ ]?([0-2]\d|3[01])(?!\d)/.test(filename))
+    kinds.unshift('daily');
+  else if (/일기|diary|journal/i.test(filename)) kinds.push('journal');
+  if (
+    /독서|서평|book/i.test(filename) ||
+    (/^(저자|지은이|author)\s*[:：]/im.test(text) &&
+      /ISBN|출판사|publisher|\bp\.\s?\d+|\d+쪽/i.test(text))
+  )
+    kinds.push('book');
+  if (
+    /프로젝트|project|회의|meeting|회고|retro|devlog|작업\s?로그/i.test(filename) ||
+    count(text, [
+      /^#{1,3}\s*(todo|to-do|할 일|진행 상황|결정 사항|회고|다음 단계|next steps)\b/im,
+      /^\s*[-*] \[[ xX]\]/m,
+    ]) === 2
+  )
+    kinds.push('project');
+  return kinds.slice(0, 2);
+}
 /** Situational skill references a job needs, chosen from its changed source. */
 export function skillParts(changed: EvidenceVersion) {
   const text = changed.segments.map((s) => s.text).join('\n');
-  return /\[\[|(^|\s)#[^\s#]/m.test(text) ? ['obsidian'] : [];
+  return [
+    ...(/\[\[|(^|\s)#[^\s#]/m.test(text) ? ['obsidian'] : []),
+    ...kindParts(changed.filename, text),
+  ];
 }
 
 export interface CodexInput {

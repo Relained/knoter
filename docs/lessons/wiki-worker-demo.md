@@ -486,6 +486,178 @@ seen; macOS, the packaged app, and Windows. About seven small layers per pan fra
 (note halos, the graph hint, and the search bar, composited for overlap) were
 re-created and rasterized in both builds; that churn is unexplained and remains.
 
+### 2026-11-13 — The graph was an SVG element per note, restyled every frame
+
+The user asked for the graph to be WebGL-accelerated so it runs comfortably. Each note
+was an SVG group (link, halo, dot, label, and its own context-menu root) and each link
+a line; every simulation frame set a `transform` on every group and four attributes on
+every line, and hover re-rendered every note through React. The 2026-10-30 compositor
+layer helped only a pan of a still graph: a zoom, a drag, or a layout that was still
+moving re-rasterized everything.
+
+Remedy: `graph/renderer.ts` draws notes and links as instanced WebGL 2 quads (circle
+and line coverage computed in the fragment shader, one buffer upload and two or three
+draw calls per frame) and labels as text on a 2D canvas above, culled to the view. The
+build animation, dim/halo fades, and animated camera moved from CSS into the renderer.
+Hit-testing replaces per-note pointer targets. Notes remain a visually hidden list of
+links for keyboard focus, activation, and the menu; one context menu serves the canvas.
+Without WebGL 2, or while its context is lost, the 2D canvas draws the same picture.
+No dependency was added.
+
+Measured in the app's browser pane on macOS (Vite dev build, demo mode, device pixel
+ratio 1) with a disposable synthetic wiki of 2,000 notes and 2,779 links. The pane was
+hidden, where `requestAnimationFrame` does not fire, so frames were pumped by hand and
+timed through a `readPixels` sync: script plus draw took 0.4–0.5 ms on average (1.9 ms
+worst) per frame for a pan at fit zoom, a zoom to 400%, and a pan with labels shown;
+the 122 frames of a new layout averaged 9.8 ms (18.3 ms worst), nearly all of it the
+simulation. Forcing `WEBGL_lose_context` switched to the 2D drawing and restoring it
+switched back; changing `data-theme` recolored the graph. On the six-note seed: hover
+highlight and tooltip, right-click menu, a note drag (no navigation), wheel zoom, pan,
+and Enter on a focused note link (opened the note) behaved as before.
+
+Not exercised: a visible window at display frame rate, so no measured frame rate and
+no before/after comparison with the SVG build; Electron, the packaged app, connected
+mode, and Windows; hardware acceleration off in Electron, so which path it takes there
+is unknown; a high-density display; touch input; modifier-clicks, which are forwarded
+to the hidden link as a synthetic click and may not open a new window; a screen
+reader. Labels now draw above all notes instead of interleaved with them, and hover
+does not follow a note that moves under a still pointer. The simulation, not drawing,
+is now the cost of a moving layout.
+
+### 2026-11-13 — Shortcomings of the graph view after the move to canvas
+
+A review of the new graph listed nineteen defects, which the user asked to have fixed.
+With 2,000 notes the central labels overlapped, links formed one mass, and zoomed-out
+notes covered each other; a ninth collection reused a color; the fit ignored the
+panels on the left and bottom, and the graph showed through the text above it; hover
+did not follow moving notes; the tooltip was the browser's; search dimmed non-matches
+without moving the view; Tab walked every note; a keyboard-opened menu appeared in the
+corner; and nothing said which drawing path was in use.
+
+Remedies: labels are placed greedily, highlighted then pinned then by degree, and
+skipped where they would overlap; links fade and the minimum note size shrinks with
+zoom in dense graphs; collections past eight get `oklch` hues at a per-theme
+lightness; the fit measures the panels; a gradient covers the graph under the top
+overlay; hover is re-picked on simulation and camera frames; an in-app tooltip, a
+background menu, a match count, and a fallback mark were added; search frames the
+matches and restores the earlier view; note links have one Tab stop with arrow-key
+movement, a focus ring, and a view that follows; minimum zoom is 1%; the hint goes
+after the first move. Wheel input now distinguishes a mouse wheel (whole notches,
+zoom) from a trackpad (pan, pinch to zoom), and two touch points pinch. A modified
+click now opens the note like a plain one: Electron denies new windows, so the old
+link behavior did nothing there.
+
+Checked in the same hidden browser pane with the same 2,000-note synthetic wiki, now
+in thirteen collections, frames pumped by hand: script plus draw stayed at 0.4–0.6 ms
+per frame (1.7 ms worst) for pans and zooms with label placement; a search for eleven
+notes moved the zoom from 5.5% to 12% and clearing it returned to 5.5%. Synthetic
+wheel events panned for small deltas, zoomed with Ctrl, and zoomed for 120-unit
+notches, with the page not scrolling. Arrow keys moved focus between seed notes with
+one Tab stop, and a keyboard menu opened at its note. Tooltip, background menu,
+legend, fallback mark, and dark theme were seen in screenshots.
+
+Not exercised: real mouse wheels, trackpads, and touch screens, so the wheel
+classification rests on synthetic events and may mistake one device for another;
+a visible window; Electron and the packaged app; a screen reader; label stability
+while a large layout is still moving. The graph's drawing path is not shown in
+Settings beside Chromium's GPU status.
+
+### 2026-11-13 — Every snapshot re-parsed every note, stalling the window every two seconds
+
+The user asked for the canvas graph to be verified in a packaged build on the workspace
+in use (389 notes, 1,359 links, 18 collections). The build was run from `out/` without
+installing it; with no service or main-process change since the installed 2026-10-30
+build, it connected to that build's running LaunchAgent service. Only views were
+changed: nothing was edited, and the forces were left alone.
+
+Found there, not in the 2,000-note preview: a 230–245 ms main-thread task every two
+seconds, with or without input. `buildWikiLinks` parsed the Markdown of every note on
+each snapshot, and the connected client delivers one every two seconds whether or not
+anything changed. The installed SVG build had the same stall. Link targets are now
+kept per note while its text is unchanged, and titles are indexed once per pass; the
+link count stayed 1,359. Two smaller defects showed on this data: links faded to 26%
+at the fitted zoom were close to invisible, so the fade floor is 45%; and every search
+match kept its label regardless of overlap, so only the note under the pointer is now
+exempt, and links not between two matches fade while searching.
+
+Measured over the DevTools protocol in a visible 1440×940 window on an Apple M4 Pro
+(ANGLE Metal, device pixel ratio 1, a display of about 160 Hz), as intervals between
+animation frames while pointer and wheel events were dispatched each frame:
+
+| | Installed SVG build | This build |
+| --- | --- | --- |
+| Layout build, first 240 frames | 14 fps average, worst frame 905 ms | 161 fps, worst 11.8 ms |
+| Pan at the fitted zoom | 115 fps, one 260 ms stall | 162 fps, worst 12.8 ms |
+| Wheel zoom in to 400% | 84 fps, 14 of 60 frames over 20 ms | 148 fps, worst 15.6 ms |
+| Pan at 400% with labels | 126 fps, one 262 ms stall | 161 fps, worst 10.5 ms |
+| Wheel zoom out | 83 fps, 18 of 80 frames over 20 ms | 145 fps, worst 18.6 ms |
+| Idle for 8 s | stalls every 2 s | 161 fps, no long task |
+
+The installed build's first row was taken right after launch and this build's after
+**Re-layout**. Also seen in this build on that data: the drawing path reported
+`webgl`; a note drag and the settling after it at 160 fps with no navigation; the
+tooltip, the note menu and the background menu (opened and closed, nothing chosen
+except Re-layout); one Tab stop with arrow keys moving between notes; a search for
+`네트워크` framing 45 matches at 40% and clearing back to 16%; a click opening its
+note and Back returning to the graph at the same zoom.
+
+Not exercised: a real mouse wheel, trackpad, or touch screen (events were synthetic,
+so the wheel classification is still unconfirmed on devices); a high-density display;
+hardware acceleration off; a screen reader; Windows; the build installed in place of
+the current one, and its bundled service. The sandbox blocked the Electron download
+during packaging and local connections to the debugging port until both were allowed.
+
+### 2026-11-13 — The whole-wiki graph read as a cobweb
+
+On the user's 389-note, 1,359-link wiki the force layout looked like a cobweb, and a
+first remedy, one disc per collection, was not what was wanted: the user showed
+Obsidian's graph view as the target. What made the old picture a web: every note kept
+a box as wide as its label clear, so notes stood far apart on long links; links were
+translucent and brightened wherever they crossed; and the hub rings and wedges gave a
+lobed outline.
+
+Remedy for the whole-wiki graph: plain link, repulsion, and gravity forces with weak
+springs (0.35 of d3's) and circle-only spacing, tuned so the body is round and evenly
+filled; links drawn opaque in a color mixed toward the background, so crossings do not
+add up; smaller minimum dot sizes. Left to the forces alone, notes without links and
+small separate groups settled far from a densely linked body, so they are held on a
+ring a fixed gap outside it. Wikis under about 120 notes blend label boxes back in,
+down to full boxes at 40, because they show every label.
+
+Checked with a headless run of the simulation on that wiki (read-only) drawn to an
+image, on synthetic vaults of 12 to 5,000 notes with leaf-heavy hubs, and in the app
+from a development run (`electron .`) on the same workspace: a round body, 21 notes
+without links on the ring, a 22-note group and a 3-note group beside it; the synthetic
+vaults showed the dandelion clusters and the ring of the reference picture. A tick took
+0.39 ms for that wiki in Node (0.62 ms with the ring layout's label boxes), after two
+per-tick allocations were removed from the repulsion loop. A dragged busy note moved
+its neighbors 78, 39, and 24 units at one to three links and notes beyond four links 1
+unit; a dragged unlinked note returned to the ring; a restore moved nothing.
+
+Not exercised: real frames. The app window was hidden during these runs, where
+animation frames do not fire and the renderer process is slowed, so frames were pumped
+by hand and their timings varied tenfold between runs; no frame rate is claimed for
+this layout. A reheat of a settled layout still moves notes about 110 units on
+average, as the earlier layout did: 300 ticks stop short of equilibrium. The spacing of
+notes on the ring is uneven near a group that sits on it. The 120-note threshold for
+label boxes is a guess checked only at 6, 12, and 60 notes.
+
+### 2026-11-13 — The service was re-registered to a build inside a worktree
+
+While the packaged build was being tried from `v2/out/`, the LaunchAgent plist was
+rewritten at 02:56 to launch `KnoterServiceLauncher` from that folder (the Agent
+window's **Enable** or **Restart** does this; the verification scripts did not press
+it). Later `npm run package:demo` runs replaced that app under the running service,
+and the UI logged `Background service is unavailable` for a time. The service process
+started at 02:56 kept running from memory. Consequences to keep in mind: the next
+service start will run whatever build is in `out/` then, including an unverified
+skill; removing the worktree or `out/` leaves the registration pointing at nothing.
+Remedy still to do: disable the service, install a chosen build at
+`~/Applications`, and enable it there, as the README describes. Do not repackage a
+build the service is registered to; a development run (`electron .` from `v2`, which
+needs `node node_modules/electron/install.js` once in a fresh worktree) shows a new
+renderer on the same workspace without touching `out/`.
+
 ## Native lifecycle and remaining verification limits
 
 ### 2026-09-17 — SMAppService registered but could not launch

@@ -75,6 +75,11 @@ function MenuItems({ doc, kind }: { doc: WikiDocument; kind: 'context' | 'dropdo
   );
 }
 
+/** A note's actions as context-menu items, for a menu another component owns. */
+export function DocumentContextItems({ doc }: { doc: WikiDocument }) {
+  return <MenuItems doc={doc} kind="context" />;
+}
+
 export function DocumentContextMenu({
   doc,
   children,
@@ -114,7 +119,7 @@ export function DocumentContextMenu({
           className="document-menu"
           collisionPadding={10}
           aria-label={`Actions for ${doc.title}`}
-          // Portals still bubble React events through the graph's SVG ancestors.
+          // Portals still bubble React events through the graph's canvas ancestors.
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >

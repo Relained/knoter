@@ -1,6 +1,6 @@
 ---
 name: knoter-wiki-worker
-description: Turn a person's own notes and clippings into a connected Korean wiki on any subject. Their content is the core; fill gaps with your own knowledge and web references, marked as supplements. Runs inside a knoter job with its wiki tools and proposal schema.
+description: Turn a person's own notes, journals, papers, clippings, and project records into a connected Korean wiki on any subject, organizing each kind of source in its own way. Their content is the core; fill gaps with your own knowledge and web references, marked as supplements. Runs inside a knoter job with its wiki tools and proposal schema.
 ---
 
 # Purpose
@@ -10,14 +10,36 @@ studied, or wondered about is the core of every page. Organize it into pages the
 return to, then add what a reader would still need so each page is useful on its own.
 Any subject is in scope: coursework, technology, history, books, hobbies, plans, ideas.
 
+# Kinds of source
+
+What a source is decides which pages it becomes and how they are written. Decide the kind
+first, part by part when a note mixes them. A note named for a day is usually such a mix:
+each paragraph or heading block is its own part, with its own kind and its own page. Everything else in this skill applies to every kind.
+
+| Kind           | Signs                                                                        | What it becomes                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Study note     | lecture, textbook, or self-study notes; definitions, examples, exercises     | A page per subject, as the Workflow describes. This is the default.                                                  |
+| Journal        | the user's day in the first person: events, feelings, people, plans          | A dated entry on a period page, and pages for recurring threads. Their voice, no corrections, almost no supplements. |
+| Paper          | title and authors, abstract, method and results, DOI or arXiv, references    | One page for the paper, and its contributions on concept pages as that paper's findings.                             |
+| Article        | a clipped web page, news, blog post, or essay with an author or address      | Its claims on subject pages, attributed and dated; a page of its own only for a substantial argument.                |
+| Book           | a book's title and author, chapters, quotations with page numbers, reactions | One page for the book; ideas that outlive it on concept pages, attributed to the author.                             |
+| Project record | goals, decisions, to-dos, setup steps, errors and fixes, meetings            | A project page with dated status and decisions; reusable procedures and fixes on their own pages.                    |
+| Fragment       | a stray idea, question, or line                                              | A section on the page it concerns, kept short and tentative; a small page only when nothing fits.                    |
+
+Say what kind a statement comes from when it matters: the user's own view, an author's
+claim, one study's result, and settled knowledge are written differently and never merged
+into one flat fact. When a guide for a kind follows this skill, apply it to those parts.
+
 # Workflow
 
 A note is a container, not a topic. A day's study log, a lecture, a meeting, or a setup
 log usually covers several subjects, and each subject belongs on its own page, often a
-page that already exists. Work subject by subject, not note by note.
+page that already exists. Work subject by subject, not note by note. A work with one
+author and one argument (a paper, an article, a book) is the exception: it also keeps a
+page of its own, as its kind describes.
 
 1. Read the changed note with `source_read` and every required page with `wiki_read`.
-2. Split the note into its subjects. For each, find where it belongs: the job's
+2. Decide the kind of each part, then split the note into its subjects. For each, find where it belongs: the job's
    `sectionHints` list existing pages (with their section headings) for each part, found
    by glossary terms or title words; `wiki_search`/`source_search` find more by subject
    terms rather than the filename. Read a page before you change it.
@@ -37,6 +59,8 @@ page that already exists. Work subject by subject, not note by note.
 For example, a daily note on stacks, a C++ STL question, and a project idea becomes: a
 `sections` edit appending to the existing stack page, a new `C++ STL` page, and a section
 added to the existing project page. That is three topics and no page named after the date.
+A clipped paper with the user's margin notes becomes a page for the paper, attributed
+additions to the two concept pages it advances, and the margin notes kept as the user's.
 
 # The user's content is the core
 
@@ -53,12 +77,16 @@ added to the existing project page. That is three topics and no page named after
 
 After the user's material, add what the notes lack: definitions, background, corrections,
 comparisons, examples.
+
 - Draw on your own knowledge, and back substantive factual additions (definitions,
   results, figures, dates, history) with at least one reference you read; a one-line
   clarification can stand on your knowledge. Find pages with `WebSearch` when it is
   available, then read the best with `reference_read`: an https URL, `ko:제목`/`en:Title`
-  for Wikipedia, or `mdn:<path>`. Prefer official documentation, Wikipedia, and other
-  reputable sources; a few good reads beat many.
+  for Wikipedia, or `mdn:<path>`. Prefer the sources a careful reader of that field
+  trusts: the primary work, a review or textbook, a standards body or official
+  documentation, then Wikipedia and other reputable summaries. A few good reads beat many.
+- State how firm an addition is: settled knowledge plainly, one study or one author as
+  theirs, a disputed point as disputed, and anything that changes with time with its date.
 - Mark every supplement so a reader can tell it from the user's notes: a `**보충:**`
   lead-in or a `### 보충` subsection. Put `[출처](URL)` next to web-based additions and
   list the segments you used in `referenceCitations` with the returned `path`.
@@ -70,6 +98,7 @@ comparisons, examples.
 `writing.supplementRatio` in the job data is the share of marked supplements the user
 wants in the text you write, in percent (30 when unset). Aim for about that share in each
 page or section you write, measured by length of text:
+
 - At 30, the user's material carries the page and supplements explain what it needs.
 - Higher values ask for fuller supplements: precise definitions, background, how it works,
   worked examples, comparisons, and common mistakes, each still backed as above.

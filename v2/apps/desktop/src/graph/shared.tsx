@@ -7,6 +7,15 @@ import type { WikiEdge } from '../wiki/links';
 import { defaultForces } from './simulation';
 
 export const PALETTE_SIZE = 8;
+const LEGEND_SIZE = 12;
+/**
+ * A collection's color: the eight theme colors first, then evenly spaced hues at the
+ * theme's lightness, so further collections stay distinguishable.
+ */
+export const graphColor = (index: number) =>
+  index < PALETTE_SIZE
+    ? `var(--graph-${index})`
+    : `oklch(var(--graph-extra-l) 0.09 ${Math.round((index * 137.5 + 25) % 360)})`;
 export const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
 /** Notes within `depth` links of the focus, or every note without a focus. */
@@ -188,13 +197,17 @@ export function GraphLegend({
   return (
     <div className="graph-legend" aria-label="Collections">
       {children}
-      {categories.slice(0, PALETTE_SIZE).map((category, i) => (
+      {categories.slice(0, LEGEND_SIZE).map((category, i) => (
         <span key={category}>
-          <b className={`graph-color-${i}`} />
+          <b style={{ color: graphColor(i) }} />
           {category}
         </span>
       ))}
-      {categories.length > PALETTE_SIZE && <span>+{categories.length - PALETTE_SIZE}</span>}
+      {categories.length > LEGEND_SIZE && (
+        <span title={categories.slice(LEGEND_SIZE).join(', ')}>
+          +{categories.length - LEGEND_SIZE} more
+        </span>
+      )}
     </div>
   );
 }
@@ -210,7 +223,7 @@ export function CentralNotes({
   onOpen,
 }: {
   notes: WikiDocument[];
-  colorOf: (doc: WikiDocument) => number;
+  colorOf: (doc: WikiDocument) => string;
   top: number;
   onHover: (id: string | null) => void;
   onOpen: (id: string) => void;
@@ -229,7 +242,7 @@ export function CentralNotes({
           onBlur={() => onHover(null)}
           onClick={() => onOpen(doc.id)}
         >
-          <b className={`graph-color-${colorOf(doc)}`} />
+          <b style={{ color: colorOf(doc) }} />
           {doc.title.split('/').at(-1)}
         </button>
       ))}
