@@ -137,14 +137,23 @@ service and stops when its service terminal exits.
 The wiki is the main view. **Home** shows one search field over the graph of every
 note; typing highlights matches and Enter opens the first.
 
-The graph is laid out around the notes your wiki revolves around. knoter finds them
-itself (PageRank over the links, choosing ones that are not next to each other) and
-lists them as **Central notes**. The most central one sits in the middle and the
-others on a ring around it; every other note radiates outward from the nearest
-central note, one ring per link, so each grows its own wedge of the disc. Notes
-without links settle on the outer ring. Forces still shape it as in Obsidian's
-graph: notes repel, links pull like springs, labels are kept from overlapping, and
-nothing is clamped to the window.
+The whole-wiki graph on Home is laid out the way Obsidian lays out a vault. Links are
+springs, every note pushes every other away, and gravity gathers the linked notes into
+one round body, so a busy note is ringed by its leaves like a dandelion and related
+notes drift together. Notes are small beside the room between them, and links are
+drawn in a quiet color close to the background, so the picture reads as dots and their
+colors rather than as a web of lines. Notes without links sit on a ring just outside
+the body, and a small group linked only among itself sits on that ring too. All four
+**Forces** apply as in Obsidian: center gathers, repel spreads, link stiffens the
+springs, and link distance sets their length. A wiki small enough to show every label
+keeps its notes clear of each other's labels.
+
+**Graph around this note** keeps the earlier arrangement around the notes a
+neighborhood revolves around. knoter finds them itself (PageRank over the links,
+choosing ones that are not next to each other) and lists them as **Central notes**.
+The most central one sits in the middle and the others on a ring around it; every
+other note radiates outward from the nearest central note, one ring per link. Notes
+repel, links pull like springs, and labels are kept from overlapping.
 
 A new graph is built first and framed after: the layout unfolds from the middle for
 about a second, the central notes appearing first and the rest ring by ring, and only
@@ -152,15 +161,33 @@ once it has formed does the view zoom to fit it. Coming back to a graph shows it
 you left it, camera included; a note added meanwhile settles in around its links
 while the rest stays put. With reduced motion the layout appears already formed.
 
-- Drag to pan, scroll to zoom, and use **Fit** to see everything again. Click a note
-  to open it, drag one to move it, and right-click for its menu. Every note is also a
-  keyboard-focusable link.
+- Drag to pan and use **Fit** to see everything again. A mouse wheel zooms; on a
+  trackpad two fingers pan and a pinch zooms, as do two fingers on a touch screen.
+  Click a note to open it, drag one to move it, and right-click for its menu;
+  right-clicking the background offers fit, zoom, re-layout, and the forces. Resting
+  the pointer on a note shows its collection and connections.
+- From the keyboard, Tab stops once in the graph, the arrow keys move to the nearest
+  note in that direction, Home goes to the central note, and Enter opens the note. The
+  view follows the focused note, which is ringed.
+- Searching on Home frames the matching notes and counts them; clearing the search
+  returns to the previous view.
 - Dragging a note moves the graph around it, as in Obsidian: linked notes are pulled
   along, a little less with each link between them and the dragged note, notes it
   passes are pushed aside, and notes that are neither linked within four links nor
   nearby stay where they are. Released, the note and its neighbors settle back under
   the forces; the focus of **Graph around this note** stays where it is dropped.
-- Labels hide below 55% zoom, except for the central notes.
+- Labels hide below 55% zoom, except for the central notes, and a label that would
+  cover another gives way to the busier note's. In a large graph zoomed out, links
+  take a quieter color and notes shrink so the shape stays readable; links return to
+  their full color as you zoom in. The view fits clear of the
+  panels over the graph and zooms out to 1%.
+- Collections beyond the eight theme colors get generated colors; the legend lists
+  twelve and names the rest on hover.
+- The graph is drawn with WebGL: notes and links on the GPU, labels as canvas text
+  above them, so panning, zooming, and a moving layout stay smooth with thousands of
+  notes. Where WebGL is unavailable, such as with hardware acceleration off on some
+  systems, the same picture is drawn on a 2D canvas instead; a warning mark beside
+  the zoom controls and a line in **Forces** say which is in use.
 - **Forces** (the sliders button) adjusts the center (shape), repel, link, and
   distance forces; **Re-layout** builds the arrangement again from the start. Link
   strength saturates above 1 for single links, so high settings cannot fling the layout.
@@ -185,7 +212,8 @@ while the rest stays put. With reduced motion the layout appears already formed.
   the CPU then draws everything. Chromium reads it only at startup, so knoter
   restarts to apply it after checking for unsaved edits; it is stored in the same
   file. The setting also shows whether the GPU is really in use: Chromium still
-  falls back to the CPU when it finds no usable GPU or blocks its driver.
+  falls back to the CPU when it finds no usable GPU or blocks its driver. The graph
+  then uses its 2D canvas drawing when WebGL is not offered.
 - **Settings → Shortcuts** lists every command with its shortcut (⌘ on macOS, Ctrl
   elsewhere). Select one and press new keys; shortcuts need ⌘/Ctrl or Alt, and
   conflicts are marked. Keys an editor uses, such as ⌘B for bold while editing,

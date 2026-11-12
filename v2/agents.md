@@ -50,6 +50,13 @@ outside this demo. The connected side chat follows D22 in that plan.
   goes through `KnoterClient.window` and the validated window IPC; Electron main owns
   the decoration and hardware acceleration preferences, outside the workspace.
   Hardware acceleration is applied before `ready`, so changing it relaunches the app.
+- The graph is drawn on canvas by `graph/renderer.ts`: WebGL 2 for notes and links,
+  2D text for labels, and a 2D fallback when WebGL is missing or its context is lost.
+  Keep the two paths drawing the same picture, read colors from the shared tokens, and
+  add no per-note DOM to the drawing. Notes stay reachable as the visually hidden
+  links beside the canvas, which carry keyboard focus, activation, and the note menu;
+  keep one Tab stop with arrow-key movement, and keep the page from scrolling under
+  wheel and pinch gestures.
 - The supplement ratio (D23) is a writing preference passed in job and chat-turn
   data. Do not have the service measure or reject pages by it without a decision.
 

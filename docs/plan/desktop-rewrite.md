@@ -346,6 +346,15 @@ User refinements from 2026-10-16 replace parts of the layout above:
   nearest central note one ring per link, and notes without links on the outer ring.
   A 3D sphere view with the same arrangement was built and then removed the same day
   at the user's request as unnecessary; the 2D graph is the only graph view.
+- 2026-11-13: the whole-wiki graph follows Obsidian's graph view, which the user showed
+  as the arrangement wanted after calling the 389-note graph an ugly cobweb: one round
+  body shaped by link springs, repulsion, and gravity, small dots with room between
+  them, links in a quiet color near the background, notes without links on a ring
+  outside the body, and small separate groups on that ring. A disc per collection was
+  built first the same day and rejected in favor of this. The ring and the small
+  groups are held in place by rule rather than left to the forces, so their distance
+  from the body does not depend on how dense a wiki's links are. The local graph keeps
+  the rings around central notes, with label-aware spacing.
 - 2026-10-30: the graph is visibly dynamic. Dragging a note moves the others by rule,
   as in Obsidian (linked notes follow less with each link, nearby notes are pushed,
   the rest stay), and a new graph is built first and only then framed by the view.
