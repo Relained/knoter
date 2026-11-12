@@ -96,6 +96,18 @@ each page with its provider and licence; choose **Inspect cited passages** to re
 the stored snapshot. Its URL, retrieval date, hash, and attribution survive
 revisions and full backup/restore.
 
+The worker first decides what kind of source each part of a note is and organizes it
+accordingly: study notes become subject pages; journal entries go to a monthly page in
+your own voice with almost no supplements; a paper gets its own page and its findings
+are attributed to it on concept pages; articles are attributed and dated; a book gets
+one page that later notes extend; project records keep dated status and decisions.
+The service adds the longer guide for a kind when the filename or text suggests it
+(an `일기` filename, an abstract with a DOI, a `출처:` address, and so on); a note it
+does not recognize is still sorted by the short rules every job receives. A note named
+for a day (`2026-03-25.md`) is treated as a mix of whatever you wrote that day: each
+paragraph is sorted on its own, personal ones go to the month's `일기` page, and no page
+is named after the date.
+
 A note is treated as a container of subjects. The worker assigns every part of the
 changed note to the page where it belongs (or skips it with a reason), creates
 pages for new subjects, and adds or revises single sections of existing pages

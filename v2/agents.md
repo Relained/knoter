@@ -57,6 +57,10 @@ outside this demo. The connected side chat follows D22 in that plan.
   links beside the canvas, which carry keyboard focus, activation, and the note menu;
   keep one Tab stop with arrow-key movement, and keep the page from scrolling under
   wheel and pinch gestures.
+- Sources are organized by kind (D24). The core `SKILL.md` names every kind and must
+  stay short; per-kind detail lives in `references/` and is appended by `skillParts`
+  from the filename and text. Keep the two in step when adding a kind, and remember the
+  model cannot read a reference the service did not append.
 - The supplement ratio (D23) is a writing preference passed in job and chat-turn
   data. Do not have the service measure or reject pages by it without a decision.
 
