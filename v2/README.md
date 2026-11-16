@@ -53,7 +53,11 @@ app completely, replace it, reopen it, and enable the service again.
    New no-change results without a linked wiki require review instead of reporting success.
 5. Editing a wiki yourself protects it. Subsequent worker changes appear for review
    in the side panel's **Changes** (⌘⇧H), with notes that did not reach the wiki;
-   **Accept** and **Reject** resolve those proposals.
+   **Accept** and **Reject** resolve those proposals, and **Revise** sends
+   the worker your direction and runs the note again. When the worker declines a note
+   or asks for a clearer request, there is nothing to accept: type what it should do
+   instead and choose **Send feedback** (⌘↵), or **Reject** to leave the note as is.
+   Your answer applies to that version of the note.
    Trash is recoverable, and pages you delete are not recreated automatically.
    Deleting a note removes its wiki content two minutes after a scan last saw it:
    pages left with no source move to Trash as **Moved by knoter** (protected pages
