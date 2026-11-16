@@ -60,7 +60,8 @@ outside this demo. The connected side chat follows D22 in that plan.
 - The graph tells word links from semantic ones by the stored text alone (`wiki/links.ts`):
   the glossary writes `[term](#/wiki/id)` and the agent's links stay `[[id|label]]`.
   Keep `pageNames` there in step with the service's `pageTerms`, and revisit the rule
-  before changing how either kind of link is written.
+  and the worker skill's **Connect pages** section together before changing how either
+  kind of link is written.
 - Sources are organized by kind (D24). The core `SKILL.md` names every kind and must
   stay short; per-kind detail lives in `references/` and is appended by `skillParts`
   from the filename and text. Keep the two in step when adding a kind, and remember the

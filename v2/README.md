@@ -117,7 +117,10 @@ and retries once with the reason.
 The worker tags pages (shown on pages and cards, in the sidebar **TAGS** group, and
 as a library filter). Page titles and the aliases the worker declares form a
 glossary; the service links the first mention of each glossary term across the
-wiki, skipping ambiguous terms and protected pages. **Backlinks** on each page show
+wiki, skipping ambiguous terms and protected pages. These are the graph's word links.
+The worker writes the semantic links: only where two pages belong together (one builds
+on, is part of, exemplifies, or contrasts with the other), inside a sentence that says
+so, and not merely because a page's name appears. **Backlinks** on each page show
 where it is linked from.
 
 The user approved a **local LaunchAgent for this demo** after SMAppService rejected

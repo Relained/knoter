@@ -363,7 +363,8 @@ User refinements from 2026-10-16 replace parts of the layout above:
   hint are semantic. Known limits: a link the user inserts with the page's exact name
   reads as a word link, a glossary link stops reading as one when its page is renamed,
   and semantic means "written on purpose", not measured similarity. Embedding-based
-  links were not built.
+  links were not built. The worker skill's **Connect pages** section states the writing
+  side (D25 of the wiki-worker plan).
 - 2026-10-30: the graph is visibly dynamic. Dragging a note moves the others by rule,
   as in Obsidian (linked notes follow less with each link, nearby notes are pushed,
   the rest stay), and a new graph is built first and only then framed by the view.
