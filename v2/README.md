@@ -200,6 +200,14 @@ while the rest stays put. With reduced motion the layout appears already formed.
   notes. Where WebGL is unavailable, such as with hardware acceleration off on some
   systems, the same picture is drawn on a 2D canvas instead; a warning mark beside
   the zoom controls and a line in **Forces** say which is in use.
+- The graph draws two kinds of link. A **semantic link** is a solid line: a link written
+  into a note for its context (the agent's `[[...]]` links, or a link worded differently
+  from the page's name) or a related-note hint. A **word link** is a dashed line: the
+  kind the glossary adds, whose text is only a name of the page it opens. The two
+  switches in the legend, also in the background's right-click menu, show or hide each
+  kind. A hidden kind is left out of the layout too, so the graph forms again from the
+  links that remain, and **Graph around this note** follows only those. Two notes joined
+  both ways are drawn as semantic. The choice is saved with the workspace.
 - **Forces** (the sliders button) adjusts the center (shape), repel, link, and
   distance forces; **Re-layout** builds the arrangement again from the start. Link
   strength saturates above 1 for single links, so high settings cannot fling the layout.

@@ -209,7 +209,7 @@ export function WikiDocumentView({
   const sources = snapshot.sources.filter((s) => doc.sourceIds.includes(s.id));
   const related = snapshot.documents.filter((d) => doc.relatedIds.includes(d.id));
   const outgoing = snapshot.documents.filter((d) =>
-    links.edges.some((e) => e.source === doc.id && e.target === d.id && e.kind === 'link'),
+    links.edges.some((e) => e.source === doc.id && e.target === d.id && e.inBody),
   );
   const incoming = snapshot.documents.filter((d) =>
     links.edges.some((e) => e.source === d.id && e.target === doc.id),

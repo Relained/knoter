@@ -35,6 +35,7 @@ import type { KnoterClient, View, WikiDocument, WorkspaceSnapshot } from '@knote
 import {
   DEFAULT_SUPPLEMENT_RATIO,
   type GraphForces,
+  type GraphLinks,
   type WindowCommand,
   type WindowFrame,
   type WindowState,
@@ -357,6 +358,10 @@ export function App({ client }: { client: KnoterClient }) {
       : void run(() => client.window!(command));
   const saveForces = useCallback(
     (forces: GraphForces) => void run(() => client.updateSettings({ graph: forces })),
+    [client, run],
+  );
+  const saveGraphLinks = useCallback(
+    (graphLinks: GraphLinks) => void run(() => client.updateSettings({ graphLinks })),
     [client, run],
   );
 
@@ -766,6 +771,7 @@ export function App({ client }: { client: KnoterClient }) {
               onImport: () => setModal('import'),
               onRestore: restoreDocument,
               onForces: saveForces,
+              onGraphLinks: saveGraphLinks,
               documentPending,
               rewriteBinding: bindings.rewriteNote,
             } satisfies WorkspaceContext
