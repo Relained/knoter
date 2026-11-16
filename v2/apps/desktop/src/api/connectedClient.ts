@@ -122,6 +122,7 @@ export function createConnectedClient(bridge: NativeBridge): KnoterClient {
     runWorker: () => mutation('runNow'),
     cancelJob: (id) => mutation('cancelJob', { id }),
     resolveProposal: (id, accept) => mutation('resolveProposal', { id, accept }),
+    reviseProposal: (id, feedback) => mutation('reviseProposal', { id, feedback }),
     readReferenceVersion: async (id) =>
       (await bridge.request('referenceVersion', { id })) as Awaited<
         ReturnType<NonNullable<KnoterClient['readReferenceVersion']>>

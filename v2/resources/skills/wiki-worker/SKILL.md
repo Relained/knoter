@@ -136,4 +136,6 @@ filler: when a subject has nothing more worth adding, stop short of the target.
   entries are tombstones: do not recreate their topics.
 - `no_change` only when every part of the note is already represented (its topics point
   at those pages) and nothing useful can be added; `needs_review` only when you cannot
-  write a faithful update. Neither has operations; both explain why.
+  write a faithful update. Neither has operations; both explain why. A `needs_review`
+  summary states what you need the user to decide, in Korean: they can answer it, and the
+  note runs again with their answer in the prompt. Follow that answer within this contract.

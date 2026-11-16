@@ -7,12 +7,14 @@ import {
   FileText,
   GitPullRequestArrow,
   History,
+  MessageSquare,
   RefreshCw,
   RotateCcw,
+  Send,
   X,
 } from 'lucide-react';
 import type { KnoterClient, Source, WikiDocument, WorkspaceSnapshot } from '@knoter/contracts';
-import type { JobInfo } from '@knoter/contracts/native';
+import { MAX_PROPOSAL_FEEDBACK, type JobInfo, type WorkerInfo } from '@knoter/contracts/native';
 import { Button } from './ui/button';
 import { relativeTime } from './helpers';
 import type { RunAction } from '../views/WikiView';
@@ -27,9 +29,12 @@ export interface AttentionItem {
 /** Sources whose latest version did not reach the wiki cleanly. */
 export function attentionItems(snapshot: WorkspaceSnapshot): AttentionItem[] {
   const items: AttentionItem[] = [];
+  // A job whose result is waiting below as a proposal is answered there, not listed twice.
+  const proposed = new Set(snapshot.worker?.proposals.map((p) => p.jobId));
   for (const source of snapshot.sources) {
     if (source.origin === 'chat') continue;
     const job = snapshot.worker?.jobs.find((j) => j.versionId === source.latestVersionId);
+    if (job && proposed.has(job.id)) continue;
     if (job?.status === 'needs_review' || job?.status === 'failed')
       items.push({ source, job, kind: job.status, retry: true });
     else if (source.status === 'failed') items.push({ source, job, kind: 'failed', retry: true });
@@ -54,6 +59,183 @@ const kindLabels: Record<AttentionItem['kind'], string> = {
   unlinked: 'No linked wiki',
 };
 
+type PendingProposal = WorkerInfo['proposals'][number];
+
+/**
+ * One result waiting on the user. A result with changes can be accepted; any result the
+ * worker wrote can be answered with direction, which runs its note again (D25).
+ */
+function ProposalCard({
+  p,
+  source,
+  stale,
+  documentTitle,
+  disabled,
+  client,
+  act,
+  onSource,
+}: {
+  p: PendingProposal;
+  source?: Source;
+  /** The note changed since this result; its newer version is processed on its own. */
+  stale: boolean;
+  documentTitle: (id: string) => string;
+  disabled: boolean;
+  client: KnoterClient;
+  act: (action: () => Promise<unknown>, message?: string) => Promise<boolean>;
+  onSource: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [draft, setDraft] = useState('');
+  const { operations, trash = [] } = p.proposal;
+  const applicable = operations.length > 0 || trash.length > 0;
+  // A removal the service proposed, or a result for an older version, has no run to redo.
+  const answerable = !!client.reviseProposal && !stale && (operations.length > 0 || !trash.length);
+  const composing = answerable && (asking || !applicable);
+  const titles = [
+    ...operations.map((op) => op.title),
+    ...trash.map((t) => `Trash: ${documentTitle(t.documentId)}`),
+  ];
+  const sourceName = source ? source.relPath || source.filename : '';
+  const feedback = draft.trim();
+  const send = () => {
+    if (!feedback || disabled) return;
+    // A refused answer keeps the draft for another attempt.
+    void act(
+      () => client.reviseProposal!(p.id, feedback),
+      'Feedback sent. The worker will run this note again.',
+    );
+  };
+  return (
+    <article className="review-card">
+      <button className="review-card-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <span>
+          <strong>{p.proposal.summary}</strong>
+          <small>
+            {stale
+              ? 'For an older version of the note'
+              : applicable
+                ? 'Proposed for protected pages'
+                : 'Waiting for your direction'}{' '}
+            · {relativeTime(p.createdAt)}
+            {sourceName ? ` · ${sourceName}` : ''}
+            {titles.length ? ` · ${titles.join(', ')}` : ''}
+          </small>
+        </span>
+      </button>
+      {open && (
+        <div className="review-card-body">
+          {operations.map((op, index) => (
+            <div key={index}>
+              <strong>
+                {op.op === 'create' ? 'New page' : 'Rewrite'} · {op.title}
+              </strong>
+              <p>{op.reason}</p>
+              <pre>{op.body}</pre>
+            </div>
+          ))}
+          {p.proposal.links?.map((l, index) => (
+            <p key={`link-${index}`}>
+              Link “{l.mentions[0]}” in {l.documents.length} page(s): {l.reason}
+            </p>
+          ))}
+          {trash.map((t) => (
+            <div key={t.documentId}>
+              <strong>Move to Trash · {documentTitle(t.documentId)}</strong>
+              <p>{t.reason}</p>
+            </div>
+          ))}
+          {p.proposal.warnings.map((w) => (
+            <p className="review-warning" key={w}>
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
+      {composing && (
+        <div className="review-feedback">
+          <textarea
+            aria-label="Direction for the worker"
+            placeholder={
+              applicable
+                ? 'What should change in this proposal?'
+                : 'Tell the worker what to do with this note instead…'
+            }
+            rows={3}
+            maxLength={MAX_PROPOSAL_FEEDBACK}
+            value={draft}
+            autoFocus={asking}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.nativeEvent.isComposing)
+                return;
+              e.preventDefault();
+              send();
+            }}
+          />
+          <small>Your answer goes to the worker, and it runs this note again with it.</small>
+        </div>
+      )}
+      <div className="review-card-actions">
+        {source && (
+          <Button
+            size="xs"
+            variant="ghost"
+            className="review-card-source"
+            onClick={() => onSource(source.id)}
+          >
+            <FileText /> Source
+          </Button>
+        )}
+        {composing ? (
+          <Button size="xs" disabled={disabled || !feedback} onClick={send}>
+            <Send /> Send feedback
+          </Button>
+        ) : (
+          applicable && (
+            <Button
+              size="xs"
+              disabled={disabled}
+              onClick={() =>
+                void act(() => client.resolveProposal!(p.id, true), 'Changes accepted.')
+              }
+            >
+              <Check /> Accept
+            </Button>
+          )
+        )}
+        {applicable && answerable && (
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={disabled}
+            title={asking ? undefined : 'Ask the worker to change this proposal'}
+            onClick={() => setAsking(!asking)}
+          >
+            {asking ? (
+              'Back'
+            ) : (
+              <>
+                <MessageSquare /> Revise
+              </>
+            )}
+          </Button>
+        )}
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => void act(() => client.resolveProposal!(p.id, false), 'Proposal rejected.')}
+        >
+          <X /> Reject
+        </Button>
+      </div>
+    </article>
+  );
+}
+
 export function ChangesPanel({
   snapshot,
   doc,
@@ -70,7 +252,6 @@ export function ChangesPanel({
   onSource: (id: string) => void;
 }) {
   const [scope, setScope] = useState<'note' | 'all'>('note');
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState(40);
   const worker = snapshot.worker;
@@ -83,8 +264,9 @@ export function ChangesPanel({
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.revision - a.revision);
   const act = async (action: () => Promise<unknown>, message?: string) => {
     setBusy(true);
-    await run(action, message);
+    const done = await run(action, message);
     setBusy(false);
+    return done;
   };
   const documentTitle = (id: string) =>
     snapshot.documents.find((d) => d.id === id)?.title ??
@@ -101,84 +283,25 @@ export function ChangesPanel({
         {!proposals.length && !attention.length && (
           <p className="panel-empty">
             <Check size={13} /> Nothing needs your review. Changes the worker proposes for pages you
-            edited, and notes that did not reach the wiki, appear here.
+            edited, notes it needs your direction on, and notes that did not reach the wiki appear
+            here.
           </p>
         )}
         {proposals.map((p) => {
-          const open = expanded === p.id;
-          const titles = [
-            ...p.proposal.operations.map((op) => op.title),
-            ...(p.proposal.trash ?? []).map((t) => `Trash: ${documentTitle(t.documentId)}`),
-          ];
+          const job = worker?.jobs.find((j) => j.id === p.jobId);
+          const source = job && snapshot.sources.find((s) => s.id === job.sourceId);
           return (
-            <article className="review-card" key={p.id}>
-              <button
-                className="review-card-head"
-                aria-expanded={open}
-                onClick={() => setExpanded(open ? null : p.id)}
-              >
-                {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                <span>
-                  <strong>{p.proposal.summary}</strong>
-                  <small>
-                    Proposed for protected pages · {relativeTime(p.createdAt)}
-                    {titles.length ? ` · ${titles.join(', ')}` : ''}
-                  </small>
-                </span>
-              </button>
-              {open && (
-                <div className="review-card-body">
-                  {p.proposal.operations.map((op, index) => (
-                    <div key={index}>
-                      <strong>
-                        {op.op === 'create' ? 'New page' : 'Rewrite'} · {op.title}
-                      </strong>
-                      <p>{op.reason}</p>
-                      <pre>{op.body}</pre>
-                    </div>
-                  ))}
-                  {p.proposal.links?.map((l, index) => (
-                    <p key={`link-${index}`}>
-                      Link “{l.mentions[0]}” in {l.documents.length} page(s): {l.reason}
-                    </p>
-                  ))}
-                  {p.proposal.trash?.map((t) => (
-                    <div key={t.documentId}>
-                      <strong>Move to Trash · {documentTitle(t.documentId)}</strong>
-                      <p>{t.reason}</p>
-                    </div>
-                  ))}
-                  {p.proposal.warnings.map((w) => (
-                    <p className="review-warning" key={w}>
-                      {w}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <div className="review-card-actions">
-                <Button
-                  size="xs"
-                  disabled={
-                    busy || offline || !(p.proposal.operations.length || p.proposal.trash?.length)
-                  }
-                  onClick={() =>
-                    void act(() => client.resolveProposal!(p.id, true), 'Changes accepted.')
-                  }
-                >
-                  <Check /> Accept
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={busy || offline}
-                  onClick={() =>
-                    void act(() => client.resolveProposal!(p.id, false), 'Proposal rejected.')
-                  }
-                >
-                  <X /> Reject
-                </Button>
-              </div>
-            </article>
+            <ProposalCard
+              key={p.id}
+              p={p}
+              source={source}
+              stale={!!job && !!source && job.versionId !== source.latestVersionId}
+              documentTitle={documentTitle}
+              disabled={busy || offline}
+              client={client}
+              act={act}
+              onSource={onSource}
+            />
           );
         })}
         {attention.map((item) => (

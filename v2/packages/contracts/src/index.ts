@@ -172,6 +172,8 @@ export interface KnoterClient {
   runWorker?(): Promise<void>;
   cancelJob?(id: string): Promise<void>;
   resolveProposal?(id: string, accept: boolean): Promise<void>;
+  /** Close a result waiting for review with the user's direction and run its job again. */
+  reviseProposal?(id: string, feedback: string): Promise<void>;
   readSourceVersion?(id: string): Promise<import('./native').EvidenceVersion>;
   readReferenceVersion?(id: string): Promise<import('./native').ReferenceEvidence>;
   getSnapshot(): Promise<WorkspaceSnapshot>;
