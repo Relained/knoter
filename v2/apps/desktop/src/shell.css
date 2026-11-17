@@ -1182,9 +1182,38 @@ kbd {
 }
 .review-card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
   margin-top: 8px;
+}
+.review-card-source {
+  margin-right: auto;
+}
+.review-feedback {
+  margin-top: 8px;
+}
+.review-feedback textarea {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+.review-feedback textarea::placeholder {
+  color: var(--subtle);
+}
+.review-feedback small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .revision-dot.by-you {
   background: var(--purple);

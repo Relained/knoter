@@ -63,6 +63,10 @@ outside this demo. The connected side chat follows D22 in that plan.
   model cannot read a reference the service did not append.
 - The supplement ratio (D23) is a writing preference passed in job and chat-turn
   data. Do not have the service measure or reject pages by it without a decision.
+- Review feedback (D25) is the user's own direction, typed in the review card. It
+  reaches the worker in the prompt, apart from job data, and the rerun goes through
+  the same validation, protection, and commit path. Never build it from source, page,
+  or model text, and keep **Accept** off results that have nothing to apply.
 
 Use npm. Follow [README.md](README.md) for setup/check commands and browser-preview
 failure evidence. Keep native failures in the shared
