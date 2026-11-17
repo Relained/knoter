@@ -90,6 +90,9 @@ export const graphForces = z
   })
   .strict();
 export type GraphForces = z.infer<typeof graphForces>;
+/** Which kinds of link the wiki graph draws and lays out; both are on by default. */
+export const graphLinks = z.object({ semantic: z.boolean(), word: z.boolean() }).strict();
+export type GraphLinks = z.infer<typeof graphLinks>;
 /** Shortcut overrides: command ID → binding such as `Mod+Shift+K`, or '' to unbind. */
 export const shortcutMap = z
   .record(
@@ -110,6 +113,7 @@ export const settingsPatch = z
     supplementRatio: supplementRatio.optional(),
     shortcuts: shortcutMap.optional(),
     graph: graphForces.optional(),
+    graphLinks: graphLinks.optional(),
   })
   .strict();
 export const commands = {

@@ -1,7 +1,7 @@
 import { BookOpen, Network } from 'lucide-react';
 import { useState } from 'react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces } from '@knoter/contracts/native';
+import type { GraphForces, GraphLinks } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { GraphCanvas } from '../graph/GraphCanvas';
 import type { WikiLinks } from '../wiki/links';
@@ -13,6 +13,8 @@ export function GraphView({
   focus,
   forces,
   onForces,
+  linkKinds,
+  onLinkKinds,
   onOpen,
   onGlobal,
 }: {
@@ -21,6 +23,8 @@ export function GraphView({
   focus: WikiDocument;
   forces?: GraphForces;
   onForces: (forces: GraphForces) => void;
+  linkKinds?: GraphLinks;
+  onLinkKinds: (kinds: GraphLinks) => void;
   onOpen: (id: string) => void;
   onGlobal: () => void;
 }) {
@@ -61,6 +65,8 @@ export function GraphView({
         depth={depth}
         forces={forces}
         onForces={onForces}
+        linkKinds={linkKinds}
+        onLinkKinds={onLinkKinds}
         onOpen={onOpen}
       />
     </div>

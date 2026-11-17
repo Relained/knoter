@@ -157,6 +157,8 @@ export interface WorkspaceSnapshot {
     /** Shortcut overrides by command ID; absent commands use their default binding. */
     shortcuts?: Record<string, string>;
     graph?: import('./native').GraphForces;
+    /** Link kinds shown in the graph; absent means both. */
+    graphLinks?: import('./native').GraphLinks;
   };
 }
 export interface SourceImport {

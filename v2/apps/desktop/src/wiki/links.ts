@@ -11,6 +11,8 @@ interface MarkdownNode {
   url?: string;
   identifier?: string;
   children?: MarkdownNode[];
+  /** Set on a link made from `[[...]]`, which is otherwise the same node as `[...](...)`. */
+  data?: { wikiLink?: boolean };
 }
 const normalize = (text: string) => text.normalize('NFC').trim().toLocaleLowerCase();
 export function resolveDocument(target: string, documents: WikiDocument[]) {
@@ -56,6 +58,7 @@ export function remarkWikiLinks() {
           nodes.push({
             type: 'link',
             url: documentHref(target.trim()),
+            data: { wikiLink: true },
             children: [{ type: 'text', value: alias.join('|').trim() || target.trim() }],
           });
           cursor = match.index! + match[0].length;
@@ -68,10 +71,19 @@ export function remarkWikiLinks() {
   };
 }
 
+/**
+ * How two notes are connected. A `word` link is the kind the glossary adds (D17): a
+ * `[name](#/wiki/id)` link whose text is only a name of the page it opens. A `semantic`
+ * link was written for its context: a `[[...]]` link, which is how the agent links pages,
+ * a link worded differently from the page's name, or a related-note hint.
+ */
+export type LinkKind = 'semantic' | 'word';
 export interface WikiEdge {
   source: string;
   target: string;
-  kind: 'link' | 'related';
+  kind: LinkKind;
+  /** Whether the note's text links the target; false for a related-note hint alone. */
+  inBody: boolean;
 }
 export interface WikiLinks {
   edges: WikiEdge[];
@@ -79,14 +91,21 @@ export interface WikiLinks {
 }
 // Parse math like the reader so a [[a, b]] matrix is not counted as a link.
 const processor = unified().use(remarkParse).use(remarkGfm).use(remarkMath).use(remarkWikiLinks);
+interface ParsedLink {
+  target: string;
+  /** The link's visible text, or null for a `[[...]]` link, which is never a word link. */
+  text: string | null;
+}
 /**
- * Link targets by note, kept while a note's text is unchanged: snapshots arrive every
- * few seconds, and parsing every note again each time stalls a large wiki.
+ * Links by note, kept while a note's text is unchanged: snapshots arrive every few
+ * seconds, and parsing every note again each time stalls a large wiki.
  */
-const parsedTargets = new Map<string, { body: string; targets: string[] }>();
-function linkTargets(doc: WikiDocument) {
-  const cached = parsedTargets.get(doc.id);
-  if (cached?.body === doc.body) return cached.targets;
+const parsedLinks = new Map<string, { body: string; links: ParsedLink[] }>();
+const textOf = (node: MarkdownNode): string =>
+  node.value ?? node.children?.map(textOf).join('') ?? '';
+function bodyLinks(doc: WikiDocument) {
+  const cached = parsedLinks.get(doc.id);
+  if (cached?.body === doc.body) return cached.links;
   const tree = processor.runSync(processor.parse(doc.body)) as MarkdownNode;
   const definitions = new Map<string, string>();
   const collect = (node: MarkdownNode) => {
@@ -95,7 +114,7 @@ function linkTargets(doc: WikiDocument) {
     node.children?.forEach(collect);
   };
   collect(tree);
-  const targets: string[] = [];
+  const links: ParsedLink[] = [];
   const visit = (node: MarkdownNode) => {
     const target = internalTarget(
       node.type === 'linkReference'
@@ -104,12 +123,22 @@ function linkTargets(doc: WikiDocument) {
           ? node.url
           : undefined,
     );
-    if (target) targets.push(target);
+    if (target) links.push({ target, text: node.data?.wikiLink ? null : textOf(node) });
     node.children?.forEach(visit);
   };
   visit(tree);
-  parsedTargets.set(doc.id, { body: doc.body, targets });
-  return targets;
+  parsedLinks.set(doc.id, { body: doc.body, links });
+  return links;
+}
+
+// The service's glossary compares terms this way (`normalizeTerms` in its store).
+const termKey = (text: string) =>
+  text.normalize('NFKC').replace(/\s+/g, ' ').trim().slice(0, 40).toLocaleLowerCase();
+/** The words that name a page in the glossary: its leaf title, the parts of "A (B)", and its terms. */
+function pageNames(doc: WikiDocument) {
+  const leaf = doc.title.split('/').at(-1)!.trim();
+  const parts = /^(.*?)\s*\((.+)\)\s*$/.exec(leaf);
+  return new Set([leaf, ...(parts ? [parts[1], parts[2]] : []), ...(doc.terms ?? [])].map(termKey));
 }
 
 export function buildWikiLinks(documents: WikiDocument[]): WikiLinks {
@@ -131,19 +160,35 @@ export function buildWikiLinks(documents: WikiDocument[]): WikiLinks {
     const matches = byTitle.get(normalize(target));
     return matches?.length === 1 ? matches[0] : undefined;
   };
-  for (const id of parsedTargets.keys()) if (!byId.has(id)) parsedTargets.delete(id);
+  const names = new Map<string, Set<string>>();
+  const namesOf = (doc: WikiDocument) => {
+    let known = names.get(doc.id);
+    if (!known) names.set(doc.id, (known = pageNames(doc)));
+    return known;
+  };
+  // One edge per direction: any semantic connection between two notes outranks a word link.
+  const connect = (source: string, target: string, kind: LinkKind, inBody: boolean) => {
+    const key = `${source}:${target}`;
+    const known = edges.get(key);
+    edges.set(key, {
+      source,
+      target,
+      kind: known?.kind === 'semantic' ? 'semantic' : kind,
+      inBody: inBody || !!known?.inBody,
+    });
+  };
+  for (const id of parsedLinks.keys()) if (!byId.has(id)) parsedLinks.delete(id);
   for (const doc of documents) {
-    for (const target of doc.relatedIds) {
-      if (target !== doc.id && byId.has(target))
-        edges.set(`${doc.id}:${target}`, { source: doc.id, target, kind: 'related' });
-    }
-    for (const target of linkTargets(doc)) {
-      const found = resolve(target);
-      if (found && found.id !== doc.id)
-        edges.set(`${doc.id}:${found.id}`, { source: doc.id, target: found.id, kind: 'link' });
-      else if (!found && !unresolvedKeys.has(`${doc.id}\n${target}`)) {
-        unresolvedKeys.add(`${doc.id}\n${target}`);
-        unresolved.push({ source: doc.id, target });
+    for (const target of doc.relatedIds)
+      if (target !== doc.id && byId.has(target)) connect(doc.id, target, 'semantic', false);
+    for (const link of bodyLinks(doc)) {
+      const found = resolve(link.target);
+      if (found && found.id !== doc.id) {
+        const word = link.text !== null && namesOf(found).has(termKey(link.text));
+        connect(doc.id, found.id, word ? 'word' : 'semantic', true);
+      } else if (!found && !unresolvedKeys.has(`${doc.id}\n${link.target}`)) {
+        unresolvedKeys.add(`${doc.id}\n${link.target}`);
+        unresolved.push({ source: doc.id, target: link.target });
       }
     }
   }

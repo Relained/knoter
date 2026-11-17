@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { RotateCcw, X } from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces } from '@knoter/contracts/native';
+import type { GraphForces, GraphLinks } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import type { WikiEdge } from '../wiki/links';
 import { defaultForces } from './simulation';
@@ -17,6 +17,7 @@ export const graphColor = (index: number) =>
     ? `var(--graph-${index})`
     : `oklch(var(--graph-extra-l) 0.09 ${Math.round((index * 137.5 + 25) % 360)})`;
 export const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+export const allLinkKinds: GraphLinks = { semantic: true, word: true };
 
 /** Notes within `depth` links of the focus, or every note without a focus. */
 function neighborhood(ids: string[], edges: WikiEdge[], focusId?: string, depth = 1) {
@@ -43,16 +44,26 @@ function neighborhood(ids: string[], edges: WikiEdge[], focusId?: string, depth 
 
 /**
  * The notes and links a graph view draws, plus a key that changes only when that
- * structure does: snapshots replace every object every few seconds.
+ * structure does: snapshots replace every object every few seconds. A link kind that is
+ * switched off is left out before anything else, so it neither shapes the layout nor
+ * counts toward a focus note's neighborhood.
  */
 export function useGraphData(
   documents: WikiDocument[],
-  allEdges: WikiEdge[],
+  everyEdge: WikiEdge[],
   focusId?: string,
   depth = 1,
   query = '',
+  kinds: GraphLinks = allLinkKinds,
 ) {
   const ids = useMemo(() => documents.map((d) => d.id), [documents]);
+  const allEdges = useMemo(
+    () =>
+      kinds.semantic && kinds.word
+        ? everyEdge
+        : everyEdge.filter((e) => (e.kind === 'word' ? kinds.word : kinds.semantic)),
+    [everyEdge, kinds.semantic, kinds.word],
+  );
   const visibleIds = useMemo(
     () => neighborhood(ids, allEdges, focusId, depth),
     [ids, allEdges, focusId, depth],
@@ -61,13 +72,13 @@ export function useGraphData(
     () => documents.filter((d) => visibleIds.has(d.id)),
     [documents, visibleIds],
   );
-  // One line per pair of notes; a body link wins over a related-note hint.
+  // One line per pair of notes; a semantic link in either direction wins over a word link.
   const edges = useMemo(() => {
     const paired = new Map<string, WikiEdge>();
     for (const e of allEdges) {
       if (!visibleIds.has(e.source) || !visibleIds.has(e.target)) continue;
       const key = pairKey(e.source, e.target);
-      if (!paired.has(key) || e.kind === 'link') paired.set(key, e);
+      if (!paired.has(key) || e.kind === 'semantic') paired.set(key, e);
     }
     return [...paired.values()];
   }, [allEdges, visibleIds]);
@@ -105,6 +116,23 @@ export function useGraphData(
     [visible, needle],
   );
   return { visible, edges, structure, categories, matches, searching: !!needle };
+}
+
+/** The link kinds shown, switched at once and saved; a saved change from elsewhere replaces them. */
+export function useGraphLinkKinds(
+  saved: GraphLinks = allLinkKinds,
+  onSave?: (kinds: GraphLinks) => void,
+) {
+  const [local, setLocal] = useState(saved);
+  useEffect(
+    () => setLocal({ semantic: saved.semantic, word: saved.word }),
+    [saved.semantic, saved.word],
+  );
+  const update = (next: GraphLinks) => {
+    setLocal(next);
+    onSave?.(next);
+  };
+  return [local, update] as const;
 }
 
 /** Local force values that follow saved settings and persist after a pause. */
@@ -186,6 +214,46 @@ export function ForcesPanel({
   );
 }
 
+export const linkKindLabels: { key: keyof GraphLinks; label: string; hint: string }[] = [
+  {
+    key: 'semantic',
+    label: 'Semantic links',
+    hint: 'Solid lines: links written into a note for their context, and related notes.',
+  },
+  {
+    key: 'word',
+    label: 'Word links',
+    hint: 'Dashed lines: links the glossary adds where a note mentions another page by name.',
+  },
+];
+
+/** The two kinds of link as the graph draws them; each switches its kind on or off. */
+export function LinkKindToggles({
+  kinds,
+  onChange,
+}: {
+  kinds: GraphLinks;
+  onChange: (kinds: GraphLinks) => void;
+}) {
+  return (
+    <span className="graph-link-kinds" role="group" aria-label="Links shown">
+      {linkKindLabels.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className={item.key}
+          aria-pressed={kinds[item.key]}
+          title={item.hint}
+          onClick={() => onChange({ ...kinds, [item.key]: !kinds[item.key] })}
+        >
+          <i aria-hidden="true" />
+          {item.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export function GraphLegend({
   categories,
   children,
@@ -195,7 +263,7 @@ export function GraphLegend({
 }) {
   if (!categories.length && !children) return null;
   return (
-    <div className="graph-legend" aria-label="Collections">
+    <div className="graph-legend" aria-label="Graph legend">
       {children}
       {categories.slice(0, LEGEND_SIZE).map((category, i) => (
         <span key={category}>

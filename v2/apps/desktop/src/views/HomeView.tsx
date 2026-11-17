@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Plus, Search } from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces } from '@knoter/contracts/native';
+import type { GraphForces, GraphLinks } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { DocIcon } from '../components/helpers';
 import { GraphCanvas } from '../graph/GraphCanvas';
@@ -37,6 +37,8 @@ export function HomeView({
   links,
   forces,
   onForces,
+  linkKinds,
+  onLinkKinds,
   onOpen,
   onNew,
   onLibrary,
@@ -45,6 +47,8 @@ export function HomeView({
   links: WikiLinks;
   forces?: GraphForces;
   onForces: (forces: GraphForces) => void;
+  linkKinds?: GraphLinks;
+  onLinkKinds: (kinds: GraphLinks) => void;
   onOpen: (id: string) => void;
   onNew: () => void;
   onLibrary: () => void;
@@ -142,6 +146,8 @@ export function HomeView({
         query={query}
         forces={forces}
         onForces={onForces}
+        linkKinds={linkKinds}
+        onLinkKinds={onLinkKinds}
         onOpen={onOpen}
       />
     </div>

@@ -1564,6 +1564,39 @@ kbd {
   border-radius: 50%;
   background: currentColor;
 }
+/* The two kinds of link, drawn as the graph draws them; each is a switch. */
+.graph-legend > .graph-link-kinds {
+  gap: 2px;
+  margin-left: -4px;
+}
+.graph-link-kinds button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--body-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.graph-link-kinds button:hover {
+  background: var(--secondary);
+}
+.graph-link-kinds button[aria-pressed='false'] {
+  color: var(--subtle);
+  text-decoration: line-through;
+}
+.graph-link-kinds i {
+  width: 18px;
+  border-top: 2px solid currentColor;
+}
+.graph-link-kinds .word i {
+  border-top-style: dashed;
+}
+.graph-link-kinds button[aria-pressed='false'] i {
+  opacity: 0.45;
+}
 .graph-forces {
   right: 12px;
   bottom: 52px;
@@ -1617,7 +1650,11 @@ kbd {
   .graph-hint {
     display: none;
   }
+  /* A narrow graph keeps the link switches and drops the collection names. */
   .graph-legend {
+    max-width: calc(100% - 210px);
+  }
+  .graph-legend > span:not(.graph-link-kinds) {
     display: none;
   }
   .graph-header {

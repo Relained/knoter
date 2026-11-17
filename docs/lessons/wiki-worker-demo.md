@@ -642,6 +642,16 @@ average, as the earlier layout did: 300 ticks stop short of equilibrium. The spa
 notes on the ring is uneven near a group that sits on it. The 120-note threshold for
 label boxes is a guess checked only at 6, 12, and 60 notes.
 
+### 2026-11-16 — Link kinds: verification limits
+
+The graph's split into semantic and word links was checked in the browser preview only,
+on a synthetic 160-note wiki, not on the installed app or the user's wiki. The worker
+skill's **Connect pages** section (D26) was not run against a model: no job was executed
+after the change, so whether the worker writes fewer and better-stated `[[...]]` links,
+and leaves glossary links in their stored form when it rewrites a page, is unobserved.
+Pages written before the change keep their links. Links the earlier skill had the worker
+write without guidance on when to link all read as semantic.
+
 ### 2026-11-13 — The service was re-registered to a build inside a worktree
 
 While the packaged build was being tried from `v2/out/`, the LaunchAgent plist was
