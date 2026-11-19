@@ -2,12 +2,12 @@
 
 ## Scope and routing
 
-Read the relevant guide before planning or editing:
-[V1 CLI](v1/cli/agents.md), [V1 Web/Electron](v1/web/agents.md), or
-[isolated rewrite](v2/agents.md). Root rules apply throughout the repository;
-package rules govern their own files. Read every affected guide for cross-package
-work and preserve the stricter boundary unless the user directs otherwise.
-Legacy Web rules do not govern V2.
+Read the [V2 guide](v2/agents.md) before planning or editing. Root rules apply
+throughout the repository; package rules govern their own files. Read every
+affected guide for cross-package work and preserve the stricter boundary unless
+the user directs otherwise. The legacy V1 packages (CLI, Web/Electron, and vault
+templates) were removed by the user's 2026-11-20 instruction; they remain in Git
+history, and their rules do not govern V2. Existing V1 vaults stay user data.
 
 Use [project memory](docs/README.md) for the smallest relevant set of decisions,
 failures, and plans. READMEs own setup/use instructions; agents files own work
@@ -31,9 +31,6 @@ logs; preserve decisions and user constraints when compressing documents.
   link checks, not an application build.
 - Test automation and CI were deferred by the user's 2026-09-16 instruction;
   reintroduce them only when requested. Static checks/builds remain required.
-- [v1/res/templates/workflow.md](v1/res/templates/workflow.md) is executable agent
-  policy, not ordinary prose. Keep the CLI work prompt consistent with changes;
-  preserve customized copies in existing vaults and document new-vault scope.
 - Report the change's intent, affected files, validation, and material risks.
 
 ## Git
@@ -43,9 +40,8 @@ logs; preserve decisions and user constraints when compressing documents.
   an active topic branch that matches the task.
 - Topic names are otherwise free-form. Never use `dev/...`: Git cannot keep both
   a `dev` ref and refs beneath it.
-- Keep CLI and Web implementation on separate topic branches unless the change
-  is inherently cross-package. Merge into `dev` through a PR, or a local
-  `--no-ff` merge when working without the remote.
+- Merge into `dev` through a PR, or a local `--no-ff` merge when working without
+  the remote.
 - Commit related changes in small verified units. Before committing, inspect
   `git branch --show-current` and `git status --short --branch`.
 - Never rewrite, reset, or discard user changes without explicit instruction.
