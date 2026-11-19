@@ -132,8 +132,15 @@ export function ChatPanel({
       )
       .slice(0, 8);
   }, [mention, snapshot.documents]);
+  // The snapshot is polled, so messages change identity without new content: follow
+  // the newest reply only while the reader is already at the bottom.
+  const pinned = useRef(true);
+  const onScroll = () => {
+    const el = scroll.current;
+    if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
   useEffect(() => {
-    if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
+    if (pinned.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
   }, [snapshot.messages]);
   useEffect(
     () => () => {
@@ -204,6 +211,7 @@ export function ChatPanel({
   }) => {
     const next = new AbortController();
     controller.current = next;
+    pinned.current = true;
     setSubmitting(true);
     const sent = await run(() =>
       client.sendMessage({ ...input, choice: choice ?? undefined, signal: next.signal }),
@@ -318,7 +326,7 @@ export function ChatPanel({
           <Plus size={16} />
         </Button>
       </div>
-      <div className="chat-scroll" ref={scroll}>
+      <div className="chat-scroll" ref={scroll} onScroll={onScroll}>
         {snapshot.messages.length ? (
           <div className="chat-messages">
             {snapshot.messages.map((message) => (
