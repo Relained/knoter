@@ -693,6 +693,28 @@ renderer on the same workspace without touching `out/`.
 
 ## Native lifecycle and remaining verification limits
 
+### 2026-11-20 — The app icon made packaging depend on `actool`
+
+The packaged app showed Electron's default icon on a dark plate. It now ships a knot of
+cord, chosen by the user after three other drafts (a k-shaped graph, round graphs, a
+cloud of notes): green on paper in light appearance, cream on green in dark. One icon
+cannot be both in an `.icns`, so `AppIcon.icon` (Icon Composer) carries the two and the
+packager compiles it with `actool` into `Assets.car`; the `.icns` remains for systems
+before macOS 26. Packaging therefore needs macOS 26 and Xcode 26, and fails without them
+rather than falling back.
+
+`actool` writes scratch files in the per-user temporary folder and failed inside the
+agent sandbox (`You don't have permission to save the file ... in the folder "T"`), as
+did `iconutil`; both ran outside it. The icon format's JSON is not documented: the
+appearance keys (`fill-specializations`, `image-name-specializations`) were taken from
+the tool's own frameworks and confirmed by exporting each rendition with Icon Composer's
+`ictool`.
+
+Limits: the Mac was in dark appearance, so only the dark icon was seen as the system
+draws it; the light one was checked through `ictool` and the compiled catalog's
+renditions. The Tinted and Clear icon styles, the `.icns` on an older system, and the
+Dock after an install were not checked.
+
 ### 2026-09-17 — SMAppService registered but could not launch
 
 macOS 27 launch logs rejected the bundled helper's code signature; the Mac had no
