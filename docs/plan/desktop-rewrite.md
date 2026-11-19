@@ -38,11 +38,12 @@ are discovered when main restarts. This deliberately narrows the background
 discovery scope described for the broader product below.
 
 Read the [root guide](../../agents.md), [rewrite guide](../../v2/agents.md),
-and [prototype README](../../v2/README.md) before work. Read
-[legacy decisions](../../v1/docs/architecture.md) and the relevant legacy package guide
-only when touching or importing from those packages. Continue the next
-user-assigned milestone; this brief does not authorize deployment, purchases,
-legacy deletion, or in-place user-data migration.
+and [prototype README](../../v2/README.md) before work. The legacy V1 packages
+were removed from the repository by the user's 2026-11-20 instruction; read the
+legacy decisions (`v1/docs/architecture.md` in Git history) before reusing
+anything from them. Continue the next user-assigned milestone; this brief does
+not authorize deployment, purchases, or in-place user-data migration, and the
+removal of legacy code does not extend to existing vaults or their data.
 
 Exclude multi-user collaboration, cloud sync, browser-only hosting, a plugin
 marketplace, external calendar sync, and agent-generated executable UI initially.
