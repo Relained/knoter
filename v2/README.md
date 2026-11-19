@@ -163,7 +163,7 @@ is a reading/interchange format, not a full backup. Restore requires an empty
 workspace and reconnecting folders/CLI. Preserve any existing workspace by moving
 it aside **after disabling the service and quitting the app**, then start a fresh
 workspace and choose **Restore backup**. Never replace a live SQLite database.
-A new build migrates the database to schema 2 on first start, after which older
+A new build migrates the database to schema 3 on first start, after which older
 builds refuse to open it; back up the workspace before installing a newer build.
 
 For development, run `npm run check`, then `npm run service` in one terminal and
