@@ -44,7 +44,9 @@ export function claudeEnvironment() {
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     MCP_TIMEOUT: '15000',
     MCP_TOOL_TIMEOUT: '15000',
-    // A large note can exceed the default MCP result cap, which would truncate evidence.
+    // For tools that declare no limit of their own, such as the searches. It does not move
+    // the 50,000-character threshold past which a text result is saved to a file; the read
+    // tools declare theirs in the bridge.
     MAX_MCP_OUTPUT_TOKENS: '80000',
   };
   if (process.env.CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;

@@ -35,7 +35,9 @@ outside this demo. The connected side chat follows D22 in that plan.
   the web: the service, not the model, reads pages through bounded `reference_read`
   (https only, with private-network addresses refused at connect time), stores the
   evidence, and keeps the user's material and marked supplements distinct. Never
-  send note text in an outbound request.
+  send note text in an outbound request. A tool that returns a whole note, page, or
+  reference declares its result size in the bridge: Claude Code saves a larger text
+  result to a file, which the worker cannot read.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
 - Side-chat turns get the same evidence tools plus the read-only `wiki_check`.
