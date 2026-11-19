@@ -26,10 +26,15 @@ npm run package:demo
 
 This runs the required `npm run check`, compiles the Swift helpers, bundles the
 service and renderer, and packages an ad-hoc signed app at
-`out/Knoter Wiki Demo-darwin-arm64/Knoter Wiki Demo.app`. Install it at a stable
-location such as `~/Applications/Knoter Wiki Demo.app` before enabling background
+`out/knoter-darwin-arm64/knoter.app`. Install it at a stable
+location such as `~/Applications/knoter.app` before enabling background
 work. Before replacing or moving an installed build, **Disable service**, quit the
 app completely, replace it, reopen it, and enable the service again.
+
+The app was first named Knoter Wiki Demo. Its data and log folders, its bundle ID, and
+its LaunchAgent label keep that name, so a build under the new name opens the same
+workspace. Coming from a build named Knoter Wiki Demo, disable the service there first:
+the registration points at that app's path.
 
 The app icon is a cord tied in a knot: green on paper in light appearance, cream on
 green in dark. `platform/macos/AppIcon.icon` holds both and is what macOS 26 and newer
