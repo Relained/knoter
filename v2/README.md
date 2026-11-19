@@ -6,7 +6,8 @@ Markdown sources. Neither mode migrates the legacy vault or browser preview data
 
 ## Run the native demo
 
-Packaging currently requires macOS Apple Silicon, Xcode Command Line Tools,
+Packaging currently requires macOS 26 or newer on Apple Silicon, Xcode 26 or newer
+(the Swift compiler for the helpers, and `actool` for the app icon),
 Node **22.14.0**, and npm. The build copies this exact Node runtime and its license
 into the app; the installed service does not depend on shell PATH or global Node.
 Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
@@ -29,6 +30,20 @@ service and renderer, and packages an ad-hoc signed app at
 location such as `~/Applications/Knoter Wiki Demo.app` before enabling background
 work. Before replacing or moving an installed build, **Disable service**, quit the
 app completely, replace it, reopen it, and enable the service again.
+
+The app icon is a cord tied in a knot: green on paper in light appearance, cream on
+green in dark. `platform/macos/AppIcon.icon` holds both and is what macOS 26 and newer
+show; `AppIcon.icns` is the light icon for older systems. Both are drawn by
+`platform/macos/AppIcon.swift`. After changing it, from `v2`:
+
+```sh
+xcrun swiftc -O platform/macos/AppIcon.swift -o /tmp/knoter-icon
+/tmp/knoter-icon /tmp/knoter-icon-out
+iconutil -c icns /tmp/knoter-icon-out/AppIcon.iconset -o platform/macos/AppIcon.icns
+cp /tmp/knoter-icon-out/*.png platform/macos/AppIcon.icon/Assets/
+```
+
+The plate colors are also written in `AppIcon.icon/icon.json`; keep the two in step.
 
 1. Open **Agent** from the status bar (⌘⇧A) and choose **Enable background**. The
    status should show `local_agent_running` and a connected service PID.

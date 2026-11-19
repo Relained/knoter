@@ -7,6 +7,9 @@ module.exports = {
     executableName: 'Knoter Wiki Demo',
     appBundleId: 'com.knoter.wiki-demo',
     appCategoryType: 'public.app-category.productivity',
+    // AppIcon.icon carries the light and dark icons and is compiled by actool; AppIcon.icns
+    // is the light one alone, for systems before macOS 26. The packager adds each extension.
+    icon: 'platform/macos/AppIcon',
     asar: true,
     ignore: (path) =>
       path !== '' && path !== '/package.json' && path !== '/dist' && !path.startsWith('/dist/app'),
