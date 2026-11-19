@@ -5,6 +5,14 @@ import { EVIDENCE_TOOLS, MAX_WIRE_BYTES } from '@knoter/contracts/native';
 const socket = process.env.KNOTER_WORKER_SOCKET!,
   capability = process.env.KNOTER_WORKER_CAPABILITY!,
   chat = process.env.KNOTER_TOOLSET === 'chat';
+/**
+ * Claude Code saves a text result longer than 50,000 characters to a file and leaves the
+ * model a path and a short preview. The model here has no file tools, so a long note would
+ * reach it as that preview alone. A tool that returns a whole note, page, or reference
+ * declares its own limit instead, at the CLI's ceiling; `MAX_MCP_OUTPUT_TOKENS` does not
+ * move the threshold. The key is Claude Code's own; Codex was not checked with it.
+ */
+const WHOLE_RESULT = { 'anthropic/maxResultSizeChars': 500_000 };
 const tools = [
   {
     name: 'source_search',
@@ -27,6 +35,7 @@ const tools = [
       required: ['versionId'],
       additionalProperties: false,
     },
+    _meta: WHOLE_RESULT,
   },
   {
     name: 'wiki_search',
@@ -49,6 +58,7 @@ const tools = [
       required: ['documentId'],
       additionalProperties: false,
     },
+    _meta: WHOLE_RESULT,
   },
   {
     name: 'reference_read',
@@ -60,6 +70,7 @@ const tools = [
       required: ['target'],
       additionalProperties: false,
     },
+    _meta: WHOLE_RESULT,
   },
   // The side chat may dry-run its proposal; the service still validates the final reply.
   ...(chat

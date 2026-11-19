@@ -221,6 +221,29 @@ With the Korean input source active, ⌘⇧G did not open Go to Folder in the
 chooser, but typing `/` did. A folder registered by mistake could be removed only
 through the service's `removeWatch` command, because the UI has no control for it.
 
+### 2026-11-20 — A long note reached the worker as a 2 KB preview
+
+A lecture note of 651 segments (51,610 characters, 67 KB) waited in Review: the
+worker declined it because it had seen only segments s1–s11. Claude Code saves any
+MCP text result longer than 50,000 characters to a file and leaves the model a path
+and a 2 KB preview, and this worker has no file tools. `source_read` returns the
+whole note in one result, here about 108,000 characters. More than half of that is
+JSON around the text: a segment ends at every blank line, and each repeats its
+heading and line numbers. `MAX_MCP_OUTPUT_TOKENS=80000`, set on 2026-10-16 for this
+purpose, does not move that threshold.
+
+The bridge now declares `_meta["anthropic/maxResultSizeChars"]` at the CLI's ceiling
+of 500,000 on `source_read`, `wiki_read`, and `reference_read`.
+
+Limits: only the built bridge's tool list was checked. No worker job ran after the
+change, so whether this note now completes within one run (5 minutes, 12 page
+changes, every segment assigned) is unobserved. The ceiling is not a guarantee: a
+256 KiB note of 2,000 segments with long headings or heavy escaping can still pass
+500,000 characters and would again arrive as a preview. Reading in pages with each
+heading sent once, and splitting a long note across runs (P1 of the plan), were not
+built. Codex was not checked; the installed 0.162.1 is not the pinned version.
+Answering the Review card with feedback cannot help a note that was not read.
+
 ## Personal-wiki redesign (D12–D20)
 
 ### 2026-10-16 — Migrated tables broke positional inserts
