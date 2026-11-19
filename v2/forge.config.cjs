@@ -1,10 +1,13 @@
 const { join } = require('node:path');
 const { mkdir, cp } = require('node:fs/promises');
 const { execFileSync } = require('node:child_process');
+// The bundle ID, the LaunchAgent label, and the data folders keep the app's first name,
+// "Knoter Wiki Demo": changing them would strand an installed workspace and registration.
+const APP = 'knoter';
 module.exports = {
   packagerConfig: {
-    name: 'Knoter Wiki Demo',
-    executableName: 'Knoter Wiki Demo',
+    name: APP,
+    executableName: APP,
     appBundleId: 'com.knoter.wiki-demo',
     appCategoryType: 'public.app-category.productivity',
     // AppIcon.icon carries the light and dark icons and is compiled by actool; AppIcon.icns
@@ -20,7 +23,8 @@ module.exports = {
   hooks: {
     postPackage: async (_config, { outputPaths }) => {
       for (const output of outputPaths) {
-        const contents = join(output, 'Knoter Wiki Demo.app', 'Contents');
+        const bundle = join(output, `${APP}.app`);
+        const contents = join(bundle, 'Contents');
         await mkdir(join(contents, 'Library/LaunchAgents'), { recursive: true });
         await cp(
           'platform/macos/com.knoter.wiki-demo.worker.plist',
@@ -30,7 +34,7 @@ module.exports = {
           await cp(join('dist/native', name), join(contents, 'MacOS', name));
         execFileSync(
           '/usr/bin/codesign',
-          ['--force', '--deep', '--sign', '-', join(output, 'Knoter Wiki Demo.app')],
+          ['--force', '--deep', '--sign', '-', bundle],
           { stdio: 'inherit' },
         );
         for (const name of ['KnoterServiceControl', 'KnoterServiceLauncher']) {
@@ -43,7 +47,7 @@ module.exports = {
         }
         execFileSync(
           '/usr/bin/codesign',
-          ['--force', '--sign', '-', join(output, 'Knoter Wiki Demo.app')],
+          ['--force', '--sign', '-', bundle],
           { stdio: 'inherit' },
         );
       }

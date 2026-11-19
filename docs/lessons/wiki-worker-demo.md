@@ -693,6 +693,24 @@ renderer on the same workspace without touching `out/`.
 
 ## Native lifecycle and remaining verification limits
 
+### 2026-11-20 — The app became knoter; its folders did not
+
+At the user's request the app is named knoter instead of Knoter Wiki Demo: the bundle,
+its executable, the menu, and the window title. Electron names the user data folder
+after the app, and the service's workspace lives in that same folder, so the rename
+alone would have opened an empty settings folder beside the real workspace. Main now
+sets the user data path to the service's data folder explicitly. The data and log
+folders, the bundle ID, and the LaunchAgent label keep the first name; moving them
+would need a migration of an installed workspace and a new registration, and was not
+asked for.
+
+The LaunchAgent stores the installed app's path, so a renamed app is a moved app:
+disable the service from the old build, install the new one, enable it there.
+
+Limits: the name and path calls were tried in a throwaway Electron run, where the
+override held; the window settings surviving the rename were not observed in the app
+itself before the install. The outbound `User-Agent` still says `knoter-wiki-demo`.
+
 ### 2026-11-20 — The app icon made packaging depend on `actool`
 
 The packaged app showed Electron's default icon on a dark plate. It now ships a knot of

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, powerMonitor, shell, Menu, session } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -175,7 +175,7 @@ async function createWindow(previous?: BrowserWindow) {
     ...(previous ? previous.getNormalBounds() : { width: 1440, height: 940 }),
     minWidth: 780,
     minHeight: 580,
-    title: 'Knoter Wiki Demo',
+    title: 'knoter',
     backgroundColor: '#f8f7f4',
     // The renderer draws the title bar; macOS keeps its traffic lights inside it.
     ...(frame === 'custom'
@@ -207,8 +207,14 @@ async function createWindow(previous?: BrowserWindow) {
   // The replaced window closes only after its successor has loaded.
   previous?.destroy();
 }
-app.setName('Knoter Wiki Demo');
-// Read after setName, which names the user data folder, and before ready, the only time
+app.setName('knoter');
+// The name would also rename the user data folder. The window's settings and the workspace
+// already live in the folder of the app's first name; keep using it rather than start an
+// empty one. Electron's documentation says it refuses a folder that does not exist, as on
+// a first launch before the service has run, so make it first.
+mkdirSync(defaultDataDir(), { recursive: true, mode: 0o700 });
+app.setPath('userData', defaultDataDir());
+// Read after the user data folder is set, and before ready, the only time
 // Chromium accepts a GPU choice. Enabled leaves Chromium's own GPU path and driver checks.
 ({ frame, hardwareAcceleration } = savedPreferences());
 if (!hardwareAcceleration) app.disableHardwareAcceleration();
