@@ -6,7 +6,8 @@ Markdown sources. Neither mode migrates the legacy vault or browser preview data
 
 ## Run the native demo
 
-Packaging currently requires macOS Apple Silicon, Xcode Command Line Tools,
+The steps below are for macOS; [Windows x64](#windows-x64-package) differs as described
+there. Packaging on macOS requires Apple Silicon, Xcode Command Line Tools,
 Node **22.14.0**, and npm. The build copies this exact Node runtime and its license
 into the app; the installed service does not depend on shell PATH or global Node.
 Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
@@ -138,6 +139,46 @@ it aside **after disabling the service and quitting the app**, then start a fres
 workspace and choose **Restore backup**. Never replace a live SQLite database.
 A new build migrates the database to schema 2 on first start, after which older
 builds refuse to open it; back up the workspace before installing a newer build.
+
+### Windows x64 package
+
+From `v2` in PowerShell, with Node 22.14 or newer (x64):
+
+```sh
+npm ci
+npm run package:win
+```
+
+This produces `out/Knoter Wiki Demo-win32-x64/Knoter Wiki Demo.exe`; keep the folder
+together, since the exe needs the files beside it. The build bundles the Node that ran it
+as `resources/runtime/node.exe` and checks that the installed SQLite binding loads in it.
+The package is unsigned, so SmartScreen may ask before the first start.
+
+Windows registers nothing with the OS. The app starts the bundled service as its own
+child when it opens and stops it in order when it quits, so queued work continues only
+while the app is open. **Disable service** is remembered in `service-preferences.json`
+until **Enable background**. The workspace, `logs/service.log`, and Electron's own
+files are in `%APPDATA%\Knoter Wiki Demo`. The service listens on a per-user named pipe
+instead of a socket file. For a worker CLI choose an `.exe` (Claude Code's
+`%USERPROFILE%\.local\bin\claude.exe`, or the native `codex.exe`); an npm `.cmd` shim
+cannot be started.
+
+Checked on Windows 11 with Node 24.14.1 on 2026-11-13: packaging, start, service
+connection, watching a folder and registering notes (including a Korean filename in a
+subfolder), connecting Claude Code 2.1.321 and worker jobs finishing with it, and an
+orderly quit while a job was running. Not checked: Codex CLI, chat replies,
+backup/restore, the system title bar, and the Agent window's Windows text.
+
+Two failures from that day, kept as regression cases:
+
+- Quitting while a job ran left `service.lock` and an unmerged SQLite WAL: Windows ended
+  the service together with the app. The service is now started detached and stops
+  itself when its stdin closes; data was intact because the WAL is replayed on start.
+- The workspace looked empty after reopening the app. Started from a Store-packaged
+  program (here, a terminal inside the Claude desktop app), `%APPDATA%` is redirected to
+  `%LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming`, so the same exe opened from
+  Explorer used a different, new workspace. Start the app from Explorer, or expect the
+  redirected location.
 
 For development, run `npm run check`, then `npm run service` in one terminal and
 `npm run desktop` in another. Both accept the same `KNOTER_DATA_DIR` environment
@@ -275,7 +316,8 @@ count). A reserved start counts even if a crash occurs
 immediately before spawning; these limits are not token or subscription quotas.
 
 Markdown/wiki generation and the side chat are connected. Tasks/calendar, PDF/TXT
-sources, embeddings, multi-user access, and Windows are outside this demo. The browser
+sources, embeddings, multi-user access, and a Windows background registration or
+installer are outside this demo. The browser
 preview below still simulates its backend. Generation is evidence-constrained,
 but semantic accuracy and useful topic boundaries still require human review.
 

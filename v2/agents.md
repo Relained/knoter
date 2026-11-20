@@ -4,8 +4,11 @@ Apply the [root rules](../agents.md). This is the isolated rewrite; legacy Web
 HTML-first and command-registry rules do not apply here. The assigned native
 milestone is the [wiki-worker demo](../docs/plan/wiki-worker-demo.md). Keep its
 connected service and the browser prototype distinct; label simulated operations
-clearly. PDF, Windows, real tasks/calendar, and production distribution are
-outside this demo. The connected side chat follows D22 in that plan.
+clearly. PDF, real tasks/calendar, and production distribution are outside this
+demo. Windows x64 is packaged per the user's 2026-11-13 request: the app runs the
+service as its own child over a named pipe and registers nothing with the OS; keep
+platform differences behind `windows` checks and leave the macOS path unchanged.
+The connected side chat follows D22 in that plan.
 
 - Use React/TypeScript/Vite, Tailwind/shared tokens, and repository-owned
   composable primitives. Reuse Radix for accessible interaction/focus behavior
