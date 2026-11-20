@@ -141,6 +141,13 @@ async function dispatch(command: Command, payload: unknown) {
       const p = commands.resolveProposal.parse(input);
       return store.resolveProposal(p.id, p.accept);
     }
+    case 'reviseProposal': {
+      const p = commands.reviseProposal.parse(input);
+      store.reviseProposal(p.id, p.feedback);
+      // The user is waiting on this answer; the queue's own rules still decide what runs.
+      void worker.tick();
+      return;
+    }
     case 'sourceVersion':
       return store.version(commands.sourceVersion.parse(input).id);
     case 'referenceVersion':

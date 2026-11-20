@@ -221,6 +221,29 @@ With the Korean input source active, ⌘⇧G did not open Go to Folder in the
 chooser, but typing `/` did. A folder registered by mistake could be removed only
 through the service's `removeWatch` command, because the UI has no control for it.
 
+### 2026-11-20 — A long note reached the worker as a 2 KB preview
+
+A lecture note of 651 segments (51,610 characters, 67 KB) waited in Review: the
+worker declined it because it had seen only segments s1–s11. Claude Code saves any
+MCP text result longer than 50,000 characters to a file and leaves the model a path
+and a 2 KB preview, and this worker has no file tools. `source_read` returns the
+whole note in one result, here about 108,000 characters. More than half of that is
+JSON around the text: a segment ends at every blank line, and each repeats its
+heading and line numbers. `MAX_MCP_OUTPUT_TOKENS=80000`, set on 2026-10-16 for this
+purpose, does not move that threshold.
+
+The bridge now declares `_meta["anthropic/maxResultSizeChars"]` at the CLI's ceiling
+of 500,000 on `source_read`, `wiki_read`, and `reference_read`.
+
+Limits: only the built bridge's tool list was checked. No worker job ran after the
+change, so whether this note now completes within one run (5 minutes, 12 page
+changes, every segment assigned) is unobserved. The ceiling is not a guarantee: a
+256 KiB note of 2,000 segments with long headings or heavy escaping can still pass
+500,000 characters and would again arrive as a preview. Reading in pages with each
+heading sent once, and splitting a long note across runs (P1 of the plan), were not
+built. Codex was not checked; the installed 0.162.1 is not the pinned version.
+Answering the Review card with feedback cannot help a note that was not read.
+
 ## Personal-wiki redesign (D12–D20)
 
 ### 2026-10-16 — Migrated tables broke positional inserts
@@ -642,6 +665,16 @@ average, as the earlier layout did: 300 ticks stop short of equilibrium. The spa
 notes on the ring is uneven near a group that sits on it. The 120-note threshold for
 label boxes is a guess checked only at 6, 12, and 60 notes.
 
+### 2026-11-16 — Link kinds: verification limits
+
+The graph's split into semantic and word links was checked in the browser preview only,
+on a synthetic 160-note wiki, not on the installed app or the user's wiki. The worker
+skill's **Connect pages** section (D26) was not run against a model: no job was executed
+after the change, so whether the worker writes fewer and better-stated `[[...]]` links,
+and leaves glossary links in their stored form when it rewrites a page, is unobserved.
+Pages written before the change keep their links. Links the earlier skill had the worker
+write without guidance on when to link all read as semantic.
+
 ### 2026-11-13 — The service was re-registered to a build inside a worktree
 
 While the packaged build was being tried from `v2/out/`, the LaunchAgent plist was
@@ -659,6 +692,46 @@ needs `node node_modules/electron/install.js` once in a fresh worktree) shows a 
 renderer on the same workspace without touching `out/`.
 
 ## Native lifecycle and remaining verification limits
+
+### 2026-11-20 — The app became knoter; its folders did not
+
+At the user's request the app is named knoter instead of Knoter Wiki Demo: the bundle,
+its executable, the menu, and the window title. Electron names the user data folder
+after the app, and the service's workspace lives in that same folder, so the rename
+alone would have opened an empty settings folder beside the real workspace. Main now
+sets the user data path to the service's data folder explicitly. The data and log
+folders, the bundle ID, and the LaunchAgent label keep the first name; moving them
+would need a migration of an installed workspace and a new registration, and was not
+asked for.
+
+The LaunchAgent stores the installed app's path, so a renamed app is a moved app:
+disable the service from the old build, install the new one, enable it there.
+
+Limits: the name and path calls were tried in a throwaway Electron run, where the
+override held; the window settings surviving the rename were not observed in the app
+itself before the install. The outbound `User-Agent` still says `knoter-wiki-demo`.
+
+### 2026-11-20 — The app icon made packaging depend on `actool`
+
+The packaged app showed Electron's default icon on a dark plate. It now ships a knot of
+cord, chosen by the user after three other drafts (a k-shaped graph, round graphs, a
+cloud of notes): green on paper in light appearance, cream on green in dark. One icon
+cannot be both in an `.icns`, so `AppIcon.icon` (Icon Composer) carries the two and the
+packager compiles it with `actool` into `Assets.car`; the `.icns` remains for systems
+before macOS 26. Packaging therefore needs macOS 26 and Xcode 26, and fails without them
+rather than falling back.
+
+`actool` writes scratch files in the per-user temporary folder and failed inside the
+agent sandbox (`You don't have permission to save the file ... in the folder "T"`), as
+did `iconutil`; both ran outside it. The icon format's JSON is not documented: the
+appearance keys (`fill-specializations`, `image-name-specializations`) were taken from
+the tool's own frameworks and confirmed by exporting each rendition with Icon Composer's
+`ictool`.
+
+Limits: the Mac was in dark appearance, so only the dark icon was seen as the system
+draws it; the light one was checked through `ictool` and the compiled catalog's
+renditions. The Tinted and Clear icon styles, the `.icns` on an older system, and the
+Dock after an install were not checked.
 
 ### 2026-09-17 — SMAppService registered but could not launch
 

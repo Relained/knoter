@@ -1475,7 +1475,7 @@ export class Store {
           ...proposal,
           outcome: 'needs_review',
           summary:
-            `No wiki is linked to this source. Retry or review why no topic was created. ${proposal.summary}`.slice(
+            `No wiki is linked to this source. Tell the worker what to make of it, or reject. ${proposal.summary}`.slice(
               0,
               3000,
             ),
@@ -1775,6 +1775,84 @@ export class Store {
           .run(accept ? 'succeeded' : 'cancelled', accept ? 'accepted' : 'rejected', r.job_id);
       this.event(accept ? 'Proposal accepted' : 'Proposal rejected', proposal.summary);
     })();
+  }
+  /**
+   * The user's answer to a result waiting for review (D25): the proposal closes with their
+   * feedback, and the job for that source version runs again with it.
+   */
+  reviseProposal(id: string, feedback: string) {
+    this.db.transaction(() => {
+      const r = this.one<{ job_id: string; data: string }>(
+        'SELECT job_id,data FROM proposals WHERE id=? AND resolved_at IS NULL',
+        id,
+      );
+      requireThat(r, 'NOT_FOUND', 'Proposal already resolved.');
+      const data = JSON.parse(r.data) as { proposal: Proposal };
+      // A removal the service proposed has no model run that could take direction.
+      requireThat(
+        data.proposal.operations.length > 0 || !data.proposal.trash?.length,
+        'FORMAT',
+        'Accept or reject this removal; it has no agent run to redo.',
+      );
+      const reviewed = this.job(r.job_id);
+      requireThat(
+        reviewed.status === 'needs_review',
+        'BUSY',
+        'This job is no longer waiting for review.',
+      );
+      requireThat(
+        this.source(reviewed.source_id).latest === reviewed.version_id,
+        'CONFLICT',
+        'This result uses an older version of the note. Reject it; the latest version is processed on its own.',
+      );
+      // After a skill update, the rerun belongs to a job for the current skill.
+      const jobId = this.enqueue(reviewed.source_id, reviewed.version_id);
+      requireThat(this.job(jobId).status !== 'running', 'BUSY', 'This source is already running.');
+      const stamp = now();
+      this.db
+        .prepare('UPDATE proposals SET data=?,resolved_at=? WHERE id=?')
+        .run(JSON.stringify({ ...data, feedback }), stamp, id);
+      // The rerun proposes again, so other results of these jobs are closed like a retry.
+      this.db
+        .prepare('UPDATE proposals SET resolved_at=? WHERE job_id IN (?,?) AND resolved_at IS NULL')
+        .run(stamp, reviewed.id, jobId);
+      if (jobId !== reviewed.id)
+        this.db
+          .prepare(
+            "UPDATE jobs SET status='cancelled',stage='superseded',successor=?,error='Run again with your feedback' WHERE id=?",
+          )
+          .run(jobId, reviewed.id);
+      this.db
+        .prepare(
+          "UPDATE jobs SET status='queued',stage='feedback',attempts=0,cancel=0,error=NULL,next_run=? WHERE id=?",
+        )
+        .run(Date.now(), jobId);
+      this.event('Feedback sent to the worker', feedback.slice(0, 300));
+    })();
+  }
+  /**
+   * What the user answered to earlier results for this source version, oldest first. Their
+   * own words, so the worker takes them as direction rather than as data.
+   */
+  feedbackRounds(sourceId: string, versionId: string) {
+    return this.all<{ data: string }>(
+      'SELECT p.data FROM proposals p JOIN jobs j ON j.id=p.job_id WHERE j.source_id=? AND j.version_id=? AND p.resolved_at IS NOT NULL ORDER BY p.resolved_at,p.rowid',
+      sourceId,
+      versionId,
+    )
+      .map((r) => JSON.parse(r.data) as { proposal: Proposal; feedback?: string })
+      .filter((d) => d.feedback)
+      .slice(-5)
+      .map((d) => ({
+        earlierResult: {
+          outcome: d.proposal.outcome,
+          summary: d.proposal.summary,
+          pages: d.proposal.operations
+            .slice(0, 12)
+            .map((o) => ({ title: o.title, reason: o.reason })),
+        },
+        userAnswer: d.feedback!,
+      }));
   }
   snapshot(lastTick: number | null, nextTick: number): WorkspaceSnapshot {
     const docs: StoredDocument[] = this.documents().map((d) => ({

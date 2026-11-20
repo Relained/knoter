@@ -157,6 +157,8 @@ export interface WorkspaceSnapshot {
     /** Shortcut overrides by command ID; absent commands use their default binding. */
     shortcuts?: Record<string, string>;
     graph?: import('./native').GraphForces;
+    /** Link kinds shown in the graph; absent means both. */
+    graphLinks?: import('./native').GraphLinks;
   };
 }
 export interface SourceImport {
@@ -172,6 +174,8 @@ export interface KnoterClient {
   runWorker?(): Promise<void>;
   cancelJob?(id: string): Promise<void>;
   resolveProposal?(id: string, accept: boolean): Promise<void>;
+  /** Close a result waiting for review with the user's direction and run its job again. */
+  reviseProposal?(id: string, feedback: string): Promise<void>;
   readSourceVersion?(id: string): Promise<import('./native').EvidenceVersion>;
   readReferenceVersion?(id: string): Promise<import('./native').ReferenceEvidence>;
   getSnapshot(): Promise<WorkspaceSnapshot>;

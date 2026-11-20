@@ -38,7 +38,9 @@ The connected side chat follows D22 in that plan.
   the web: the service, not the model, reads pages through bounded `reference_read`
   (https only, with private-network addresses refused at connect time), stores the
   evidence, and keeps the user's material and marked supplements distinct. Never
-  send note text in an outbound request.
+  send note text in an outbound request. A tool that returns a whole note, page, or
+  reference declares its result size in the bridge: Claude Code saves a larger text
+  result to a file, which the worker cannot read.
   The user approved a local LaunchAgent for this unsigned macOS demo; do not
   represent it as the deferred SMAppService signing integration.
 - Side-chat turns get the same evidence tools plus the read-only `wiki_check`.
@@ -60,12 +62,21 @@ The connected side chat follows D22 in that plan.
   links beside the canvas, which carry keyboard focus, activation, and the note menu;
   keep one Tab stop with arrow-key movement, and keep the page from scrolling under
   wheel and pinch gestures.
+- The graph tells word links from semantic ones by the stored text alone (`wiki/links.ts`):
+  the glossary writes `[term](#/wiki/id)` and the agent's links stay `[[id|label]]`.
+  Keep `pageNames` there in step with the service's `pageTerms`, and revisit the rule
+  and the worker skill's **Connect pages** section together before changing how either
+  kind of link is written.
 - Sources are organized by kind (D24). The core `SKILL.md` names every kind and must
   stay short; per-kind detail lives in `references/` and is appended by `skillParts`
   from the filename and text. Keep the two in step when adding a kind, and remember the
   model cannot read a reference the service did not append.
 - The supplement ratio (D23) is a writing preference passed in job and chat-turn
   data. Do not have the service measure or reject pages by it without a decision.
+- Review feedback (D25) is the user's own direction, typed in the review card. It
+  reaches the worker in the prompt, apart from job data, and the rerun goes through
+  the same validation, protection, and commit path. Never build it from source, page,
+  or model text, and keep **Accept** off results that have nothing to apply.
 
 Use npm. Follow [README.md](README.md) for setup/check commands and browser-preview
 failure evidence. Keep native failures in the shared

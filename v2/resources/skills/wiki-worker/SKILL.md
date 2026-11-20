@@ -107,6 +107,23 @@ page or section you write, measured by length of text:
 The ratio never removes, shortens, or invents the user's material, and never justifies
 filler: when a subject has nothing more worth adding, stop short of the target.
 
+# Connect pages
+
+Pages are connected in two ways, and the graph shows them apart. You write only the first.
+
+- A semantic link says two pages belong together: one is a prerequisite, a part, an
+  example, a cause, a contrast, or an application of the other, or the same thread
+  continues there. Write it as `[[DOCUMENT_ID|label]]` inside a sentence that states the
+  relation, with a label that reads as part of that sentence.
+- Link what a page builds on or leads to, not everything it touches. A few links a reader
+  would follow are worth more than a link to every neighbour. Sharing a course, a date,
+  or a word does not connect two pages.
+- A word link is the service's: it links the first mention of every glossary term across
+  the wiki. Never link a page only because its name appears, and never write a
+  `[text](#/wiki/…)` link yourself. Leave the ones already in a body as they are; do not
+  turn them into `[[...]]`.
+- When you rewrite text, keep its `[[...]]` links while the relation still holds.
+
 # Output contract
 
 - Korean prose; keep names, original-language terms, and code as written. Markdown only:
@@ -116,13 +133,12 @@ filler: when a subject has nothing more worth adding, stop short of the target.
   Every create, replace, or section edit needs at least one such citation, including the
   segments its topic assigns to it. Keep `source:` links
   for claims you retain from other notes; their earlier citations carry over.
-- Link pages with `[[DOCUMENT_ID|label]]`, or `[[Exact New Title|label]]` for a page
+- A semantic link names its page by ID, or as `[[Exact New Title|label]]` for a page
   created in this proposal. Never invent IDs. The app shows the title, so do not repeat
   it as the first heading.
 - `terms` are the words that name a page besides its title: aliases, the other-language
   name, a common abbreviation (e.g. `스택`, `stack` for a stack page). They form the
-  glossary: the service links the first mention of every glossary term across the wiki,
-  so you do not add such links yourself. Name only terms specific to this page.
+  glossary behind word links. Name only terms specific to this page.
 - Create: `documentId: null`, `expectedRevision: 0`. Replace: the ID and the revision you
   read, with the complete new body. Keep existing IDs and user-chosen titles.
 - A `sections` edit names the page, the revision you read, a section `heading` (reuse an
@@ -136,4 +152,6 @@ filler: when a subject has nothing more worth adding, stop short of the target.
   entries are tombstones: do not recreate their topics.
 - `no_change` only when every part of the note is already represented (its topics point
   at those pages) and nothing useful can be added; `needs_review` only when you cannot
-  write a faithful update. Neither has operations; both explain why.
+  write a faithful update. Neither has operations; both explain why. A `needs_review`
+  summary states what you need the user to decide, in Korean: they can answer it, and the
+  note runs again with their answer in the prompt. Follow that answer within this contract.

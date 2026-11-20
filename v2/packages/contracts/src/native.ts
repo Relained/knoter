@@ -6,6 +6,8 @@ export const MAX_WIRE_BYTES = 8 * 1024 * 1024;
 export const PIPELINE = 'markdown-wiki-2';
 /** Notes started per local day; retries of a started note do not count (D9, 2026-10-16). */
 export const DAILY_RUN_LIMIT = 200;
+/** The user's answer to a result waiting for review, in characters (D25). */
+export const MAX_PROPOSAL_FEEDBACK = 2000;
 /** The wiki MCP tools; every CLI adapter must expose exactly these and nothing else. */
 export const EVIDENCE_TOOLS = [
   'source_search',
@@ -88,6 +90,9 @@ export const graphForces = z
   })
   .strict();
 export type GraphForces = z.infer<typeof graphForces>;
+/** Which kinds of link the wiki graph draws and lays out; both are on by default. */
+export const graphLinks = z.object({ semantic: z.boolean(), word: z.boolean() }).strict();
+export type GraphLinks = z.infer<typeof graphLinks>;
 /** Shortcut overrides: command ID → binding such as `Mod+Shift+K`, or '' to unbind. */
 export const shortcutMap = z
   .record(
@@ -108,6 +113,7 @@ export const settingsPatch = z
     supplementRatio: supplementRatio.optional(),
     shortcuts: shortcutMap.optional(),
     graph: graphForces.optional(),
+    graphLinks: graphLinks.optional(),
   })
   .strict();
 export const commands = {
@@ -125,6 +131,9 @@ export const commands = {
   cancelJob: z.object({ id }).strict(),
   runNow: nil,
   resolveProposal: z.object({ id, accept: z.boolean() }).strict(),
+  reviseProposal: z
+    .object({ id, feedback: z.string().trim().min(1).max(MAX_PROPOSAL_FEEDBACK) })
+    .strict(),
   sourceVersion: z.object({ id }).strict(),
   referenceVersion: z.object({ id }).strict(),
   events: z.object({ cursor: z.number().int().nonnegative() }).strict(),
@@ -188,6 +197,7 @@ export const rendererCommands = new Set<Command>([
   'cancelJob',
   'runNow',
   'resolveProposal',
+  'reviseProposal',
   'sourceVersion',
   'referenceVersion',
   'checkCli',

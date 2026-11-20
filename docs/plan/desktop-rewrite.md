@@ -38,11 +38,12 @@ are discovered when main restarts. This deliberately narrows the background
 discovery scope described for the broader product below.
 
 Read the [root guide](../../agents.md), [rewrite guide](../../v2/agents.md),
-and [prototype README](../../v2/README.md) before work. Read
-[legacy decisions](../../v1/docs/architecture.md) and the relevant legacy package guide
-only when touching or importing from those packages. Continue the next
-user-assigned milestone; this brief does not authorize deployment, purchases,
-legacy deletion, or in-place user-data migration.
+and [prototype README](../../v2/README.md) before work. The legacy V1 packages
+were removed from the repository by the user's 2026-11-20 instruction; read the
+legacy decisions (`v1/docs/architecture.md` in Git history) before reusing
+anything from them. Continue the next user-assigned milestone; this brief does
+not authorize deployment, purchases, or in-place user-data migration, and the
+removal of legacy code does not extend to existing vaults or their data.
 
 Exclude multi-user collaboration, cloud sync, browser-only hosting, a plugin
 marketplace, external calendar sync, and agent-generated executable UI initially.
@@ -355,6 +356,16 @@ User refinements from 2026-10-16 replace parts of the layout above:
   groups are held in place by rule rather than left to the forces, so their distance
   from the body does not depend on how dense a wiki's links are. The local graph keeps
   the rings around central notes, with label-aware spacing.
+- 2026-11-16: the graph separates semantic links (solid) from word links (dashed) and
+  switches each on or off, after the user found the graph cluttered by glossary links
+  (D17 of the wiki-worker plan). No link kind is stored. The renderer reads it from the
+  note's text: a `[text](#/wiki/id)` link whose text is one of the target's glossary
+  names is a word link; a `[[...]]` link, a link worded otherwise, and a related-note
+  hint are semantic. Known limits: a link the user inserts with the page's exact name
+  reads as a word link, a glossary link stops reading as one when its page is renamed,
+  and semantic means "written on purpose", not measured similarity. Embedding-based
+  links were not built. The worker skill's **Connect pages** section states the writing
+  side (D26 of the wiki-worker plan).
 - 2026-10-30: the graph is visibly dynamic. Dragging a note moves the others by rule,
   as in Obsidian (linked notes follow less with each link, nearby notes are pushed,
   the rest stay), and a new graph is built first and only then framed by the view.

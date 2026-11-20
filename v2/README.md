@@ -7,7 +7,8 @@ Markdown sources. Neither mode migrates the legacy vault or browser preview data
 ## Run the native demo
 
 The steps below are for macOS; [Windows x64](#windows-x64-package) differs as described
-there. Packaging on macOS requires Apple Silicon, Xcode Command Line Tools,
+there. Packaging on macOS requires macOS 26 or newer on Apple Silicon, Xcode 26 or newer
+(the Swift compiler for the helpers, and `actool` for the app icon),
 Node **22.14.0**, and npm. The build copies this exact Node runtime and its license
 into the app; the installed service does not depend on shell PATH or global Node.
 Codex CLI **0.154.0** must already be installed and logged in with ChatGPT
@@ -26,10 +27,29 @@ npm run package:demo
 
 This runs the required `npm run check`, compiles the Swift helpers, bundles the
 service and renderer, and packages an ad-hoc signed app at
-`out/Knoter Wiki Demo-darwin-arm64/Knoter Wiki Demo.app`. Install it at a stable
-location such as `~/Applications/Knoter Wiki Demo.app` before enabling background
+`out/knoter-darwin-arm64/knoter.app`. Install it at a stable
+location such as `~/Applications/knoter.app` before enabling background
 work. Before replacing or moving an installed build, **Disable service**, quit the
 app completely, replace it, reopen it, and enable the service again.
+
+The app was first named Knoter Wiki Demo. Its data and log folders, its bundle ID, and
+its LaunchAgent label keep that name, so a build under the new name opens the same
+workspace. Coming from a build named Knoter Wiki Demo, disable the service there first:
+the registration points at that app's path.
+
+The app icon is a cord tied in a knot: green on paper in light appearance, cream on
+green in dark. `platform/macos/AppIcon.icon` holds both and is what macOS 26 and newer
+show; `AppIcon.icns` is the light icon for older systems. Both are drawn by
+`platform/macos/AppIcon.swift`. After changing it, from `v2`:
+
+```sh
+xcrun swiftc -O platform/macos/AppIcon.swift -o /tmp/knoter-icon
+/tmp/knoter-icon /tmp/knoter-icon-out
+iconutil -c icns /tmp/knoter-icon-out/AppIcon.iconset -o platform/macos/AppIcon.icns
+cp /tmp/knoter-icon-out/*.png platform/macos/AppIcon.icon/Assets/
+```
+
+The plate colors are also written in `AppIcon.icon/icon.json`; keep the two in step.
 
 1. Open **Agent** from the status bar (⌘⇧A) and choose **Enable background**. The
    status should show `local_agent_running` and a connected service PID.
@@ -54,7 +74,11 @@ app completely, replace it, reopen it, and enable the service again.
    New no-change results without a linked wiki require review instead of reporting success.
 5. Editing a wiki yourself protects it. Subsequent worker changes appear for review
    in the side panel's **Changes** (⌘⇧H), with notes that did not reach the wiki;
-   **Accept** and **Reject** resolve those proposals.
+   **Accept** and **Reject** resolve those proposals, and **Revise** sends
+   the worker your direction and runs the note again. When the worker declines a note
+   or asks for a clearer request, there is nothing to accept: type what it should do
+   instead and choose **Send feedback** (⌘↵), or **Reject** to leave the note as is.
+   Your answer applies to that version of the note.
    Trash is recoverable, and pages you delete are not recreated automatically.
    Deleting a note removes its wiki content two minutes after a scan last saw it:
    pages left with no source move to Trash as **Moved by knoter** (protected pages
@@ -118,7 +142,10 @@ and retries once with the reason.
 The worker tags pages (shown on pages and cards, in the sidebar **TAGS** group, and
 as a library filter). Page titles and the aliases the worker declares form a
 glossary; the service links the first mention of each glossary term across the
-wiki, skipping ambiguous terms and protected pages. **Backlinks** on each page show
+wiki, skipping ambiguous terms and protected pages. These are the graph's word links.
+The worker writes the semantic links: only where two pages belong together (one builds
+on, is part of, exemplifies, or contrasts with the other), inside a sentence that says
+so, and not merely because a page's name appears. **Backlinks** on each page show
 where it is linked from.
 
 The user approved a **local LaunchAgent for this demo** after SMAppService rejected
@@ -137,7 +164,7 @@ is a reading/interchange format, not a full backup. Restore requires an empty
 workspace and reconnecting folders/CLI. Preserve any existing workspace by moving
 it aside **after disabling the service and quitting the app**, then start a fresh
 workspace and choose **Restore backup**. Never replace a live SQLite database.
-A new build migrates the database to schema 2 on first start, after which older
+A new build migrates the database to schema 3 on first start, after which older
 builds refuse to open it; back up the workspace before installing a newer build.
 
 ### Windows x64 package
@@ -241,6 +268,14 @@ while the rest stays put. With reduced motion the layout appears already formed.
   notes. Where WebGL is unavailable, such as with hardware acceleration off on some
   systems, the same picture is drawn on a 2D canvas instead; a warning mark beside
   the zoom controls and a line in **Forces** say which is in use.
+- The graph draws two kinds of link. A **semantic link** is a solid line: a link written
+  into a note for its context (the agent's `[[...]]` links, or a link worded differently
+  from the page's name) or a related-note hint. A **word link** is a dashed line: the
+  kind the glossary adds, whose text is only a name of the page it opens. The two
+  switches in the legend, also in the background's right-click menu, show or hide each
+  kind. A hidden kind is left out of the layout too, so the graph forms again from the
+  links that remain, and **Graph around this note** follows only those. Two notes joined
+  both ways are drawn as semantic. The choice is saved with the workspace.
 - **Forces** (the sliders button) adjusts the center (shape), repel, link, and
   distance forces; **Re-layout** builds the arrangement again from the start. Link
   strength saturates above 1 for single links, so high settings cannot fling the layout.

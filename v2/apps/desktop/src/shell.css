@@ -1182,9 +1182,38 @@ kbd {
 }
 .review-card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
   margin-top: 8px;
+}
+.review-card-source {
+  margin-right: auto;
+}
+.review-feedback {
+  margin-top: 8px;
+}
+.review-feedback textarea {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+.review-feedback textarea::placeholder {
+  color: var(--subtle);
+}
+.review-feedback small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .revision-dot.by-you {
   background: var(--purple);
@@ -1535,6 +1564,39 @@ kbd {
   border-radius: 50%;
   background: currentColor;
 }
+/* The two kinds of link, drawn as the graph draws them; each is a switch. */
+.graph-legend > .graph-link-kinds {
+  gap: 2px;
+  margin-left: -4px;
+}
+.graph-link-kinds button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--body-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.graph-link-kinds button:hover {
+  background: var(--secondary);
+}
+.graph-link-kinds button[aria-pressed='false'] {
+  color: var(--subtle);
+  text-decoration: line-through;
+}
+.graph-link-kinds i {
+  width: 18px;
+  border-top: 2px solid currentColor;
+}
+.graph-link-kinds .word i {
+  border-top-style: dashed;
+}
+.graph-link-kinds button[aria-pressed='false'] i {
+  opacity: 0.45;
+}
 .graph-forces {
   right: 12px;
   bottom: 52px;
@@ -1588,7 +1650,11 @@ kbd {
   .graph-hint {
     display: none;
   }
+  /* A narrow graph keeps the link switches and drops the collection names. */
   .graph-legend {
+    max-width: calc(100% - 210px);
+  }
+  .graph-legend > span:not(.graph-link-kinds) {
     display: none;
   }
   .graph-header {

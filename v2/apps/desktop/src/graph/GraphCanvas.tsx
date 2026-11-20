@@ -10,9 +10,18 @@ import {
   type MouseEvent,
 } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
-import { Focus, Minus, Plus, RotateCcw, SlidersHorizontal, TriangleAlert } from 'lucide-react';
+import {
+  Focus,
+  Link2,
+  Minus,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  TriangleAlert,
+  WholeWord,
+} from 'lucide-react';
 import type { WikiDocument } from '@knoter/contracts';
-import type { GraphForces } from '@knoter/contracts/native';
+import type { GraphForces, GraphLinks } from '@knoter/contracts/native';
 import { Button } from '../components/ui/button';
 import { DocumentContextItems } from '../components/DocumentMenu';
 import { documentHref, type WikiEdge } from '../wiki/links';
@@ -30,10 +39,13 @@ import {
   CentralNotes,
   ForcesPanel,
   GraphLegend,
+  LinkKindToggles,
   graphColor,
+  linkKindLabels,
   pairKey,
   useGraphData,
   useGraphForces,
+  useGraphLinkKinds,
 } from './shared';
 
 const MIN_ZOOM = 0.01;
@@ -129,6 +141,8 @@ export function GraphCanvas({
   query = '',
   forces = defaultForces,
   onForces,
+  linkKinds: savedLinkKinds,
+  onLinkKinds,
   onOpen,
   className = '',
   insetTop = 0,
@@ -140,6 +154,9 @@ export function GraphCanvas({
   query?: string;
   forces?: GraphForces;
   onForces?: (forces: GraphForces) => void;
+  /** Which kinds of link are drawn and laid out; both when absent. */
+  linkKinds?: GraphLinks;
+  onLinkKinds?: (kinds: GraphLinks) => void;
   onOpen: (id: string) => void;
   className?: string;
   /** Height covered by an overlay at the top, such as the home search field. */
@@ -195,6 +212,7 @@ export function GraphCanvas({
   const [mode, setMode] = useState<'webgl' | 'canvas'>('webgl');
   const [panel, setPanel] = useState(false);
   const [localForces, updateForces] = useGraphForces(forces, onForces);
+  const [linkKinds, updateLinkKinds] = useGraphLinkKinds(savedLinkKinds, onLinkKinds);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const appliedForces = useRef(JSON.stringify(forces));
   const { visible, edges, structure, categories, matches, searching } = useGraphData(
@@ -203,6 +221,7 @@ export function GraphCanvas({
     focusId,
     depth,
     query,
+    linkKinds,
   );
 
   /**
@@ -408,7 +427,7 @@ export function GraphCanvas({
           key: pairKey(edge.source, edge.target),
           source,
           target,
-          dashed: edge.kind === 'related',
+          dashed: edge.kind === 'word',
           // A link appears once both of its notes have.
           enter: Math.max(enterDelay(source), enterDelay(target)) + 80,
         };
@@ -626,6 +645,14 @@ export function GraphCanvas({
   const fitView = () => {
     userMoved.current = false;
     fit(true);
+  };
+  /**
+   * Showing or hiding a kind of link changes what the layout is built from, so the graph
+   * forms again from those links instead of easing the old shape toward the new one.
+   */
+  const switchLinkKinds = (next: GraphLinks) => {
+    updateLinkKinds(next);
+    relayout();
   };
   /** The layout point under the pointer, allowing for a layout that is still unfolding. */
   const worldPoint = (clientX: number, clientY: number) => {
@@ -976,6 +1003,11 @@ export function GraphCanvas({
     { label: 'Zoom in', icon: Plus, run: () => zoomBy(1.25) },
     { label: 'Zoom out', icon: Minus, run: () => zoomBy(1 / 1.25) },
     { label: 'Re-layout', icon: RotateCcw, run: relayout },
+    ...linkKindLabels.map((item) => ({
+      label: `${linkKinds[item.key] ? 'Hide' : 'Show'} ${item.label.toLowerCase()}`,
+      icon: item.key === 'word' ? WholeWord : Link2,
+      run: () => switchLinkKinds({ ...linkKinds, [item.key]: !linkKinds[item.key] }),
+    })),
     {
       label: panel ? 'Hide forces' : 'Adjust forces…',
       icon: SlidersHorizontal,
@@ -1040,7 +1072,9 @@ export function GraphCanvas({
         onHover={setHovered}
         onOpen={onOpen}
       />
-      <GraphLegend categories={categories} />
+      <GraphLegend categories={categories}>
+        {documents.length > 0 && <LinkKindToggles kinds={linkKinds} onChange={switchLinkKinds} />}
+      </GraphLegend>
       <div className="graph-controls">
         {mode === 'canvas' && (
           <span
