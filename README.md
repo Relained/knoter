@@ -9,7 +9,7 @@
 A local-first desktop app that turns a folder of Markdown notes into a linked,
 source-backed wiki and keeps it current as the notes change.
 
-![Platform](https://img.shields.io/badge/platform-macOS%20·%20Apple%20Silicon-2f6b4f)
+![Platform](https://img.shields.io/badge/platform-macOS%20arm64%20·%20Windows%20x64-2f6b4f)
 ![Electron](https://img.shields.io/badge/Electron-44-2f6b4f)
 ![React](https://img.shields.io/badge/React-19-2f6b4f)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-2f6b4f)
@@ -74,8 +74,8 @@ flowchart LR
 
 1. The app notices a new or changed note and registers that exact version with the
    service.
-2. A background service, which keeps running after the window closes, queues the
-   work and starts an agent run.
+2. A local service queues the work and starts an agent run. On macOS it keeps
+   running after the window closes.
 3. The agent reads your notes and the related pages through read-only tools and
    proposes a change.
 4. The service checks the proposal's form and evidence, then applies it as a new
@@ -109,11 +109,15 @@ The app is packaged at `v2/out/knoter-darwin-arm64/knoter.app`. Read the
 [app README](v2/README.md) before installing it: it covers CLI versions, enabling
 the background service, backups, and replacing an installed build safely.
 
+On Windows x64, with Node 22.14 or newer, run `npm run package:win` instead; it
+produces `v2/out/knoter-win32-x64/knoter.exe`. The
+[Windows section](v2/README.md#windows-x64-package) describes how that build differs.
+
 ## Built with
 
 | Layer | Technology |
 | --- | --- |
-| Desktop shell | Electron, with Swift helpers that register the macOS background service |
+| Desktop shell | Electron; on macOS, Swift helpers register the background service |
 | Interface | React, TypeScript, Vite, Tailwind CSS, Radix primitives |
 | Graph | WebGL 2 canvas, with a 2D fallback |
 | Service | Node.js, SQLite, validated messages between app, service, and agent |
@@ -121,10 +125,12 @@ the background service, backups, and replacing an installed build safely.
 
 ## Scope and limits
 
-Packaging currently targets macOS on Apple Silicon, and the build is ad-hoc signed
-rather than notarized. Tasks, calendar views, PDF sources, and embedding search are
-not part of the native build; the Tasks and Calendar screens in the browser preview
-are prototypes. Automated tests and CI are deferred, so changes are verified with
+Packaging targets macOS on Apple Silicon and Windows x64. The macOS build is ad-hoc
+signed rather than notarized, and the Windows build is unsigned with no installer. On
+macOS the service keeps working after the window closes; on Windows it runs only while
+the app is open. Tasks, calendar views, PDF sources, and embedding search are not part
+of the native build; the Tasks and Calendar screens in the browser preview are
+prototypes. Automated tests and CI are deferred, so changes are verified with
 static checks, builds, and manual runs on disposable data. Known failures and
 verification limits are recorded in the
 [wiki-worker record](docs/lessons/wiki-worker-demo.md).
