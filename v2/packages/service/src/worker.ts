@@ -2,7 +2,6 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, accessSync, constants, realpathSync, rmSync } from 'node:fs';
 import { join, isAbsolute, dirname } from 'node:path';
-import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
@@ -31,7 +30,16 @@ import {
 } from '@knoter/contracts/native';
 import { Store, type JobRow, type AttemptContext } from './store.js';
 import { composeSkill, type WorkerSkill } from './skill.js';
-import { AppError, now, uuid, secureDir, requireThat } from './common.js';
+import {
+  AppError,
+  now,
+  uuid,
+  secureDir,
+  requireThat,
+  minimalEnvironment,
+  windows,
+  systemRoot,
+} from './common.js';
 import { readEvidence } from './evidence.js';
 import { checkClaude, claudeSession } from './claude.js';
 const exec = promisify(execFile);
@@ -82,13 +90,7 @@ const disabledFeatures = [
 ];
 export function cliEnvironment() {
   // Do not inherit API keys, app IPC capabilities, or arbitrary shell configuration.
-  const env: NodeJS.ProcessEnv = {
-    HOME: homedir(),
-    USER: process.env.USER,
-    LOGNAME: process.env.LOGNAME,
-    TMPDIR: process.env.TMPDIR ?? '/tmp',
-    PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
-  };
+  const env = minimalEnvironment();
   if (process.env.CODEX_HOME) env.CODEX_HOME = process.env.CODEX_HOME;
   return env;
 }
@@ -411,13 +413,23 @@ export function launch(
     cwd: input.cwd,
     env: session.env,
     stdio: ['pipe', 'pipe', 'pipe'],
-    detached: true,
+    // POSIX: a process group, so the CLI's own children stop with it.
+    detached: !windows,
+    windowsHide: true,
   });
   let failure: AppError | null = null,
     bytes = 0,
     lineBuffer = '';
   const kill = () => {
-    if (child.pid) {
+    if (child.pid && windows)
+      // Windows has no process groups to signal; taskkill ends the CLI and its children.
+      execFile(
+        join(systemRoot(), 'System32', 'taskkill.exe'),
+        ['/PID', String(child.pid), '/T', '/F'],
+        { windowsHide: true },
+        () => {},
+      );
+    else if (child.pid) {
       try {
         process.kill(-child.pid, 'SIGTERM');
       } catch {}

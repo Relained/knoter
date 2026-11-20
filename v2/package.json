@@ -18,6 +18,7 @@
     "desktop": "npm run check && electron .",
     "service": "node dist/backend/service.mjs",
     "package:demo": "npm run check && node scripts/prepare-native.mjs && electron-forge package --platform=darwin --arch=arm64",
+    "package:win": "npm run check && node scripts/prepare-native.mjs && electron-forge package --platform=win32 --arch=x64",
     "preview": "npm run preview --workspace @knoter/desktop"
   },
   "overrides": {

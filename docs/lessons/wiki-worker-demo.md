@@ -733,6 +733,43 @@ draws it; the light one was checked through `ictool` and the compiled catalog's
 renditions. The Tinted and Clear icon styles, the `.icns` on an older system, and the
 Dock after an install were not checked.
 
+### 2026-11-13 — Quitting the Windows app killed the service mid-job
+
+The Windows package runs the service as the app's own child. After a quit while a
+worker job ran, `service.lock` was still there, the SQLite WAL was unmerged, and the job
+was left running: Node starts a child that is not detached inside a job object that
+Windows ends with the parent, so the service died with the app before it could stop the
+worker, close the database, and remove its lock. No data was lost; the next start
+replayed the WAL.
+
+The app now starts the service detached, and the service stops itself in order when its
+stdin closes, which also covers an app that dies. The app waits eight seconds before
+ending it by force. A service that exits within thirty seconds is retried after three
+seconds for the first five tries, since a reopened app can start while the previous
+service is still stopping.
+
+Limits: one quit while a job ran was repeated with the fix, and the lock was removed and
+the WAL merged. That check used the workspace in use rather than a disposable one, and
+the job it interrupted was queued again by hand. An app ended from Task Manager, logoff,
+shutdown, and sleep were not tried, and the quit was not repeated on the build renamed
+knoter.
+
+### 2026-11-13 — A Windows workspace looked empty after reopening the app
+
+The app had first been started from a terminal inside a Store-packaged program (the
+Claude desktop app). Windows redirects such a process's writes under `%APPDATA%` to
+`%LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming`, and its children inherit that,
+so the workspace was created there. The same exe opened from Explorer used the real
+`%APPDATA%\Knoter Wiki Demo` and made a new, empty workspace. Nothing was lost.
+
+With the app closed, the workspace was copied to the real folder; the empty one and the
+redirected copy were renamed aside, not deleted. For checks from such a terminal, start
+the exe through `explorer.exe`, and keep files that an outside process must read out of
+`AppData`.
+
+Limits: the app does not notice or report a redirected folder. Only this one
+Store-packaged launcher was seen.
+
 ### 2026-09-17 — SMAppService registered but could not launch
 
 macOS 27 launch logs rejected the bundled helper's code signature; the Mac had no

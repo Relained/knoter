@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, powerMonitor, shell, Menu, session } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
   commands,
@@ -52,6 +52,83 @@ const savePreferences = () =>
 let frame: WindowFrame = 'custom';
 let hardwareAcceleration = true;
 let registration = 'not_registered';
+// Windows has no LaunchAgent in this demo: the packaged app runs the bundled service as its
+// own child, from start until quit. Disabling is remembered beside the window preferences.
+const windows = process.platform === 'win32';
+const servicePreference = () => join(app.getPath('userData'), 'service-preferences.json');
+let service: ChildProcess | null = null;
+let restart: NodeJS.Timeout | null = null;
+let earlyExits = 0;
+let quitting = false;
+function serviceEnabled() {
+  try {
+    return JSON.parse(readFileSync(servicePreference(), 'utf8')).enabled !== false;
+  } catch {
+    return true;
+  }
+}
+function startService() {
+  if (service || quitting) return;
+  const logs = app.getPath('logs');
+  mkdirSync(logs, { recursive: true });
+  const log = openSync(join(logs, 'service.log'), 'a');
+  const child = spawn(
+    join(process.resourcesPath, 'runtime', 'node.exe'),
+    [join(process.resourcesPath, 'backend', 'service.mjs')],
+    {
+      env: {
+        ...process.env,
+        KNOTER_DATA_DIR: dataDir,
+        KNOTER_RESOURCES: join(process.resourcesPath, 'resources'),
+        KNOTER_STOP_ON_STDIN_CLOSE: '1',
+      },
+      // The service stops in order when this pipe closes, including when the app dies.
+      stdio: ['pipe', log, log],
+      // Detached, or Windows ends the service with this process before it has stopped a
+      // running worker, closed the database, and removed its lock.
+      detached: true,
+      windowsHide: true,
+    },
+  );
+  closeSync(log);
+  service = child;
+  const started = Date.now();
+  child.stdin!.on('error', () => {});
+  child.on('error', () => {});
+  child.once('close', () => {
+    if (service !== child) return;
+    service = null;
+    // Like launchd's KeepAlive: an enabled service that ends on its own is started again.
+    // One that ends at once is usually waiting for the previous app's service to finish
+    // stopping, so the first retries come sooner.
+    earlyExits = Date.now() - started < 30_000 ? earlyExits + 1 : 0;
+    if (!quitting && serviceEnabled())
+      restart = setTimeout(startService, earlyExits > 0 && earlyExits <= 5 ? 3000 : 10_000);
+  });
+}
+async function stopService() {
+  if (restart) clearTimeout(restart);
+  restart = null;
+  const child = service;
+  if (!child) return;
+  service = null;
+  const closed = new Promise((resolve) => child.once('close', resolve));
+  child.stdin!.end();
+  // The service allows a running worker four seconds to stop before it exits.
+  const timer = setTimeout(() => child.kill(), 8000);
+  await closed;
+  clearTimeout(timer);
+}
+async function childServiceControl(action: string) {
+  if (action === 'register' || action === 'unregister') {
+    const enabled = action === 'register';
+    writeFileSync(servicePreference(), JSON.stringify({ enabled }), { mode: 0o600 });
+    if (enabled) startService();
+    else await stopService();
+  }
+  registration = service ? 'app_child_running' : 'app_child_stopped';
+  return { status: registration, registration: 'child of the open app' };
+}
 async function serviceControl(action: string) {
   if (!app.isPackaged) {
     registration = 'development';
@@ -60,6 +137,7 @@ async function serviceControl(action: string) {
       'Install the packaged demo app to register its background service. Development mode uses a separately started service.',
     );
   }
+  if (windows) return childServiceControl(action);
   const helper = join(dirname(process.execPath), 'KnoterServiceControl');
   const { stdout } = await exec(helper, [action], { timeout: 15_000, maxBuffer: 32_000 });
   const result = JSON.parse(stdout);
@@ -103,7 +181,10 @@ async function desktop(action: DesktopAction) {
     const r = await dialog.showOpenDialog(window!, {
       title: 'Choose your installed Codex CLI executable',
       properties: ['openFile'],
-      defaultPath: '/opt/homebrew/bin',
+      // Windows: the native codex.exe; Node cannot start an npm .cmd shim directly.
+      ...(windows
+        ? { filters: [{ name: 'Executable', extensions: ['exe'] }] }
+        : { defaultPath: '/opt/homebrew/bin' }),
     });
     if (!r.canceled)
       return send('configureCli', { provider: 'codex', path: await realpath(r.filePaths[0]) });
@@ -115,6 +196,7 @@ async function desktop(action: DesktopAction) {
       // macOS otherwise resolves the symlink to a versioned target that updates remove.
       properties: ['openFile', 'treatPackageAsDirectory', 'noResolveAliases'],
       defaultPath: join(app.getPath('home'), '.local', 'bin'),
+      ...(windows ? { filters: [{ name: 'Executable', extensions: ['exe'] }] } : {}),
     });
     // Keep the launcher path: the native installer repoints it on each self-update.
     if (!r.canceled) return send('configureCli', { provider: 'claude', path: r.filePaths[0] });
@@ -279,6 +361,7 @@ else
         { role: 'windowMenu' },
       ]),
     );
+    if (windows && app.isPackaged && serviceEnabled()) startService();
     await createWindow();
     void serviceControl('status').catch(() => {
       registration = 'error';
@@ -291,4 +374,9 @@ else
     });
   });
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => watcher.close());
+app.on('before-quit', () => {
+  watcher.close();
+  quitting = true;
+  // Closing its stdin lets the service finish in order after this process has gone.
+  void stopService();
+});

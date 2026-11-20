@@ -37,6 +37,8 @@ export function AgentPanel({
   const worker = snapshot.worker;
   const paused = snapshot.settings.workerPaused;
   const pending = reviewCount(snapshot);
+  // On Windows the service is a child of the open app rather than an OS registration.
+  const appChild = worker?.registered?.startsWith('app_child') ?? false;
   const action = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     await run(async () => {
@@ -84,8 +86,9 @@ export function AgentPanel({
           </span>
         </header>
         <p>
-          Local LaunchAgent demo · checks the queue every 60 seconds. Only this open app discovers
-          source changes; the service can finish queued snapshots after you quit.
+          {appChild
+            ? 'Runs while this app is open · checks the queue every 60 seconds. Queued work stops when you quit and continues the next time you open the app.'
+            : 'Local LaunchAgent demo · checks the queue every 60 seconds. Only this open app discovers source changes; the service can finish queued snapshots after you quit.'}
         </p>
         {!worker.connected && (
           <p role="status" className="worker-error">
@@ -105,18 +108,20 @@ export function AgentPanel({
           <Button size="sm" disabled={busy} variant="ghost" onClick={() => desktop('status')}>
             Refresh OS status
           </Button>
-          <Button
-            size="sm"
-            disabled={busy}
-            variant="ghost"
-            onClick={() => desktop('approvalSettings')}
-          >
-            <Settings2 /> OS approval settings
-          </Button>
+          {!appChild && (
+            <Button
+              size="sm"
+              disabled={busy}
+              variant="ghost"
+              onClick={() => desktop('approvalSettings')}
+            >
+              <Settings2 /> OS approval settings
+            </Button>
+          )}
         </div>
         <p className="worker-detail">
-          OS registration: {worker.registered ?? 'unknown'} · Service PID:{' '}
-          {worker.connected ? worker.pid : '—'}
+          {appChild ? 'Service' : 'OS registration'}: {worker.registered ?? 'unknown'} · Service
+          PID: {worker.connected ? worker.pid : '—'}
         </p>
       </section>
 

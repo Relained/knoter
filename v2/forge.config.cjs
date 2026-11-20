@@ -21,7 +21,9 @@ module.exports = {
   },
   rebuildConfig: { onlyModules: [] },
   hooks: {
-    postPackage: async (_config, { outputPaths }) => {
+    postPackage: async (_config, { outputPaths, platform }) => {
+      // Only macOS has the LaunchAgent helpers and signing; Windows runs the service itself.
+      if (platform !== 'darwin') return;
       for (const output of outputPaths) {
         const bundle = join(output, `${APP}.app`);
         const contents = join(bundle, 'Contents');
