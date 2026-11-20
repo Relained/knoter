@@ -5,7 +5,6 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { accessSync, constants } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { homedir } from 'node:os';
 import {
   CLAUDE_EFFORTS,
   CLAUDE_MIN_VERSION,
@@ -15,7 +14,7 @@ import {
   providerProfiles,
   type ChatModelOption,
 } from '@knoter/contracts/native';
-import { AppError, requireThat } from './common.js';
+import { AppError, requireThat, minimalEnvironment } from './common.js';
 import type { CliInfo, CliSession } from './worker.js';
 const exec = promisify(execFile);
 const mcpTools = (names: readonly string[]) => names.map((name) => `mcp__wiki__${name}`);
@@ -35,11 +34,7 @@ export function claudeEnvironment() {
   // Same minimal inheritance as Codex: no API keys, app IPC capabilities, or shell
   // configuration. OAuth credentials stay in the user's keychain/config directory.
   const env: NodeJS.ProcessEnv = {
-    HOME: homedir(),
-    USER: process.env.USER,
-    LOGNAME: process.env.LOGNAME,
-    TMPDIR: process.env.TMPDIR ?? '/tmp',
-    PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+    ...minimalEnvironment(),
     DISABLE_AUTOUPDATER: '1',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     MCP_TIMEOUT: '15000',
@@ -47,7 +42,8 @@ export function claudeEnvironment() {
     // A large note can exceed the default MCP result cap, which would truncate evidence.
     MAX_MCP_OUTPUT_TOKENS: '80000',
   };
-  if (process.env.CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
+  for (const name of ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_GIT_BASH_PATH'])
+    if (process.env[name]) env[name] = process.env[name];
   return env;
 }
 export async function checkClaude(path: string): Promise<CliInfo> {

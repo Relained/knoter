@@ -32,6 +32,8 @@ import {
   secureDir,
   atomicWrite,
   requireThat,
+  windows,
+  systemRoot,
 } from './common.js';
 import { backup, restoreEmpty, exportWiki } from './backup.js';
 
@@ -47,16 +49,33 @@ secureDir(dataDir);
 // be signalled (EPERM) or whose process started after the lock was written was reused.
 // ps truncates the start to the second, so a tie or an unreadable answer keeps the lock.
 const lockPath = join(dataDir, 'service.lock');
+/** When the process started, in epoch milliseconds; NaN when the answer cannot be read. */
+function startedAt(pid: number) {
+  if (windows)
+    return Date.parse(
+      execFileSync(
+        join(systemRoot(), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`,
+        ],
+        { encoding: 'utf8', timeout: 15_000, windowsHide: true },
+      ).trim(),
+    );
+  const started = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], {
+    encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' },
+  });
+  return Date.parse(`${started.trim()} UTC`);
+}
 if (existsSync(lockPath)) {
   const owner = Number(readFileSync(lockPath, 'utf8'));
   let alive = true;
   try {
     process.kill(owner, 0);
-    const started = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(owner)], {
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' },
-    });
-    if (Date.parse(`${started.trim()} UTC`) > statSync(lockPath).mtimeMs) alive = false;
+    if (startedAt(owner) > statSync(lockPath).mtimeMs) alive = false;
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ESRCH' || code === 'EPERM') alive = false;
@@ -69,8 +88,11 @@ const tokenPath = join(dataDir, 'connection.token');
 if (!existsSync(tokenPath)) atomicWrite(tokenPath, randomBytes(32).toString('hex'));
 const token = readFileSync(tokenPath, 'utf8');
 const socket = socketFor(dataDir);
-secureDir(dirname(socket));
-if (existsSync(socket)) unlinkSync(socket);
+// A Windows named pipe is not a file: it has no directory, mode, or stale entry to remove.
+if (!windows) {
+  secureDir(dirname(socket));
+  if (existsSync(socket)) unlinkSync(socket);
+}
 let store = new Store(dataDir, skill.hash);
 const worker = new Worker(store, socket, skill, join(here, 'bridge.mjs'));
 const chat = new ChatService(store, socket, chatSkillPath, skill, join(here, 'bridge.mjs'));
@@ -247,7 +269,7 @@ const server = createServer((client) => {
   });
 });
 server.listen(socket, () => {
-  chmodSync(socket, 0o600);
+  if (!windows) chmodSync(socket, 0o600);
   console.log(JSON.stringify({ event: 'ready', pid: process.pid, socket }));
   void worker.tick();
 });
@@ -265,14 +287,27 @@ async function shutdown() {
   store.db.close();
   // server.close() already removed the socket; force keeps that from skipping the lock.
   try {
-    rmSync(socket, { force: true });
+    if (!windows) rmSync(socket, { force: true });
     rmSync(lockPath, { force: true });
   } catch {}
   process.exit(0);
 }
-process.once('SIGTERM', () => void shutdown());
-process.once('SIGINT', () => void shutdown());
+let stopping = false;
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  void shutdown();
+};
+process.once('SIGTERM', stop);
+process.once('SIGINT', stop);
+// Windows cannot deliver SIGTERM. The app that started this service holds its stdin open
+// and closes it to ask for the same orderly stop, which also covers the app crashing.
+if (process.env.KNOTER_STOP_ON_STDIN_CLOSE === '1') {
+  process.stdin.on('end', stop);
+  process.stdin.on('error', stop);
+  process.stdin.resume();
+}
 process.on('uncaughtException', (e) => {
   console.error(JSON.stringify({ event: 'fatal', message: e.message }));
-  void shutdown();
+  stop();
 });

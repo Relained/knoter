@@ -15,7 +15,9 @@ module.exports = {
   },
   rebuildConfig: { onlyModules: [] },
   hooks: {
-    postPackage: async (_config, { outputPaths }) => {
+    postPackage: async (_config, { outputPaths, platform }) => {
+      // Only macOS has the LaunchAgent helpers and signing; Windows runs the service itself.
+      if (platform !== 'darwin') return;
       for (const output of outputPaths) {
         const contents = join(output, 'Knoter Wiki Demo.app', 'Contents');
         await mkdir(join(contents, 'Library/LaunchAgents'), { recursive: true });
