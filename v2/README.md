@@ -176,36 +176,26 @@ npm ci
 npm run package:win
 ```
 
-This produces `out/Knoter Wiki Demo-win32-x64/Knoter Wiki Demo.exe`; keep the folder
+This produces `out/knoter-win32-x64/knoter.exe`; keep the folder
 together, since the exe needs the files beside it. The build bundles the Node that ran it
 as `resources/runtime/node.exe` and checks that the installed SQLite binding loads in it.
-The package is unsigned, so SmartScreen may ask before the first start.
+The package is unsigned, so SmartScreen may ask before the first start, and the exe
+shows Electron's default icon: only macOS icon files exist.
 
 Windows registers nothing with the OS. The app starts the bundled service as its own
 child when it opens and stops it in order when it quits, so queued work continues only
 while the app is open. **Disable service** is remembered in `service-preferences.json`
 until **Enable background**. The workspace, `logs/service.log`, and Electron's own
-files are in `%APPDATA%\Knoter Wiki Demo`. The service listens on a per-user named pipe
-instead of a socket file. For a worker CLI choose an `.exe` (Claude Code's
-`%USERPROFILE%\.local\bin\claude.exe`, or the native `codex.exe`); an npm `.cmd` shim
-cannot be started.
+files are in `%APPDATA%\Knoter Wiki Demo`, the folder of the app's first name, so a
+build named knoter opens the workspace of an earlier one. The service listens on a
+per-user named pipe instead of a socket file. For a worker CLI choose an `.exe`
+(Claude Code's `%USERPROFILE%\.local\bin\claude.exe`, or the native `codex.exe`); an
+npm `.cmd` shim cannot be started.
 
-Checked on Windows 11 with Node 24.14.1 on 2026-11-13: packaging, start, service
-connection, watching a folder and registering notes (including a Korean filename in a
-subfolder), connecting Claude Code 2.1.321 and worker jobs finishing with it, and an
-orderly quit while a job was running. Not checked: Codex CLI, chat replies,
-backup/restore, the system title bar, and the Agent window's Windows text.
-
-Two failures from that day, kept as regression cases:
-
-- Quitting while a job ran left `service.lock` and an unmerged SQLite WAL: Windows ended
-  the service together with the app. The service is now started detached and stops
-  itself when its stdin closes; data was intact because the WAL is replayed on start.
-- The workspace looked empty after reopening the app. Started from a Store-packaged
-  program (here, a terminal inside the Claude desktop app), `%APPDATA%` is redirected to
-  `%LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming`, so the same exe opened from
-  Explorer used a different, new workspace. Start the app from Explorer, or expect the
-  redirected location.
+Start the app from Explorer. Started from a Store-packaged program, such as a terminal
+inside one, it uses a redirected `%APPDATA%` and so a different workspace. That failure
+and the service's stop on quit are in the
+[wiki-worker failure record](../docs/lessons/wiki-worker-demo.md).
 
 For development, run `npm run check`, then `npm run service` in one terminal and
 `npm run desktop` in another. Both accept the same `KNOTER_DATA_DIR` environment
